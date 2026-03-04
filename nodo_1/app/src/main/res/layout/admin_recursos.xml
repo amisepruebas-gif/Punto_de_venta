@@ -1,0 +1,651 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/grey_500">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout19"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/gris_red_medio_red_"
+        android:elevation="5dp"
+        app:layout_constraintEnd_toStartOf="@+id/textView60"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/textView23"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="@font/abeezee"
+            android:text="VENTAS"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/butHist_Ventas"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="16dp"
+            android:background="@color/azulDatosSegmento"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="Historial de Ventas"
+            android:textColor="@color/blanco"
+            app:layout_constraintEnd_toEndOf="@+id/ventaPor_articulo"
+            app:layout_constraintHorizontal_bias="1.0"
+            app:layout_constraintStart_toStartOf="@+id/ventaPor_articulo"
+            app:layout_constraintTop_toBottomOf="@+id/textView23" />
+
+        <Button
+            android:id="@+id/ventaPor_articulo"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="8dp"
+            android:background="@color/blanco"
+            android:elevation="10dp"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="venta por articulo"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="1.0"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/butHist_Ventas" />
+
+        <Button
+            android:id="@+id/butArticulosPor_precio"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="16dp"
+            android:background="@color/azulDatosSegmento"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="articulos por precio"
+            android:textColor="@color/blanco"
+            app:layout_constraintEnd_toEndOf="@+id/butHist_Ventas"
+            app:layout_constraintStart_toStartOf="@+id/butHist_Ventas"
+            app:layout_constraintTop_toBottomOf="@+id/ventaPor_articulo" />
+
+        <Button
+            android:id="@+id/but_masvendido"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="24dp"
+            android:background="@color/blanco"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="más vendidos"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@+id/butArticulosPor_precio"
+            app:layout_constraintStart_toStartOf="@+id/butArticulosPor_precio"
+            app:layout_constraintTop_toBottomOf="@+id/butArticulosPor_precio"
+            app:layout_constraintVertical_bias="0.0" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout28"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/gris_red_medio_red_"
+        android:elevation="5dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="@+id/constraintLayout19"
+        app:layout_constraintHorizontal_bias="0.489"
+        app:layout_constraintStart_toStartOf="@+id/constraintLayout19"
+        app:layout_constraintTop_toBottomOf="@+id/constraintLayout19">
+
+        <Button
+            android:id="@+id/butPop_tallas"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp"
+            android:background="@color/azulDatosSegmento"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="tallas de ropa"
+            android:textColor="@color/blanco"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@+id/but_descuento"
+            app:layout_constraintStart_toStartOf="@+id/but_descuento"
+            app:layout_constraintTop_toBottomOf="@+id/but_descuento"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <TextView
+            android:id="@+id/textView39"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="@font/abeezee"
+            android:text="ARTICULOS"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/butAgregar_articulos"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="8dp"
+            android:background="@color/azulDatosSegmento"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="agregar articulos"
+            android:textColor="@color/blanco"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/textView39" />
+
+        <Button
+            android:id="@+id/butEditar_articulos"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/blanco"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="editar articulos"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintEnd_toEndOf="@+id/butAgregar_articulos"
+            app:layout_constraintStart_toStartOf="@+id/butAgregar_articulos"
+            app:layout_constraintTop_toBottomOf="@+id/butAgregar_articulos" />
+
+        <Button
+            android:id="@+id/but_ver3x2"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/azulDatosSegmento"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="3 x 2"
+            android:textColor="@color/blanco"
+            app:layout_constraintEnd_toEndOf="@+id/butEditar_articulos"
+            app:layout_constraintStart_toStartOf="@+id/butEditar_articulos"
+            app:layout_constraintTop_toBottomOf="@+id/butEditar_articulos" />
+
+        <Button
+            android:id="@+id/but_descuento"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="24dp"
+            android:background="@color/blanco"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="rebajas"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@+id/but_ver3x2"
+            app:layout_constraintStart_toStartOf="@+id/but_ver3x2"
+            app:layout_constraintTop_toBottomOf="@+id/but_ver3x2"
+            app:layout_constraintVertical_bias="0.0" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout26"
+        android:layout_width="484dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/gris_red_medio_red_"
+        app:layout_constraintBottom_toBottomOf="@+id/constraintLayout28"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/constraintLayout19"
+        app:layout_constraintTop_toTopOf="@+id/constraintLayout19">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout29_"
+            android:layout_width="228dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/solo_borde_blanco"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/constraintLayout23"
+            app:layout_constraintTop_toBottomOf="@+id/constraintLayout29">
+
+            <Button
+                android:id="@+id/but_cambiar_comision"
+                android:layout_width="0dp"
+                android:layout_height="29dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:background="@color/azulDatosSegmento"
+                android:fontFamily="@font/abeezee"
+                android:onClick="onClick"
+                android:text="CAMBAIR COMISION"
+                android:textColor="@color/blanco"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/textView97_"
+                app:layout_constraintVertical_bias="0.0" />
+
+            <Switch
+                android:id="@+id/switchMostraBotonPagosConTarjeta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:onClick="onClick"
+                app:layout_constraintBottom_toBottomOf="@+id/textView97"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@+id/textView97_" />
+
+            <TextView
+                android:id="@+id/textView97_"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/abeezee"
+                android:text="MOSTRAR BOTON PARA PAGOS CON TARJETA"
+                android:textColor="@color/gris_oscuro"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/switchMostraBotonPagosConTarjeta"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintVertical_bias="0.0" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout20"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/solo_borde_blanco"
+            app:layout_constraintEnd_toEndOf="@+id/butEditar_ticket"
+            app:layout_constraintHorizontal_bias="0.0"
+            app:layout_constraintStart_toStartOf="@+id/butEditar_ticket"
+            app:layout_constraintTop_toBottomOf="@+id/butEditar_ticket">
+
+            <Switch
+                android:id="@+id/switch_LimitarVenta_a_existencia"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:onClick="onClick"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textView51"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/abeezee"
+                android:text="LIMITAR VENTA A LA EXITENCIA REGISTRADA"
+                android:textColor="@color/gris_oscuro"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/switch_LimitarVenta_a_existencia"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <Button
+            android:id="@+id/but_contraseña_admin"
+            android:layout_width="0dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/blanco"
+            android:elevation="10dp"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="cambiar contraseña"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintEnd_toEndOf="@+id/constraintLayout23"
+            app:layout_constraintStart_toStartOf="@+id/constraintLayout23"
+            app:layout_constraintTop_toBottomOf="@+id/constraintLayout27" />
+
+        <Button
+            android:id="@+id/but_cambiar_conectar_impresora"
+            android:layout_width="0dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/blanco"
+            android:elevation="10dp"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="CONECTAR IMPRESORA"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintEnd_toEndOf="@+id/constraintLayout29_"
+            app:layout_constraintStart_toStartOf="@+id/constraintLayout29_"
+            app:layout_constraintTop_toBottomOf="@+id/constraintLayout29_" />
+
+        <Button
+            android:id="@+id/butEditar_ticket"
+            android:layout_width="0dp"
+            android:layout_height="29dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/azulDatosSegmento"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="editar ticekt"
+            android:textColor="@color/blanco"
+            app:layout_constraintEnd_toEndOf="@+id/constraintLayout23"
+            app:layout_constraintStart_toStartOf="@+id/constraintLayout23"
+            app:layout_constraintTop_toBottomOf="@+id/but_contraseña_admin" />
+
+        <Button
+            android:id="@+id/but_nomCorte"
+            android:layout_width="230dp"
+            android:layout_height="29dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="8dp"
+            android:background="@color/azulDatosSegmento"
+            android:elevation="10dp"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:text="nombres corte"
+            android:textColor="@color/blanco"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.0"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/textView100" />
+
+        <TextView
+            android:id="@+id/textView100"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="@font/abeezee"
+            android:text="AJUSTES"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout21"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/solo_borde_blanco"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@+id/but_nomCorte"
+            app:layout_constraintStart_toStartOf="@+id/but_nomCorte"
+            app:layout_constraintTop_toBottomOf="@+id/but_nomCorte"
+            app:layout_constraintVertical_bias="0.0">
+
+            <Switch
+                android:id="@+id/switchMostrar3x2EnLaVenta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:onClick="onClick"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textView99"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/abeezee"
+                android:text="MOSTRAR BOTON 3x2\nEN LA VENTA"
+                android:textColor="@color/gris_oscuro"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/switchMostrar3x2EnLaVenta"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout23"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/solo_borde_blanco"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@+id/constraintLayout21"
+            app:layout_constraintStart_toStartOf="@+id/constraintLayout21"
+            app:layout_constraintTop_toBottomOf="@+id/constraintLayout21"
+            app:layout_constraintVertical_bias="0.0">
+
+            <Switch
+                android:id="@+id/switch_ReconocimientoFacial"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:onClick="onClick"
+                app:layout_constraintBottom_toBottomOf="@+id/textView106"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="1.0"
+                app:layout_constraintTop_toTopOf="@+id/textView106"
+                app:layout_constraintVertical_bias="0.50" />
+
+            <TextView
+                android:id="@+id/textView106"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/abeezee"
+                android:text="RECONOCIMIENTO FACIAL. EN ADMINISTRADOR"
+                android:textColor="@color/gris_oscuro"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/switch_ReconocimientoFacial"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintVertical_bias="0.0" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout27"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/solo_borde_blanco"
+            app:layout_constraintEnd_toEndOf="@+id/constraintLayout23"
+            app:layout_constraintStart_toStartOf="@+id/constraintLayout23"
+            app:layout_constraintTop_toBottomOf="@+id/constraintLayout23">
+
+            <Switch
+                android:id="@+id/switch_Cobrarcomision"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:onClick="onClick"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="1.0"
+                app:layout_constraintStart_toEndOf="@+id/textView99"
+                app:layout_constraintTop_toBottomOf="@+id/but_ClipLogin"
+                app:layout_constraintVertical_bias="0.0" />
+
+            <TextView
+                android:id="@+id/textView50"
+                android:layout_width="137dp"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/abeezee"
+                android:text="COBRAR COMISIÓN"
+                android:textColor="@color/gris_oscuro"
+                app:layout_constraintBottom_toBottomOf="@+id/switch_Cobrarcomision"
+                app:layout_constraintEnd_toStartOf="@+id/switch_Cobrarcomision"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toStartOf="@+id/but_ClipLogin"
+                app:layout_constraintTop_toTopOf="@+id/switch_Cobrarcomision" />
+
+            <Button
+                android:id="@+id/but_ClipLogin"
+                android:layout_width="0dp"
+                android:layout_height="29dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="@color/azulDatosSegmento"
+                android:elevation="10dp"
+                android:fontFamily="@font/abeezee"
+                android:onClick="onClick"
+                android:text="INICIAR SESIÓN CLIP"
+                android:textColor="@color/blanco"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout_darTicket"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/solo_borde_blanco"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@+id/butEditar_ticket"
+            app:layout_constraintHorizontal_bias="0.0"
+            app:layout_constraintStart_toStartOf="@+id/butEditar_ticket"
+            app:layout_constraintTop_toBottomOf="@+id/constraintLayout20"
+            app:layout_constraintVertical_bias="0.0">
+
+            <Switch
+                android:id="@+id/switch_Dar_ticket"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:onClick="onClick"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textView_Dar_ticket"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/abeezee"
+                android:text="DAR TICKET"
+                android:textColor="@color/gris_oscuro"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/switch_Dar_ticket"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout29"
+            android:layout_width="228dp"
+            android:layout_height="wrap_content"
+            android:background="@drawable/solo_borde_blanco"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/constraintLayout23"
+            app:layout_constraintTop_toTopOf="@+id/but_nomCorte">
+
+            <Button
+                android:id="@+id/but_informacionTransferencia"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:background="@color/azulDatosSegmento"
+                android:fontFamily="@font/abeezee"
+                android:onClick="onClick"
+                android:text="informacion transferencia"
+                android:textColor="@color/blanco"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/textView97_1"
+                app:layout_constraintVertical_bias="0.0" />
+
+            <Switch
+                android:id="@+id/switchMostrarBotonTransferencia"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:onClick="onClick"
+                app:layout_constraintBottom_toBottomOf="@+id/textView97"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="1.0"
+                app:layout_constraintTop_toTopOf="@+id/textView97_1" />
+
+            <TextView
+                android:id="@+id/textView97_1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/abeezee"
+                android:text="MOSTRAR BOTON PARA TRANSFERENCIAS"
+                android:textColor="@color/gris_oscuro"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/switchMostrarBotonTransferencia"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintVertical_bias="0.0" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <TextView
+        android:id="@+id/textView60"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/solo_borde_blanco"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView102"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toTopOf="@+id/textView60"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/textView60"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView103"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/textView60"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/textView60" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

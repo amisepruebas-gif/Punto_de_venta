@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/consProdNoReg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#99000000"
+        android:clickable="true"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.0">
+
+        <AutoCompleteTextView
+            android:id="@+id/editRefProdNoReg"
+            android:layout_width="259dp"
+            android:layout_height="wrap_content"
+            android:background="@drawable/blanco_muy_red"
+            android:ems="10"
+            android:fontFamily="@font/abeezee"
+            android:hint="NOMNRE-DESCRIPCIÓN"
+            android:inputType="textPersonName"
+            android:paddingLeft="8dp"
+            android:textColor="@color/gris_oscuro"
+            android:textColorHint="@color/grey_500"
+            android:textStyle="italic"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.26999998" />
+
+        <Button
+            android:id="@+id/butAgregarNoReg"
+            android:layout_width="192dp"
+            android:layout_height="wrap_content"
+            android:background="@color/blanco"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:paddingStart="15dp"
+            android:paddingEnd="15dp"
+            android:text="agregar"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintBottom_toBottomOf="@+id/butCancelarNoReg"
+            app:layout_constraintEnd_toEndOf="@+id/editRefProdNoReg"
+            app:layout_constraintStart_toEndOf="@+id/editRefProdNoReg"
+            app:layout_constraintTop_toTopOf="@+id/butCancelarNoReg" />
+
+        <Button
+            android:id="@+id/butCancelarNoReg"
+            android:layout_width="192dp"
+            android:layout_height="wrap_content"
+            android:background="@color/blanco"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:paddingStart="15dp"
+            android:paddingEnd="15dp"
+            android:text="CANCELAR"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/editRefProdNoReg"
+            app:layout_constraintStart_toStartOf="@+id/editRefProdNoReg"
+            app:layout_constraintTop_toBottomOf="@+id/editCantProdNoReg" />
+
+        <EditText
+            android:id="@+id/editPrecioProdNoReg"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/blanco_muy_red"
+            android:ems="10"
+            android:fontFamily="@font/abeezee"
+            android:hint="PRECIO"
+            android:inputType="number"
+            android:paddingLeft="8dp"
+            android:textColor="@color/gris_oscuro"
+            android:textColorHint="@color/grey_500"
+            android:textStyle="italic"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/textView73"
+            app:layout_constraintTop_toBottomOf="@+id/editRefProdNoReg"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <EditText
+            android:id="@+id/editCantProdNoReg"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:ems="10"
+            android:fontFamily="@font/abeezee"
+            android:hint="CANT"
+            android:inputType="number"
+            android:numeric="integer"
+            android:paddingLeft="8dp"
+            android:textColor="@color/gris_oscuro"
+            android:textColorHint="@color/grey_500"
+            android:textStyle="italic"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/textView73"
+            app:layout_constraintTop_toTopOf="@+id/textView73"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <TextView
+            android:id="@+id/textView4"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/abeezee"
+            android:text="ARTICULO NO REGISTRADO"
+            android:textColor="@color/blanco"
+            app:layout_constraintBottom_toTopOf="@+id/editRefProdNoReg"
+            app:layout_constraintEnd_toEndOf="@+id/editRefProdNoReg"
+            app:layout_constraintStart_toStartOf="@+id/editRefProdNoReg"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/textView73"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="8dp"
+            android:fontFamily="@font/abeezee"
+            android:text="CANT."
+            android:textColor="@color/blanco"
+            android:textSize="18sp"
+            app:layout_constraintEnd_toStartOf="@+id/editRefProdNoReg"
+            app:layout_constraintTop_toBottomOf="@+id/editPrecioProdNoReg" />
+
+        <TextView
+            android:id="@+id/textView2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/abeezee"
+            android:text="$"
+            android:textColor="@color/blanco"
+            android:textSize="18sp"
+            app:layout_constraintBottom_toBottomOf="@+id/editPrecioProdNoReg"
+            app:layout_constraintEnd_toEndOf="@+id/textView73"
+            app:layout_constraintTop_toTopOf="@+id/editPrecioProdNoReg" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,89 @@
+<resources>
+    <string name="app_name">nodo_1</string>
+
+    <string name ="limitarVenta_a_existencia">limitarVenta_a_existencia</string>
+    <string name ="val_2x1_mostrar">val_2x1_mostrar</string>
+    <string name ="passAdmin">share_passAdmin</string>
+    <string name="statusFacial">facial</string>
+
+    <string name="equipoDeTrabajo">equipoDeTrabajo</string>
+
+    <string name="dispositivos_mensaje">dispositivos_mensaje</string>
+    <string name="mensajes_n">mensajes_n</string>
+    <string name="datosTicket">datosTicket</string>
+    <string name="ticket_name">ticketName_data1</string>
+    <string name="ticket_1">ticket_1_datos</string>
+    <string name="ticket_2">ticket_2_datos</string>
+    <string name="ticket_3">ticket_3_datos</string>
+    <string name="ticket_4">ticket_4_datos</string>
+    <string name="ticket_5">ticket_5_datos</string>
+    <string name="ticket_6">ticket_6_datos</string>
+    <string name="cobrar_comision">cobrar_comision</string>
+    <string name="dar_ticket">dar_ticket</string>
+    <string name="transferencia_datos">transferencia_datos</string>
+    <string name="mostrarBotonTransferencia">mostrarBotonTransferencia</string>
+    <string name="mostrarBotonPagoTarjeta">mostrarBotonPagoTarjeta</string>
+    <string name="recibido_articulos_modificacion">recibido_articulos_modificacion</string>
+    <string name="recibido_articulos_nuevo">recibido_articulos_nuevo</string>
+    <string name="recibido_talla">recibido_talla</string>
+    <string name="recibido_3x3">recibido_3x3</string>
+    <string name="recibido_nodo">recibido_nodo</string>
+    <string name="recibido_Mensaje">recibido_Mensaje</string>
+    <string name="sesionClip">sesionClip</string>
+    <string name="nombresCorte">nombresCorte</string>
+    <string name="tallas">tallas</string>
+    <string name="articulos_ac">articulos_ac</string>
+    <string name="articulos_x_venta">articulos_x_venta</string>
+    <string name="mensajes_ac">mensajes_ac</string>
+    <string name="articulos_n">articulos_n</string>
+    <string name="token_acces_mercado_pago">TEST-4901281878838857-121619-3bb73b29392fb67d2d9aad7f8d03963a-150079182</string>
+
+    <string name="notificacion_lista">notificacion_lista</string>
+    <string name="notificacion_lista_url">notificacion_lista_url</string>
+
+    <string name="apartados_ac">apartados_ac</string>
+    <string name="clienete_ac">clienete_ac</string>
+
+    <string name="ventas_n">ventas_n</string>
+    <string name="corte_1">corte_1</string>
+    <string name="corte_1_ac">corte_1_ac</string>
+
+    <string name ="val_2X1_mostrar">val_2X1_mostrar</string>
+
+    <string name="notificacion_pase_de_lista">notificacion_pase_de_lista</string>
+    <string name="notificacion_update">notificacion_update</string>
+
+    <string name="notificacion_update_">notificacion_update</string>
+    <string name="notificacion_ventaPorArticulo_paseDeLista">notificacion_ventaPorArticulo_paseDeLista</string>
+    <string name="notificacion_ventaPorArticulo">notificacion_ventaPorArticulo</string>
+
+    <string name="huella_mensaje">huella_mensaje</string>
+    <string name="huella_venta">huella_venta</string>
+    <string name="huella_corte_1">huella_corte_1</string>
+
+    <string name="cambiar_comision">cambiar_comision</string>
+
+    <string name="ultima_huella_notificacion">ultima_huella_notificacion</string>
+    <string name="index_notificacion">index_notificacion</string>
+
+    <string name="primeraVez_disp_nuevo">primeraVez_disp_nuevo</string>
+
+    <string name="led_ajuestes_1">led_ajuestes_1</string>
+    <string name="led_ajuestes_2">led_ajuestes_2</string>
+    <string name="led_ajuestes_3">led_ajuestes_3</string>
+    <string name="led_ajuestes_4">led_ajuestes_4</string>
+    <string name="led_ajuestes_5">led_ajuestes_5</string>
+    <string name="led_ajuestes_6">led_ajuestes_6</string>
+    <string name="led_ajuestes_7">led_ajuestes_7</string>
+    <string name="led_ajuestes_8">led_ajuestes_8</string>
+    <string name="led_ajuestes_9">led_ajuestes_9</string>
+    <string name="led_ajuestes_10">led_ajuestes_10</string>
+    <string name="led_ajuestes_11">led_ajuestes_11</string>
+    <string name="led_ajuestes_12">led_ajuestes_12</string>
+
+
+    <string name="default_web_client_id">10034777947-65fvrvbe28s8paid2fgmom8sdlhgj9gp.apps.googleusercontent.com</string>
+
+    <dimen name="page_margin">32dp</dimen>
+
+</resources>

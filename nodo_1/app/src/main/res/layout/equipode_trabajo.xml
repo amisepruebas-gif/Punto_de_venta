@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.sothree.slidinguppanel.SlidingUpPanelLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/panelState_EquipoTrabajo"
+    android:gravity="bottom"
+    app:umanoOverlay="true"
+    app:umanoPanelHeight="0dp"
+    app:umanoShadowHeight="0dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    >
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+        <com.airbnb.lottie.LottieAnimationView
+            android:id="@+id/animation_view"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:elevation="10dp"
+            android:background="#99FFFFFF"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:lottie_autoPlay="true"
+            app:lottie_loop="false"
+            app:lottie_rawRes="@raw/animacion_check_2" />
+
+        <Button
+            android:id="@+id/butBuscar_por_id2"
+            android:layout_width="25dp"
+            android:layout_height="0dp"
+            android:background="@drawable/x_blanca"
+            android:onClick="onClick"
+            app:layout_constraintBottom_toBottomOf="@+id/editTextTextNom_ingresado_eqp_trabajo"
+            app:layout_constraintStart_toEndOf="@+id/editTextTextNom_ingresado_eqp_trabajo"
+            app:layout_constraintTop_toTopOf="@+id/editTextTextNom_ingresado_eqp_trabajo" />
+
+        <EditText
+            android:id="@+id/editTextTextNom_ingresado_eqp_trabajo"
+            android:layout_width="190dp"
+            android:layout_height="30dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:ems="10"
+            android:hint="AGREGAR INTEGRANTE"
+            android:inputType="text"
+            android:paddingLeft="8dp"
+            android:paddingEnd="8dp"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toTopOf="@+id/butGuarda_equipoDetrabajo"
+            app:layout_constraintStart_toStartOf="@+id/constraintLayout37"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="1.0" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout37"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/blanco_medio_red"
+            app:layout_constraintBottom_toTopOf="@+id/editTextTextNom_ingresado_eqp_trabajo"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/imageViewaUnNoHayElementos"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:srcCompat="@drawable/aun_no_hay_elementos" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerEquipoDeTrabajo_1"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <Button
+            android:id="@+id/butagregarIntegrante_eqp_trabajo"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/muy_red_verde_lima"
+            android:onClick="onClick"
+            android:text="agregar"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintBottom_toBottomOf="@+id/editTextTextNom_ingresado_eqp_trabajo"
+            app:layout_constraintEnd_toEndOf="@+id/constraintLayout37"
+            app:layout_constraintStart_toEndOf="@+id/butBuscar_por_id2"
+            app:layout_constraintTop_toTopOf="@+id/editTextTextNom_ingresado_eqp_trabajo" />
+
+        <Button
+            android:id="@+id/butGuarda_equipoDetrabajo"
+            android:layout_width="0dp"
+            android:layout_height="39dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/naranja_bajo_muy_red"
+            android:onClick="onClick"
+            android:text="enviar/guardar datos"
+            android:textColor="@color/gris_oscuro"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@+id/constraintLayout37"
+            app:layout_constraintStart_toStartOf="@+id/constraintLayout37" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <include
+            layout="@layout/iconos" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.sothree.slidinguppanel.SlidingUpPanelLayout>

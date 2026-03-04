@@ -1,0 +1,14 @@
+<!-- res/layout/chat_head_layout.xml -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="60dp"
+    android:layout_height="60dp"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@color/colortransparente">
+
+    <ImageView
+        android:id="@+id/chat_head_image"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@drawable/chat"/>
+</LinearLayout>

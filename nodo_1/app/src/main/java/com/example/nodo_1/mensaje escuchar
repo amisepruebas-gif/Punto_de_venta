@@ -1,0 +1,377 @@
+
+    static boolean escucharventabol = false;
+    MediaPlayer mp;
+    public void escucharVenta(){
+        mp = MediaPlayer.create(context, R.raw.ventarealizada);
+        Calendar c = Calendar.getInstance();
+
+        String año = String.valueOf(c.get(Calendar.YEAR));
+        String mes = String.valueOf(c.get(Calendar.MONTH) +1);
+        String dia = String.valueOf(c.get(Calendar.DAY_OF_MONTH));
+
+        DocumentReference docRef = fire.documenRef("/datos/"+ "ventaReg");
+
+        docRef.addSnapshotListener(
+                new EventListener<DocumentSnapshot>() {
+                    @Override
+                    public void onEvent(@Nullable DocumentSnapshot documentSnapshot, @Nullable FirebaseFirestoreException e) {
+                        if (e != null) {
+                            toast("documento vacio");
+                            return;
+                        }
+
+                        if(escucharventabol){
+                            if (documentSnapshot != null && documentSnapshot.exists()) {
+                                try {
+                                    JSONObject obj = mapToJSON(Objects.requireNonNull(documentSnapshot.getData()));
+                                    //toast(obj.toString());
+                                    if(jsonVenta.has(año)){
+                                        if (jsonVenta.getJSONObject(año).has(mes)){
+                                            if(jsonVenta.getJSONObject(año).getJSONObject(mes).has(dia)){
+                                                //toast("paso_1");
+                                                jsonVenta.getJSONObject(año).getJSONObject(mes).getJSONObject(dia).
+                                                        put(obj.getString("numeroDeVenta"), obj);
+                                            }else {
+                                                JSONObject regVenta  = new JSONObject();
+                                                regVenta.put(obj.getString("numeroDeVenta"), obj);
+                                                jsonVenta.getJSONObject(año).getJSONObject(mes).put(dia, regVenta);
+                                                //toast("paso_1_2");
+                                            }
+                                        }else {
+                                            JSONObject regVenta  = new JSONObject();
+                                            JSONObject objectDia = new JSONObject();
+                                            regVenta.put(obj.getString("numeroDeVenta"), obj);
+                                            objectDia.put(dia, regVenta);
+                                            jsonVenta.getJSONObject(año).put(mes, objectDia);
+
+                                            //toast(regVenta.names().toString() + "\n" +  regVenta.getJSONObject(obj.getString("numeroDeVenta")).names().toString());
+                                        }
+                                    }else {
+                                        //toast("paso_3");
+                                        JSONObject regVenta  = new JSONObject();
+                                        JSONObject objectDia = new JSONObject();
+                                        regVenta.put(obj.getString("numeroDeVenta"), obj);
+                                        objectDia.put(dia, regVenta);
+                                        JSONObject objMes    = new JSONObject();
+                                        objMes.put(mes, objectDia);
+                                        jsonVenta.put(año, objMes);
+                                    }
+                                    actualizarDatosGuardados("jsonVenta", jsonVenta.toString(), context);
+
+                                    mp.start();
+                                    Intent intent = new Intent("FIRESTORE_UPDATE_ACTION");
+                                    intent.putExtra("llave", "venta");  // 'data' es el dato actualizado de Firestore
+                                    intent.putExtra("extra_data", obj.toString());  // 'data' es el dato actualizado de Firestore
+                                    LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+
+                                } catch (JSONException ex) {
+                                    throw new RuntimeException(ex);
+                                }
+
+                            } else {
+                                //toast("Current data: null 123");
+                            }
+                        }else escucharventabol = true;
+
+                    }
+                });
+
+    }
+    public void ultimoMensaje(String direccion){
+
+        jsonMensajes_n = new JSONObject();
+
+        final JSONObject json = new JSONObject();
+        refCollection(direccion).get().addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+            @Override
+            public void onSuccess(QuerySnapshot documentSnapshots) {
+                if (documentSnapshots.isEmpty()) {
+                    return;
+                } else {
+                    for (DocumentSnapshot document : documentSnapshots) {
+                        try {
+                            JSONObject obj = mapToJSON(document.getData());
+                            json.put(document.getId(), obj);
+
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    objectFechasMensaje = json;
+                    Calendar c = Calendar.getInstance();
+                    String añoActual = String.valueOf(c.get(Calendar.YEAR));
+                    String mesActual = String.valueOf(c.get(Calendar.MONTH)+1);
+                    String diaActual = String.valueOf(c.get(Calendar.DAY_OF_MONTH));
+                    boolean diaIgual = false;
+
+                    for (int i = 0; i < json.names().length(); i++){
+                        try {
+                            if(añoActual.equals(json.names().getString(i))){
+                                JSONObject mesOBJ = json.getJSONObject(json.names().getString(i));
+                                for (int x = 0; x < mesOBJ.names().length(); x++){
+                                    if(mesActual.equals(mesOBJ.names().getString(x))){
+                                        JSONObject jsonDia = mesOBJ.getJSONObject(mesOBJ.names().getString(x));
+                                        for (int u = 0; u < jsonDia.names().length(); u++){
+                                            if (jsonDia.names().getString(u).equals(diaActual)){
+                                                diaIgual = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (JSONException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+
+                    if (diaIgual){
+                        toast("MENSAJES CARGADOS");
+                        String url = "mensajes_n/" + añoActual + "/" + mesActual + "/" + diaActual;
+                        fire.documenRef(url)
+                                .get()
+                                .addOnCompleteListener(new OnCompleteListener<DocumentSnapshot>() {
+                                    @Override
+                                    public void onComplete(@NonNull Task<DocumentSnapshot> task) {
+                                        if (task.isSuccessful()) {
+                                            DocumentSnapshot document = task.getResult();
+                                            if (document.exists()) {
+                                                Map<String, Object> data = document.getData();
+                                                JSONObject object = new JSONObject(data);
+                                                try {
+                                                    JSONArray array =  object.getJSONArray("mensajes");
+
+
+                                                    JSONObject mesRespJsn = new JSONObject();
+                                                    JSONObject objectDia = new JSONObject();
+
+                                                    objectDia.put(diaActual, array);
+                                                    mesRespJsn.put(mesActual, objectDia);
+                                                    jsonMensajes_n.put(añoActual, mesRespJsn);
+
+                                                    actualizarDatosGuardados("jsonMensajes_n", jsonMensajes_n.toString(), context);
+                                                    escucharMensajes();
+                                                } catch (JSONException e) {
+                                                    throw new RuntimeException(e);
+                                                }
+                                            } else {
+                                                jsonMensajes_n = new JSONObject();
+                                                toast("vacio 1" );
+                                                escucharMensajes();
+                                            }
+                                        } else {
+
+                                        }
+                                    }
+                                });
+                    }else {
+                        toast("NO HAY MENSAJES EXISTENTES PARA ESTE DIA");
+                        escucharMensajes();
+                    }
+                }
+            }
+        });
+
+    }
+
+    public void escucharMensajes(){
+        Calendar c = Calendar.getInstance();
+        // Obtiene la referencia a la colección principal
+        String año = String.valueOf(c.get(Calendar.YEAR));
+        String mes = String.valueOf(c.get(Calendar.MONTH)+1);
+        String dia = String.valueOf(c.get(Calendar.DAY_OF_MONTH));
+        // Crea la referencia a la subcolección usando el año
+
+        DocumentReference documentRef = db().document("mensajes_n" + "/" + año + "/" + mes + "/" + dia);
+
+        documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
+            @Override
+            public void onEvent(@Nullable DocumentSnapshot snapshot,
+                                @Nullable FirebaseFirestoreException e) {
+                if (e != null) {
+                    // Manejar el error
+                    return;
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    //Log.d(TAG, "Datos del documento: " + snapshot.getData());
+                    // Aquí puedes actualizar tu interfaz de usuario con los datos del documento
+                    if (snapshot != null && snapshot.exists() && jsonMensajes_n.length() > 0) {
+
+                        JSONObject jsonMsj = new JSONObject(Objects.requireNonNull(snapshot.getData()));
+
+
+
+                        String idDispositivo = generales.loadData_sharedPreferences(context, "id_mensaje", "dispositivo");
+
+                        JSONObject object_msjm;
+                        try {
+                            object_msjm = jsonMsj.getJSONArray("mensajes").getJSONObject(jsonMsj.getJSONArray("mensajes").length()-1);
+                        } catch (JSONException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                        String info = "";
+                        String año_, mes_, dia_;
+                        boolean estado = true;
+                        if (object_msjm.length() > 0){//2024-04-21 19:12:08"
+                            try {
+                                año_ = object_msjm.getString("hora").split(" ")[0].split("-")[0];
+                                mes_ = object_msjm.getString("hora").split(" ")[0].split("-")[1];
+                                mes_ = quitarCero(mes_);
+                                dia_ = object_msjm.getString("hora").split(" ")[0].split("-")[2];
+                                dia_ = quitarCero(dia_);
+
+
+                                if (jsonMensajes_n.has(año_)){
+                                    if (jsonMensajes_n.getJSONObject(año_).has(mes_)){
+                                        if (jsonMensajes_n.getJSONObject(año_).getJSONObject(mes_).has(dia_)){
+
+                                            boolean corroborarCadenaIgual = false;
+                                            /** SI EL ULTIMO ELEMENOT ES IGUAL PERO FALNTAN ELEMENTOS RESTANTES ANTERIORES**/
+                                            if (jsonMensajes_n.getJSONObject(año_).getJSONObject(mes_).getJSONArray(dia_).getJSONObject(
+                                                    jsonMensajes_n.getJSONObject(año_).getJSONObject(mes_).getJSONArray(dia_).length()-1
+                                            ).getString("hora").equals(object_msjm.getString("hora"))){
+                                                if(jsonMsj.getJSONArray("mensajes").length() !=
+                                                        jsonMensajes_n.getJSONObject(año_).getJSONObject(mes_).getJSONArray(dia_).length()){
+                                                    corroborarCadenaIgual = true;
+                                                }
+                                                if (corroborarCadenaIgual){
+                                                    jsonMensajes_n.getJSONObject(año_).getJSONObject(mes_).put(dia_, jsonMsj.getJSONArray("mensajes"));
+                                                }
+                                                estado = false;
+                                            }
+                                        }
+                                    }
+                                }
+
+                            } catch (JSONException ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        }
+                        if(estado){
+                            try {
+                                if(!object_msjm.getString("id").equals(idDispositivo)){
+                                    //2024-02-05 12:52:10
+
+                                    String id_mensaje = object_msjm.getString("hora");
+                                    String año = (id_mensaje.split(" ")[0]).split("-")[0];
+                                    String mes = quitarCero((id_mensaje.split(" ")[0]).split("-")[1]);
+                                    String dia = quitarCero((id_mensaje.split(" ")[0]).split("-")[2]);
+
+                                    if (object_msjm.has("nuevoDia"))
+                                    {
+                                        JSONArray array = new JSONArray();
+                                        array.put(object_msjm);
+                                        if(object_msjm.has("inicioDeMes")){
+                                            JSONObject object = new JSONObject();
+                                            object.put(dia, array);
+                                            jsonMensajes_n.getJSONObject(año).put(mes, object);
+                                        }else {
+                                            jsonMensajes_n.getJSONObject(año).getJSONObject(mes).put(dia, array);
+                                        }
+
+                                        info = info + "/ paso 2";
+                                    } else if (object_msjm.has("inicioDeMes")) {
+                                        JSONObject objectDia = new JSONObject();
+                                        JSONArray array = new JSONArray();
+                                        array.put(object_msjm);
+                                        objectDia.put(dia, array);
+                                        jsonMensajes_n.getJSONObject(año).put(mes, objectDia);
+                                        info = info + "/ paso 3";
+                                    } else if (object_msjm.has("nuevoAño")) {
+
+                                        JSONObject objectDia = new JSONObject();
+                                        JSONArray array = new JSONArray();
+                                        array.put(object_msjm);
+                                        objectDia.put(dia, array);
+                                        JSONObject objectMes = new JSONObject();
+                                        objectMes.put(mes, objectDia);
+                                        jsonMensajes_n.put(año, objectMes);
+                                    } else{
+                                        jsonMensajes_n.getJSONObject(año).getJSONObject(mes).getJSONArray(dia).put(object_msjm);
+                                    }
+
+
+                                    if (objectFechasMensaje.has(año)){
+                                        if (objectFechasMensaje.getJSONObject(año).has(mes)){
+                                            if(objectFechasMensaje.getJSONObject(año).getJSONObject(mes).has(dia)){
+                                                objectFechasMensaje.getJSONObject(año).getJSONObject(mes).put(dia,
+                                                        String.valueOf(Integer.parseInt(
+                                                                objectFechasMensaje.getJSONObject(año).getJSONObject(mes).getString(dia)
+                                                        ) + 1));
+                                            }else {
+                                                objectFechasMensaje.getJSONObject(año).getJSONObject(mes).put(dia,"1");
+                                            }
+
+                                        }else {
+                                            JSONObject object = new JSONObject();
+                                            object.put(dia, "1");
+                                            objectFechasMensaje.getJSONObject(año).put(mes, object);
+                                        }
+                                    }else {
+                                        JSONObject object = new JSONObject();
+                                        object.put(dia, "1");
+                                        JSONObject objMes = new JSONObject();
+                                        objMes.put(mes, object);
+                                        objectFechasMensaje.put(año, objMes);
+                                    }
+
+                                    actualizarDatosGuardados("jsonMensajes_n", jsonMensajes_n.toString(), context);
+                                    principal.actualizarMensajesPop(object_msjm);
+                                }
+                            } catch (JSONException ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        }else {
+                            if(!primeraVezEscMens) toast("init esc mensajes");
+                            primeraVezEscMens = true;
+                        }
+                        // Obtener la referencia al documento
+                    }
+                } else {
+                    // El documento no existe
+                }
+            }
+        });
+        // Registrar el listener para el documento
+    }
+
+
+
+ case REQUEST_PAY_Normal:
+                assert data != null;
+                switch (data.getIntExtra(StatusCode.RESULT_CODE, StatusCode.FAILURE)) {
+                    case StatusCode.SUCCESSFUL:
+
+                        break;
+                    case StatusCode.FAILURE:
+                        generales.toast("VENTA NO CONCRETADA", getApplicationContext());
+                        break;
+                }
+                break;
+            case REQUEST_PAY_Dividido_efec_tar:
+                assert data != null;
+                switch (data.getIntExtra(StatusCode.RESULT_CODE, StatusCode.FAILURE)) {
+                  /*
+                    case StatusCode.SUCCESSFUL:
+
+                        break;
+                    case StatusCode.FAILURE:
+                        //toast("VENTA NO CONCRETADA", getApplicationContext());
+                        butPagoIgual            .setVisibility(View.GONE);
+                        consPAgoTarjetaBoton    .setVisibility(View.GONE);
+                        butMasUnaVenta          .setVisibility(View.GONE);
+                        butTransferencia        .setVisibility(View.GONE);
+                        butConfTransferencia    .setVisibility(View.GONE);
+
+                        butcambiarFormaDePago   .setVisibility(View.VISIBLE);
+                        palomaPagoDiv           .setVisibility(View.VISIBLE);
+
+                        try {
+                            txtRestaPagoDiv.setText(jsonVenta_actual.getJSONObject(datosPagoDividido).getString("pago"));
+                        } catch (JSONException e) {
+                            throw new RuntimeException(e);
+                        }
+                        break;
+                   */
+                }
+                break;

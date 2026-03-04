@@ -1,0 +1,9 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:drawable="@drawable/sombra_fondo_esq_red_arriba_pico_abajo"/>
+
+    <item android:drawable="@drawable/fondo_blanco_red_arriba_esquina_abajo"
+        android:left="2dp"
+        android:right="2dp"
+        android:top="2dp" />
+</layer-list>

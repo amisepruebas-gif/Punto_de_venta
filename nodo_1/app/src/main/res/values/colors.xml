@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+
+    <color name="colorPrimary">#6200EE</color>
+    <color name="colorPrimaryDark">#3700B3</color>
+    <color name="colorAccent">#03DAC5</color>
+
+    <color name="azul_1">#00D1FF</color>
+    <color name="azulamise">#00D4FF</color>
+    <color name="verde_limon">#BEDF00</color>
+    <color name="naranja_bajo">#FFB72F</color>
+    <color name="naranja_fuerte">#FF7932</color>
+    <color name="negro">#000000</color>
+    <color name="blanco">#FFFFFF</color>
+    <color name="colortransparente">#00FFFFFF</color>
+    <color name="gris_oscuro">#474747</color>
+    <color name="gris_claro">#A6A5A5</color>
+    <color name="gris_medio">#6C6C6C</color>
+    <color name="naranjaDatosSegmento">#FF6400</color>
+    <color name="azulDatosSegmento">#5D90FF</color>
+    <color name="azulverde">#2EBDAC</color>
+    <color name="azulverdeMedio">#37DAC7</color>
+    <color name="azulverdeClaro">#3EFCE6</color>
+    <color name="rojo">#FF3434</color>
+    <color name="semitransnegro">#39000000</color>
+    <color name="rosabajito">#FBAEFF</color>
+    <color name="azul">#0000FF</color>
+    <color name="azulclaro">#FFAEE4E8</color>
+    <color name="amarilloSuave">#FCEA97</color>
+    <color name="rojosuave">#E65035</color>
+    <color name="morado">#7D33FF</color>
+    <color name="verde_lima">#F1FF99</color>
+
+    <color name="grey_100">#F5F5F5</color>
+    <color name="grey_300">#E0E0E0</color>
+    <color name="grey_500">#9E9E9E</color>
+
+    <color name="color1">#424549</color>
+    <color name="color2">#7e455e</color>
+    <color name="color3">#796e25</color>
+    <color name="color4">#59717c</color>
+
+</resources>

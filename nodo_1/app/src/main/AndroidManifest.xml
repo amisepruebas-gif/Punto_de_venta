@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Nodo_1"
+        tools:targetApi="31">
+
+
+        <activity
+            android:name=".initLog"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.principal"/>
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.ingresoMercancia"/>
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.admin"/>
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.ventas"/>
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.registro_dispositivo"/>
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.pedidos" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.pedidosAgregarReg" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.editar_articulos" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.editarTicket" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="propiedades_articulos.tallas" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="propiedades_articulos.agregar_tallas_etc" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="propiedades_articulos.articulos_por_precio" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="propiedades_articulos.editar_propiedades" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="propiedades_articulos.generarDescuento" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="propiedades_articulos.mayoreo_articulos" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="propiedades_articulos.seña" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="propiedades_articulos.tres_x_n" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name=".vistaArticulosTodos" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name=".equipo_de_trabajo" />
+
+        <activity
+            android:screenOrientation="landscape"
+            android:name="fragmentVenta.principal_venta" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="fragmentVenta.venta_clase" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="administrador" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="datos_equipo_de_trabajo" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name=".ajustes" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name=".corte_hist" />
+        <meta-data
+            android:name="preloaded_fonts"
+            android:resource="@array/preloaded_fonts" />
+
+    </application>
+
+</manifest>

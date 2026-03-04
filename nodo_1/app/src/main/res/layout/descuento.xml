@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.sothree.slidinguppanel.SlidingUpPanelLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/slidin_articulos_propiedades_1"
+    android:gravity="bottom"
+    app:umanoOverlay="true"
+    app:umanoPanelHeight="0dp"
+    app:umanoShadowHeight="0dp"
+    app:umanoFadeColor="#99000000"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <teclado.KeyboardAwareLinearLayout
+        android:id="@+id/keyboardAwareLayout_descuento"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/blanco">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/blanco">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recycler_multi_propiedades_del_articulo"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:visibility="visible"
+                app:layout_constraintBottom_toTopOf="@+id/constraintLayout44"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/textVew_vistarArt_propiedades_encabezado" />
+
+            <TextView
+                android:id="@+id/textVew_vistarArt_propiedades_encabezado"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Articulos con descuento"
+                android:textColor="@color/morado"
+                android:textStyle="bold|italic"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/constraintLayout44"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:background="@color/grey_100"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent">
+
+                <TextView
+                    android:id="@+id/textView235"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:visibility="visible"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHorizontal_bias="0.50"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintVertical_bias="0.29000002" />
+
+                <AutoCompleteTextView
+                    android:id="@+id/autoCompleteBusqedaAgrgarCliente5"
+                    android:layout_width="0dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_marginBottom="8dp"
+                    android:autoSizeMaxTextSize="19sp"
+                    android:autoSizeMinTextSize="10sp"
+                    android:autoSizeTextType="uniform"
+                    android:background="@drawable/blanco_muy_red"
+                    android:drawableStart="@drawable/lupa_buscar_verde"
+                    android:drawableEnd="@drawable/baseline_qr_code_scanner_24"
+                    android:elevation="3dp"
+                    android:ems="10"
+                    android:gravity="center"
+                    android:hint="ID"
+                    android:inputType="textPersonName"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
+                    android:textColorHint="@color/gris_claro"
+                    android:textSize="12sp"
+                    android:textStyle="italic"
+                    android:visibility="visible"
+                    app:layout_constraintBottom_toTopOf="@+id/but_ver_ventas_con_propiedades"
+                    app:layout_constraintEnd_toStartOf="@+id/textView235"
+                    app:layout_constraintHorizontal_bias="0.0"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintVertical_bias="1.0"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/but_guardarCambios_descuento"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="8dp"
+                    android:autoSizeTextType="uniform"
+                    android:background="@drawable/blanco_medio_red"
+                    android:drawableStart="@drawable/baseline_save_24"
+                    android:elevation="3dp"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="12dp"
+                    android:text="guardar cambios"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="16sp"
+                    android:visibility="visible"
+                    app:layout_constraintBottom_toBottomOf="@+id/autoCompleteBusqedaAgrgarCliente5"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHorizontal_bias="1.0"
+                    app:layout_constraintStart_toEndOf="@+id/textView235"
+                    app:layout_constraintTop_toTopOf="@+id/autoCompleteBusqedaAgrgarCliente5"
+                    app:layout_constraintVertical_bias="1.0"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/but_ver_ventas_con_propiedades"
+                    android:layout_width="0dp"
+                    android:layout_height="55dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:layout_marginBottom="16dp"
+                    android:background="@drawable/blanco_medio_red"
+                    android:drawableStart="@drawable/baseline_checklist_24_list_check"
+                    android:elevation="3dp"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="12dp"
+                    android:text="ventas echas con descuento"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="16sp"
+                    android:visibility="visible"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView235"
+                    tools:visibility="visible" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <com.airbnb.lottie.LottieAnimationView
+                android:id="@+id/animation_view"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:elevation="10dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:lottie_autoPlay="true"
+                app:lottie_loop="false"
+                app:lottie_rawRes="@raw/animation_check_1" />
+
+            <com.airbnb.lottie.LottieAnimationView
+                android:id="@+id/animation_vacio"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:elevation="10dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintVertical_bias="0.0"
+                app:lottie_autoPlay="true"
+                app:lottie_loop="false"
+                app:lottie_rawRes="@raw/animacion_vacio_1" />
+
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </teclado.KeyboardAwareLinearLayout>
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <include
+            layout="@layout/articulo_no_existente_propiedades_sliding" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.sothree.slidinguppanel.SlidingUpPanelLayout>

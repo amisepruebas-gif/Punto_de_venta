@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/gris_medio">
+
+
+    <TextView
+        android:id="@+id/textView59_a"
+        android:layout_width="2dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="@color/rojo"
+        app:layout_constraintBottom_toBottomOf="@+id/constraintLayout_p_a"
+        app:layout_constraintEnd_toStartOf="@+id/constraintLayout_p_a"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout_p_a"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="18dp"
+        android:background="@color/gris_medio"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/textView62_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/grey_500"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="@+id/textView65_a"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.0"
+            app:layout_constraintStart_toEndOf="@+id/textView65_a"
+            app:layout_constraintTop_toTopOf="@+id/textView65_a"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <TextView
+            android:id="@+id/itemDesHist_pag_3_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:text="Diadema d"
+            android:textColor="@color/blanco"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="visible"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/itemDesHist_pag_6_a"
+            android:layout_width="0dp"
+            android:layout_height="12dp"
+            android:layout_marginEnd="3dp"
+            android:background="@drawable/curvaselec_1"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="visible"
+            app:layout_constraintEnd_toStartOf="@+id/itemDesHist_pag__a"
+            app:layout_constraintStart_toStartOf="@+id/itemDesHist_pag_3_a"
+            app:layout_constraintTop_toBottomOf="@+id/itemDesHist_pag_3_a" />
+
+        <TextView
+            android:id="@+id/itemDesHist_pag_4_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="4dp"
+            android:text="Diadema d"
+            android:textColor="@color/azulverde"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/itemDesHist_pag__a"
+            tools:visibility="gone" />
+
+        <TextView
+            android:id="@+id/itemDesHist_pag__a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="24dp"
+            android:layout_marginTop="3dp"
+            android:text="Diadema d"
+            android:textColor="#03B93D"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintStart_toStartOf="@+id/itemDesHist_pag_3_a"
+            app:layout_constraintTop_toBottomOf="@+id/itemDesHist_pag_3_a" />
+
+        <TextView
+            android:id="@+id/itemDesHist_pag_2_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Diadema d"
+            android:textColor="@color/grey_100"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintStart_toStartOf="@+id/itemDesHist_pag_3_a"
+            app:layout_constraintTop_toBottomOf="@+id/itemDesHist_pag_4_a" />
+
+        <TextView
+            android:id="@+id/textView49_p_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:layout_marginBottom="8dp"
+            android:textColor="@color/azulDatosSegmento"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="@+id/itemDesHist_pag_3_a"
+            app:layout_constraintTop_toBottomOf="@+id/itemDesHist_pag_4_a"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <TextView
+            android:id="@+id/itemCantHist_pag_3_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="1"
+            android:textColor="@color/grey_100"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="@+id/itemDesHist_pag_2_a"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.38"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/itemDesHist_pag_2_a" />
+
+        <TextView
+            android:id="@+id/textView66_p_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="$"
+            android:textColor="@color/grey_100"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="@+id/textView62_a"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.3"
+            app:layout_constraintStart_toEndOf="@+id/textView62_a"
+            app:layout_constraintTop_toTopOf="@+id/textView62_a" />
+
+        <TextView
+            android:id="@+id/itemPrecUnHist_pag_3_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:text="100"
+            android:textColor="@color/grey_100"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintStart_toEndOf="@+id/textView66_p_a"
+            app:layout_constraintTop_toTopOf="@+id/textView66_p_a" />
+
+        <TextView
+            android:id="@+id/itemTotalPecUnHist_pag_3_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:text="100"
+            android:textColor="@color/grey_100"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="@+id/textView69_p_a"
+            app:layout_constraintStart_toEndOf="@+id/textView69_p_a" />
+
+        <TextView
+            android:id="@+id/textView69_p_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="$"
+            android:textColor="@color/grey_100"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.54"
+            app:layout_constraintStart_toEndOf="@+id/itemPrecUnHist_pag_3_a"
+            app:layout_constraintTop_toTopOf="@+id/itemPrecUnHist_pag_3_a" />
+
+        <TextView
+            android:id="@+id/textView65_a"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:text="pz"
+            android:textColor="@color/grey_100"
+            android:textSize="12sp"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="@+id/itemDesHist_pag_2_a"
+            app:layout_constraintStart_toEndOf="@+id/itemCantHist_pag_3_a"
+            app:layout_constraintTop_toTopOf="@+id/itemDesHist_pag_2_a" />
+
+        <TextView
+            android:id="@+id/lineaRegAdapVenta_a"
+            android:layout_width="0dp"
+            android:layout_height="0.5sp"
+            android:background="@color/grey_300"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <TextView
+        android:id="@+id/textViewColor_regVenta_a"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:alpha=".2"
+        android:background="@color/naranja_bajo"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="@+id/constraintLayout_p_a"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>

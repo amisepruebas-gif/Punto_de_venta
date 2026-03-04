@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#99000000">
+
+    <TextView
+        android:id="@+id/textView371"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="CORTE EN CURSO"
+        android:textColor="@color/blanco"
+        app:layout_constraintBottom_toTopOf="@+id/constraintLayout67"
+        app:layout_constraintEnd_toEndOf="@+id/constraintLayout67"
+        app:layout_constraintStart_toStartOf="@+id/constraintLayout67" />
+
+    <Button
+        android:id="@+id/button172"
+        android:layout_width="200dp"
+        android:layout_height="30dp"
+        android:background="@drawable/blanco_muy_red"
+        android:text="empezar"
+        android:textColor="@color/gris_oscuro"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/button174"
+        android:layout_width="200dp"
+        android:layout_height="30dp"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/blanco_muy_red"
+        android:text="iniciar"
+        android:textColor="@color/gris_oscuro"
+        android:visibility="visible"
+        app:layout_constraintEnd_toEndOf="@+id/constraintLayout67"
+        app:layout_constraintStart_toStartOf="@+id/constraintLayout67"
+        app:layout_constraintTop_toBottomOf="@+id/constraintLayout67" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout67"
+        android:layout_width="330dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/borde_blanco_red_f_blanco"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.26999998">
+
+        <EditText
+            android:id="@+id/editTextTextPersonName32"
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:background="@color/colortransparente"
+            android:ems="10"
+            android:gravity="left"
+            android:hint="CANTIDAD"
+            android:inputType="number|textPersonName"
+            android:textColorHint="@color/grey_500"
+            android:textSize="14sp"
+            app:layout_constraintBottom_toBottomOf="@+id/textView554"
+            app:layout_constraintStart_toEndOf="@+id/textView554"
+            app:layout_constraintTop_toTopOf="@+id/textView554"
+            tools:visibility="visible" />
+
+        <TextView
+            android:id="@+id/textView553"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:text="Cantidad inicial"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="@+id/textView537"
+            app:layout_constraintTop_toBottomOf="@+id/textView537"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <TextView
+            android:id="@+id/textView552"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="En turno:"
+            app:layout_constraintStart_toStartOf="@+id/editTextTextPersonName32"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/textView554"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="$"
+            app:layout_constraintBottom_toBottomOf="@+id/textView553"
+            app:layout_constraintStart_toEndOf="@+id/textView553"
+            app:layout_constraintTop_toTopOf="@+id/textView553" />
+
+        <TextView
+            android:id="@+id/textView537"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="En turno"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.26"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/consCorteBasico"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="@+id/textView553"
+            app:layout_constraintTop_toBottomOf="@+id/textView553"
+            tools:visibility="visible">
+
+            <TextView
+                android:id="@+id/textView377"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="VENTA"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textView562"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"
+                android:text="TOTAL"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/textView377" />
+
+            <TextView
+                android:id="@+id/textView561"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="---"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toEndOf="@+id/textView557"
+                app:layout_constraintTop_toTopOf="@+id/textView557" />
+
+            <TextView
+                android:id="@+id/textViewColor_regVenta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="---"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toStartOf="@+id/textView561"
+                app:layout_constraintTop_toTopOf="@+id/textView563" />
+
+            <TextView
+                android:id="@+id/textView559"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Cantidad inicial"
+                android:visibility="invisible"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textView557"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="$"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toEndOf="@+id/textView559"
+                app:layout_constraintTop_toTopOf="@+id/textView559" />
+
+            <TextView
+                android:id="@+id/textView563"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="$"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toEndOf="@+id/textView559"
+                app:layout_constraintTop_toTopOf="@+id/textView562" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout69"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginBottom="8dp"
+        android:background="#99000000"
+        android:elevation="3dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/conspopDatos_corte"
+        app:layout_constraintEnd_toEndOf="@+id/constraintLayout67"
+        app:layout_constraintStart_toStartOf="@+id/constraintLayout67"
+        app:layout_constraintTop_toTopOf="@+id/constraintLayout67">
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/conspopDatos_corte"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="@+id/button174"
+        app:layout_constraintStart_toStartOf="@+id/button174"
+        app:layout_constraintTop_toBottomOf="@+id/button174">
+
+        <Button
+            android:id="@+id/button175"
+            android:layout_width="45dp"
+            android:layout_height="45dp"
+            android:layout_marginTop="24dp"
+            android:background="@drawable/palomita"
+            android:textColor="@color/gris_oscuro"
+            android:visibility="visible"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/constraintLayout68" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout68"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:background="@drawable/borde_blanco_red_f_blanco"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/textView555"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Hora"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textView556"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:text="Nombre"
+                app:layout_constraintEnd_toEndOf="@+id/textView555"
+                app:layout_constraintStart_toStartOf="@+id/textView555"
+                app:layout_constraintTop_toBottomOf="@+id/textView555" />
+
+            <TextView
+                android:id="@+id/textView558"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp"
+                android:text="$"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="@+id/textView556"
+                app:layout_constraintTop_toBottomOf="@+id/textView556" />
+
+            <TextView
+                android:id="@+id/textView560"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="8dp"
+                android:text="$"
+                app:layout_constraintBottom_toBottomOf="@+id/textView558"
+                app:layout_constraintStart_toEndOf="@+id/textView558"
+                app:layout_constraintTop_toBottomOf="@+id/textView556" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

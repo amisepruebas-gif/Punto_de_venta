@@ -1,0 +1,579 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/gris_oscuro">
+
+    <TextView
+        android:id="@+id/textView172"
+        android:layout_width="314dp"
+        android:layout_height="521dp"
+        android:background="@color/blanco"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.25" />
+
+    <TextView
+        android:id="@+id/textView49"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:layout_marginStart="8dp"
+        android:background="@color/naranja_fuerte"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/nomNegocio"
+        app:layout_constraintEnd_toStartOf="@+id/butEditarTicket_1"
+        app:layout_constraintStart_toEndOf="@+id/nomNegocio"
+        app:layout_constraintTop_toTopOf="@+id/nomNegocio" />
+
+    <TextView
+        android:id="@+id/textView174"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:background="@color/naranja_fuerte"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textViewDireccion_editTicket"
+        app:layout_constraintEnd_toEndOf="@+id/textView49"
+        app:layout_constraintStart_toEndOf="@+id/textViewDireccion_editTicket"
+        app:layout_constraintTop_toTopOf="@+id/textViewDireccion_editTicket" />
+
+    <TextView
+        android:id="@+id/textView176"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:background="@color/naranja_fuerte"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textViewInfo_1_editTicket"
+        app:layout_constraintEnd_toEndOf="@+id/textView49"
+        app:layout_constraintStart_toEndOf="@+id/textViewInfo_1_editTicket"
+        app:layout_constraintTop_toTopOf="@+id/textViewInfo_1_editTicket" />
+
+    <TextView
+        android:id="@+id/textView177"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:background="@color/naranja_fuerte"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textViewInfo_2_editTicket"
+        app:layout_constraintEnd_toEndOf="@+id/textView49"
+        app:layout_constraintStart_toEndOf="@+id/textViewInfo_2_editTicket"
+        app:layout_constraintTop_toTopOf="@+id/textViewInfo_2_editTicket" />
+
+    <TextView
+        android:id="@+id/textView178"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:background="@color/naranja_fuerte"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textViewInfo_3_editTicket"
+        app:layout_constraintEnd_toEndOf="@+id/textView49"
+        app:layout_constraintStart_toEndOf="@+id/textViewInfo_3_editTicket"
+        app:layout_constraintTop_toTopOf="@+id/textView170" />
+
+    <TextView
+        android:id="@+id/textView179"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:background="@color/naranja_fuerte"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textViewInfo_4_editTicket"
+        app:layout_constraintEnd_toEndOf="@+id/textView49"
+        app:layout_constraintStart_toEndOf="@+id/textViewInfo_4_editTicket"
+        app:layout_constraintTop_toTopOf="@+id/textView171" />
+
+    <TextView
+        android:id="@+id/nomNegocio"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="NOMBRE NEGOCIO"
+        android:textColor="@color/naranja_fuerte"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toTopOf="@+id/textView172" />
+
+    <TextView
+        android:id="@+id/textViewDireccion_editTicket"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Av. Juan N. Álvarez, Col. Centro."
+        android:textColor="@color/naranja_fuerte"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/nomNegocio" />
+
+    <TextView
+        android:id="@+id/textView127"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="25 Sep. 2024 3:42:28  p.m."
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/textViewDireccion_editTicket" />
+
+    <TextView
+        android:id="@+id/textView129"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="16dp"
+        android:text="TIPO DE PAGO: "
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/textView127" />
+
+    <TextView
+        android:id="@+id/textView137"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="CANT"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@+id/textView129"
+        app:layout_constraintTop_toBottomOf="@+id/textView129" />
+
+    <TextView
+        android:id="@+id/textView147"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="1"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@+id/textView137"
+        app:layout_constraintTop_toBottomOf="@+id/textView137" />
+
+    <TextView
+        android:id="@+id/textView148"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="descripción"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@+id/textView138"
+        app:layout_constraintTop_toBottomOf="@+id/textView137" />
+
+    <TextView
+        android:id="@+id/textView151"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:text="$ 30.00"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@+id/textView139"
+        app:layout_constraintTop_toBottomOf="@+id/textView148" />
+
+    <TextView
+        android:id="@+id/textView156"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginTop="5dp"
+        android:text="$ 30.00"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@+id/textView141"
+        app:layout_constraintTop_toBottomOf="@+id/textView148" />
+
+    <TextView
+        android:id="@+id/textView138"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="DESC."
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toStartOf="@+id/textView146"
+        app:layout_constraintHorizontal_bias="0.69"
+        app:layout_constraintStart_toEndOf="@+id/textView137"
+        app:layout_constraintTop_toBottomOf="@+id/textView129" />
+
+    <TextView
+        android:id="@+id/textView157"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="TOTAL     :"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toStartOf="@+id/textView146"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@+id/textView138"
+        app:layout_constraintTop_toBottomOf="@+id/textView151" />
+
+    <TextView
+        android:id="@+id/textView162"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="24dp"
+        android:text="$ 30.00"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toEndOf="@+id/textView157"
+        app:layout_constraintTop_toBottomOf="@+id/textView151" />
+
+    <TextView
+        android:id="@+id/textView163"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:text="$ 50.00"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toEndOf="@+id/textView157"
+        app:layout_constraintTop_toTopOf="@+id/textView160" />
+
+    <TextView
+        android:id="@+id/textView164"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:text="$ 20.00"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toEndOf="@+id/textView157"
+        app:layout_constraintTop_toTopOf="@+id/textView161" />
+
+    <TextView
+        android:id="@+id/textView160"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="PAGO       :"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="@+id/textView157"
+        app:layout_constraintTop_toBottomOf="@+id/textView157" />
+
+    <TextView
+        android:id="@+id/textView161"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="CAMBIO  :"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="@+id/textView160"
+        app:layout_constraintTop_toBottomOf="@+id/textView160" />
+
+    <TextView
+        android:id="@+id/textViewInfo_1_editTicket"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Encuentranos en:"
+        android:textColor="@color/naranja_fuerte"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/textView161" />
+
+    <TextView
+        android:id="@+id/textView181"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="1"
+        android:textColor="@color/blanco"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textView176"
+        app:layout_constraintStart_toEndOf="@+id/textView176" />
+
+    <TextView
+        android:id="@+id/textView194"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="50dp"
+        android:layout_marginBottom="120dp"
+        android:text="1"
+        android:textColor="@color/blanco"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textView176"
+        app:layout_constraintStart_toEndOf="@+id/textView176" />
+
+    <TextView
+        android:id="@+id/textView182"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="2"
+        android:textColor="@color/blanco"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textView177"
+        app:layout_constraintStart_toEndOf="@+id/textView176" />
+
+    <TextView
+        android:id="@+id/textView196"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="2"
+        android:textColor="@color/blanco"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textView177"
+        app:layout_constraintStart_toStartOf="@+id/textView194"
+        app:layout_constraintTop_toBottomOf="@+id/textView194"
+        app:layout_constraintVertical_bias="0.0" />
+
+    <TextView
+        android:id="@+id/textView190"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="3"
+        android:textColor="@color/blanco"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textView178"
+        app:layout_constraintStart_toEndOf="@+id/textView176" />
+
+    <TextView
+        android:id="@+id/textView197"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="3"
+        android:textColor="@color/blanco"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textView178"
+        app:layout_constraintStart_toStartOf="@+id/textView196"
+        app:layout_constraintTop_toBottomOf="@+id/textView196"
+        app:layout_constraintVertical_bias="0.0" />
+
+    <TextView
+        android:id="@+id/textView192"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="4"
+        android:textColor="@color/blanco"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textView179"
+        app:layout_constraintStart_toEndOf="@+id/textView176" />
+
+    <TextView
+        android:id="@+id/textView198"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="4"
+        android:textColor="@color/blanco"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="@+id/textView179"
+        app:layout_constraintStart_toStartOf="@+id/textView197"
+        app:layout_constraintTop_toBottomOf="@+id/textView197"
+        app:layout_constraintVertical_bias="0.0" />
+
+    <TextView
+        android:id="@+id/textViewInfo_2_editTicket"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="www.faceboob.con/amisekpk"
+        android:textColor="@color/naranja_fuerte"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/textViewInfo_1_editTicket" />
+
+    <TextView
+        android:id="@+id/textViewInfo_3_editTicket"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="www.instagram.com/amise.tienda"
+        android:textColor="@color/naranja_fuerte"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/textViewInfo_2_editTicket" />
+
+    <TextView
+        android:id="@+id/textViewInfo_4_editTicket"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:text="VUELVA PRONTO"
+        android:textColor="@color/naranja_fuerte"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/textViewInfo_3_editTicket"
+        app:layout_constraintVertical_bias="0.0" />
+
+    <TextView
+        android:id="@+id/textView139"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="P/U"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toStartOf="@+id/textView141"
+        app:layout_constraintHorizontal_bias="0.33"
+        app:layout_constraintStart_toEndOf="@+id/textView146"
+        app:layout_constraintTop_toBottomOf="@+id/textView129" />
+
+    <TextView
+        android:id="@+id/textView146"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toStartOf="@+id/textView141"
+        app:layout_constraintHorizontal_bias="0.58"
+        app:layout_constraintStart_toEndOf="@+id/textView137"
+        app:layout_constraintTop_toBottomOf="@+id/textView129" />
+
+    <TextView
+        android:id="@+id/textView141"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="24dp"
+        android:text="IMPORTE"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/textView129" />
+
+    <TextView
+        android:id="@+id/textView135"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="16dp"
+        android:text="EFECTIVO"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toEndOf="@+id/textView129"
+        app:layout_constraintTop_toBottomOf="@+id/textView127" />
+
+    <Button
+        android:id="@+id/butEditarTicket_1"
+        android:layout_width="120dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="32dp"
+        android:background="@drawable/naranja_muy_red"
+        android:onClick="onClick"
+        android:text="editar"
+        android:textColor="@color/blanco"
+        app:layout_constraintBottom_toBottomOf="@+id/textView49"
+        app:layout_constraintStart_toEndOf="@+id/textView172" />
+
+    <Button
+        android:id="@+id/butEditarTicket_2"
+        android:layout_width="120dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="32dp"
+        android:background="@drawable/naranja_muy_red"
+        android:onClick="onClick"
+        android:text="editar"
+        android:textColor="@color/blanco"
+        app:layout_constraintBottom_toBottomOf="@+id/textView174"
+        app:layout_constraintStart_toEndOf="@+id/textView172"
+        app:layout_constraintTop_toTopOf="@+id/textView174" />
+
+    <Button
+        android:id="@+id/butEditarTicket_3"
+        android:layout_width="120dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/naranja_muy_red"
+        android:onClick="onClick"
+        android:text="editar"
+        android:textColor="@color/blanco"
+        app:layout_constraintBottom_toBottomOf="@+id/textView194"
+        app:layout_constraintStart_toEndOf="@+id/textView194"
+        app:layout_constraintTop_toTopOf="@+id/textView194" />
+
+    <Button
+        android:id="@+id/butEditarTicket_4"
+        android:layout_width="120dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/naranja_muy_red"
+        android:onClick="onClick"
+        android:text="editar"
+        android:textColor="@color/blanco"
+        app:layout_constraintBottom_toBottomOf="@+id/textView196"
+        app:layout_constraintStart_toEndOf="@+id/textView194"
+        app:layout_constraintTop_toTopOf="@+id/textView196" />
+
+    <Button
+        android:id="@+id/butEditarTicket_5"
+        android:layout_width="120dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/naranja_muy_red"
+        android:onClick="onClick"
+        android:text="editar"
+        android:textColor="@color/blanco"
+        app:layout_constraintBottom_toBottomOf="@+id/textView197"
+        app:layout_constraintStart_toEndOf="@+id/textView194"
+        app:layout_constraintTop_toTopOf="@+id/textView197" />
+
+    <Button
+        android:id="@+id/butEditarTicket_6"
+        android:layout_width="120dp"
+        android:layout_height="30dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/naranja_muy_red"
+        android:onClick="onClick"
+        android:text="editar"
+        android:textColor="@color/blanco"
+        app:layout_constraintBottom_toBottomOf="@+id/textView198"
+        app:layout_constraintStart_toEndOf="@+id/textView194"
+        app:layout_constraintTop_toTopOf="@+id/textView198" />
+
+    <Button
+        android:id="@+id/butGuargarCambiosecitTicket"
+        android:layout_width="0dp"
+        android:layout_height="30dp"
+        android:background="@color/azulDatosSegmento"
+        android:onClick="onClick"
+        android:text="guardar cambios"
+        android:textColor="@color/blanco"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="@+id/textView172"
+        app:layout_constraintStart_toStartOf="@+id/textView172"
+        app:layout_constraintTop_toBottomOf="@+id/textView172" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

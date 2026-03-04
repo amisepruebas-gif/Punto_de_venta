@@ -1,0 +1,1397 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center_vertical"
+    android:orientation="vertical">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout65"
+        android:layout_width="0dp"
+        android:layout_height="102dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="8dp"
+        android:visibility="visible"
+        app:layout_constraintBottom_toTopOf="@+id/cardView3"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.19">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:layout_constraintBottom_toTopOf="@+id/textView8_item"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.83">
+
+            <TextView
+                android:id="@+id/textView506"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="$"
+                android:textColor="@color/blanco"
+                android:textStyle="bold"
+                android:visibility="visible"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/textView507"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textView507"
+                android:layout_width="wrap_content"
+                android:layout_height="0dp"
+                android:text="5000"
+                android:textColor="@color/blanco"
+                android:textStyle="bold"
+                android:visibility="visible"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <TextView
+            android:id="@+id/textView8_item"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:text="TextView"
+            android:textColor="@color/blanco"
+            android:textSize="16sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.73" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.cardview.widget.CardView
+
+        android:id="@+id/cardView3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_marginEnd="6dp"
+        android:layout_marginBottom="8dp"
+        app:cardBackgroundColor="@color/blanco"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.50">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:layout_marginEnd="5dp"
+            android:background="@color/colortransparente">
+
+
+            <TextView
+                android:id="@+id/item_mesCalendario"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="14 mar 2021"
+                android:textColor="@color/grey_500"
+                android:textSize="18sp"
+                android:visibility="gone"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginBottom="16dp"
+                android:background="@color/colortransparente"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <TextView
+                    android:id="@+id/d_1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_1"
+                    app:layout_constraintEnd_toEndOf="@+id/b_1"
+                    app:layout_constraintStart_toStartOf="@+id/b_1"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_1"
+                    app:layout_constraintEnd_toEndOf="@+id/b_2"
+                    app:layout_constraintStart_toStartOf="@+id/b_2"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_3"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_1"
+                    app:layout_constraintEnd_toEndOf="@+id/b_3"
+                    app:layout_constraintStart_toStartOf="@+id/b_3"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_4"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_1"
+                    app:layout_constraintEnd_toEndOf="@+id/b_4"
+                    app:layout_constraintStart_toStartOf="@+id/b_4"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_5"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_1"
+                    app:layout_constraintEnd_toEndOf="@+id/b_5"
+                    app:layout_constraintStart_toStartOf="@+id/b_5"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_6"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_1"
+                    app:layout_constraintEnd_toEndOf="@+id/b_6"
+                    app:layout_constraintStart_toStartOf="@+id/b_6"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_7"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_1"
+                    app:layout_constraintEnd_toEndOf="@+id/b_7"
+                    app:layout_constraintStart_toStartOf="@+id/b_7"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_8"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_8"
+                    app:layout_constraintEnd_toEndOf="@+id/b_8"
+                    app:layout_constraintStart_toStartOf="@+id/b_8"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_9"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_9"
+                    app:layout_constraintEnd_toEndOf="@+id/b_9"
+                    app:layout_constraintStart_toStartOf="@+id/b_9"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_10"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_10"
+                    app:layout_constraintEnd_toEndOf="@+id/b_10"
+                    app:layout_constraintStart_toStartOf="@+id/b_10"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_11"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_11"
+                    app:layout_constraintEnd_toEndOf="@+id/b_11"
+                    app:layout_constraintStart_toStartOf="@+id/b_11"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_12"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_12"
+                    app:layout_constraintEnd_toEndOf="@+id/b_12"
+                    app:layout_constraintStart_toStartOf="@+id/b_12"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_13"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_13"
+                    app:layout_constraintEnd_toEndOf="@+id/b_13"
+                    app:layout_constraintStart_toStartOf="@+id/b_13"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_14"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_14"
+                    app:layout_constraintEnd_toEndOf="@+id/b_14"
+                    app:layout_constraintStart_toStartOf="@+id/b_14"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_15"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_15"
+                    app:layout_constraintEnd_toEndOf="@+id/b_15"
+                    app:layout_constraintStart_toStartOf="@+id/b_1"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_16"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_16"
+                    app:layout_constraintEnd_toEndOf="@+id/b_16"
+                    app:layout_constraintStart_toStartOf="@+id/b_16"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_17"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_17"
+                    app:layout_constraintEnd_toEndOf="@+id/b_17"
+                    app:layout_constraintStart_toStartOf="@+id/b_17"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_18"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_18"
+                    app:layout_constraintEnd_toEndOf="@+id/b_18"
+                    app:layout_constraintHorizontal_bias="0.57"
+                    app:layout_constraintStart_toStartOf="@+id/b_18"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_19"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_19"
+                    app:layout_constraintEnd_toEndOf="@+id/b_19"
+                    app:layout_constraintStart_toStartOf="@+id/b_19"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_20"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_20"
+                    app:layout_constraintEnd_toEndOf="@+id/b_20"
+                    app:layout_constraintStart_toStartOf="@+id/b_20"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_21"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_21"
+                    app:layout_constraintEnd_toEndOf="@+id/b_21"
+                    app:layout_constraintStart_toStartOf="@+id/b_21"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_22"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_22"
+                    app:layout_constraintEnd_toEndOf="@+id/b_1"
+                    app:layout_constraintStart_toStartOf="@+id/b_1"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_23"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_23"
+                    app:layout_constraintEnd_toEndOf="@+id/b_23"
+                    app:layout_constraintStart_toStartOf="@+id/b_23"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_24"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_24"
+                    app:layout_constraintEnd_toEndOf="@+id/b_24"
+                    app:layout_constraintStart_toStartOf="@+id/b_24"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_25"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_25"
+                    app:layout_constraintEnd_toEndOf="@+id/b_25"
+                    app:layout_constraintStart_toStartOf="@+id/b_25"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_26"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_26"
+                    app:layout_constraintEnd_toEndOf="@+id/b_26"
+                    app:layout_constraintStart_toStartOf="@+id/b_26"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_27"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_27"
+                    app:layout_constraintEnd_toEndOf="@+id/b_27"
+                    app:layout_constraintStart_toStartOf="@+id/b_27"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_28"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_28"
+                    app:layout_constraintEnd_toEndOf="@+id/b_28"
+                    app:layout_constraintStart_toStartOf="@+id/b_28"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_29"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_29"
+                    app:layout_constraintEnd_toEndOf="@+id/b_1"
+                    app:layout_constraintStart_toStartOf="@+id/b_1"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_30"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_30"
+                    app:layout_constraintEnd_toEndOf="@+id/b_30"
+                    app:layout_constraintStart_toStartOf="@+id/b_30"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_31"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_31"
+                    app:layout_constraintEnd_toEndOf="@+id/b_31"
+                    app:layout_constraintStart_toStartOf="@+id/b_31"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_32"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_32"
+                    app:layout_constraintEnd_toEndOf="@+id/b_32"
+                    app:layout_constraintStart_toStartOf="@+id/b_32"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_33"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_33"
+                    app:layout_constraintEnd_toEndOf="@+id/b_33"
+                    app:layout_constraintStart_toStartOf="@+id/b_33"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_34"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_34"
+                    app:layout_constraintEnd_toEndOf="@+id/b_34"
+                    app:layout_constraintStart_toStartOf="@+id/b_34"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_35"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/d_29"
+                    app:layout_constraintEnd_toEndOf="@+id/b_35"
+                    app:layout_constraintStart_toStartOf="@+id/b_35"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_36"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_36"
+                    app:layout_constraintEnd_toEndOf="@+id/b_36"
+                    app:layout_constraintStart_toStartOf="@+id/b_36"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/d_37"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:elevation="10dp"
+                    android:text="TextView"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/b_37"
+                    app:layout_constraintEnd_toEndOf="@+id/b_37"
+                    app:layout_constraintStart_toStartOf="@+id/b_37"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/b_6"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="6"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_5"
+                    app:layout_constraintTop_toTopOf="@+id/b_5" />
+
+                <Button
+                    android:id="@+id/b_5"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="5"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_4"
+                    app:layout_constraintTop_toTopOf="@+id/b_4" />
+
+                <Button
+                    android:id="@+id/b_7"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="2dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="7"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHorizontal_bias="0.0"
+                    app:layout_constraintStart_toEndOf="@+id/b_6"
+                    app:layout_constraintTop_toTopOf="@+id/b_6" />
+
+                <Button
+                    android:id="@+id/b_1"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="2dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="1"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView9_item" />
+
+                <Button
+                    android:id="@+id/b_8"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="8"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toStartOf="@+id/b_1"
+                    app:layout_constraintTop_toBottomOf="@+id/b_1" />
+
+                <Button
+                    android:id="@+id/b_9"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="9"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_8"
+                    app:layout_constraintTop_toTopOf="@+id/b_8" />
+
+                <Button
+                    android:id="@+id/b_10"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="10"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_9"
+                    app:layout_constraintTop_toBottomOf="@+id/b_1" />
+
+                <Button
+                    android:id="@+id/b_11"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="11"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_10"
+                    app:layout_constraintTop_toBottomOf="@+id/b_1" />
+
+                <Button
+                    android:id="@+id/b_12"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="12"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_11"
+                    app:layout_constraintTop_toBottomOf="@+id/b_1" />
+
+                <Button
+                    android:id="@+id/b_13"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="13"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_12"
+                    app:layout_constraintTop_toBottomOf="@+id/b_1" />
+
+                <Button
+                    android:id="@+id/b_14"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="14"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_13"
+                    app:layout_constraintTop_toBottomOf="@+id/b_1" />
+
+                <Button
+                    android:id="@+id/b_15"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="15"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toStartOf="@+id/b_8"
+                    app:layout_constraintTop_toBottomOf="@+id/b_8" />
+
+                <Button
+                    android:id="@+id/b_16"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="16"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_15"
+                    app:layout_constraintTop_toBottomOf="@+id/b_8" />
+
+                <Button
+                    android:id="@+id/b_17"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="17"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_16"
+                    app:layout_constraintTop_toBottomOf="@+id/b_8" />
+
+                <Button
+                    android:id="@+id/b_18"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="18"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_17"
+                    app:layout_constraintTop_toBottomOf="@+id/b_8" />
+
+                <Button
+                    android:id="@+id/b_19"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="19"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_18"
+                    app:layout_constraintTop_toBottomOf="@+id/b_8" />
+
+                <Button
+                    android:id="@+id/b_20"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="20"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_19"
+                    app:layout_constraintTop_toBottomOf="@+id/b_8" />
+
+                <Button
+                    android:id="@+id/b_21"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="21"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_20"
+                    app:layout_constraintTop_toBottomOf="@+id/b_8" />
+
+                <Button
+                    android:id="@+id/b_22"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="22"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toStartOf="@+id/b_15"
+                    app:layout_constraintTop_toBottomOf="@+id/b_15" />
+
+                <Button
+                    android:id="@+id/b_29"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="29"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="@+id/b_22"
+                    app:layout_constraintTop_toBottomOf="@+id/b_22"
+                    app:layout_constraintVertical_bias="0.0" />
+
+                <Button
+                    android:id="@+id/b_35"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="35"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    app:layout_constraintStart_toStartOf="@+id/b_28"
+                    app:layout_constraintTop_toTopOf="@+id/b_34"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/b_36"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="36"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="@+id/b_29"
+                    app:layout_constraintTop_toBottomOf="@+id/b_29"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/b_37"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="37"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toEndOf="@+id/b_36"
+                    app:layout_constraintTop_toBottomOf="@+id/b_29"
+                    app:layout_constraintVertical_bias="0.0"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/b_30"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="30"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_29"
+                    app:layout_constraintTop_toBottomOf="@+id/b_22" />
+
+                <Button
+                    android:id="@+id/b_31"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="31"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_30"
+                    app:layout_constraintTop_toBottomOf="@+id/b_22" />
+
+                <Button
+                    android:id="@+id/b_32"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="32"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    app:layout_constraintStart_toStartOf="@+id/b_25"
+                    app:layout_constraintTop_toBottomOf="@+id/b_22"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/b_33"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="33"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    app:layout_constraintStart_toStartOf="@+id/b_26"
+                    app:layout_constraintTop_toBottomOf="@+id/b_22"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/b_34"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="34"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    app:layout_constraintStart_toStartOf="@+id/b_27"
+                    app:layout_constraintTop_toBottomOf="@+id/b_22"
+                    tools:visibility="visible" />
+
+                <Button
+                    android:id="@+id/b_23"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="23"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_22"
+                    app:layout_constraintTop_toBottomOf="@+id/b_15" />
+
+                <Button
+                    android:id="@+id/b_24"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="24"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_23"
+                    app:layout_constraintTop_toBottomOf="@+id/b_15" />
+
+                <Button
+                    android:id="@+id/b_25"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="25"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_24"
+                    app:layout_constraintTop_toBottomOf="@+id/b_15" />
+
+                <Button
+                    android:id="@+id/b_26"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="26"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_25"
+                    app:layout_constraintTop_toBottomOf="@+id/b_15" />
+
+                <Button
+                    android:id="@+id/b_27"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="27"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_26"
+                    app:layout_constraintTop_toBottomOf="@+id/b_15" />
+
+                <Button
+                    android:id="@+id/b_28"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginTop="3dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="28"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintEnd_toEndOf="@+id/b_21"
+                    app:layout_constraintStart_toEndOf="@+id/b_27"
+                    app:layout_constraintTop_toBottomOf="@+id/b_15" />
+
+                <Button
+                    android:id="@+id/b_2"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="2"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_1"
+                    app:layout_constraintTop_toTopOf="@+id/b_1" />
+
+                <Button
+                    android:id="@+id/b_3"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="3"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_2"
+                    app:layout_constraintTop_toTopOf="@+id/b_2" />
+
+                <Button
+                    android:id="@+id/b_4"
+                    android:layout_width="47dp"
+                    android:layout_height="45dp"
+                    android:layout_marginStart="4dp"
+                    android:background="@color/blanco"
+                    android:elevation="3dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center|top"
+                    android:text="4"
+                    android:textColor="#99000000"
+                    android:textSize="11sp"
+                    app:layout_constraintStart_toEndOf="@+id/b_3"
+                    app:layout_constraintTop_toTopOf="@+id/b_3" />
+
+                <TextView
+                    android:id="@+id/textView9_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="Domingo"
+                    android:textColor="@color/negro"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toEndOf="@+id/b_1"
+                    app:layout_constraintStart_toStartOf="@+id/b_1"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/textView11_item"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="Lunes"
+                    android:textColor="@color/negro"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    app:layout_constraintBottom_toTopOf="@+id/b_2"
+                    app:layout_constraintEnd_toEndOf="@+id/b_2"
+                    app:layout_constraintStart_toStartOf="@+id/b_2"
+                    app:layout_constraintTop_toTopOf="@+id/textView9_item"
+                    app:layout_constraintVertical_bias="0.0" />
+
+                <TextView
+                    android:id="@+id/textView17_item"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="Martes"
+                    android:textColor="@color/negro"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toEndOf="@+id/b_3"
+                    app:layout_constraintStart_toEndOf="@+id/b_2"
+                    app:layout_constraintStart_toStartOf="@+id/b_3"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/textView19_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="Miercoles"
+                    android:textColor="@color/negro"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toEndOf="@+id/b_4"
+                    app:layout_constraintHorizontal_bias="0.0"
+                    app:layout_constraintStart_toStartOf="@+id/b_4"
+                    app:layout_constraintTop_toTopOf="@+id/textView17_item" />
+
+                <TextView
+                    android:id="@+id/textView20_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="Jueves"
+                    android:textColor="@color/negro"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toEndOf="@+id/b_5"
+                    app:layout_constraintHorizontal_bias="0.52"
+                    app:layout_constraintStart_toStartOf="@+id/b_5"
+                    app:layout_constraintTop_toTopOf="@+id/textView19_item" />
+
+                <TextView
+                    android:id="@+id/textView21_item"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="Viernes"
+                    android:textColor="@color/negro"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toEndOf="@+id/b_6"
+                    app:layout_constraintStart_toStartOf="@+id/b_6"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/textView22_item"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="Sábado"
+                    android:textColor="@color/negro"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    app:layout_constraintEnd_toEndOf="@+id/b_7"
+                    app:layout_constraintStart_toStartOf="@+id/b_7"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.cardview.widget.CardView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

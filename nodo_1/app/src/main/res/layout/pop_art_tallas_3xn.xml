@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/blanco">
+
+    <teclado.KeyboardAwareLinearLayout
+        android:id="@+id/keyboardAwareLayout_tallas"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/blanco_medio_red"
+            android:elevation="3dp">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:background="@color/colortransparente"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:id="@+id/constraintLayout48"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginStart="2dp"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginEnd="2dp"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <androidx.constraintlayout.widget.ConstraintLayout
+                        android:id="@+id/conDescuento_layout_propiedades"
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        app:layout_constraintBottom_toTopOf="@+id/butagregar_propiedades"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/textInputLay_recioConDesc"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="32dp"
+                            android:layout_marginEnd="32dp"
+                            android:textColorHint="@color/morado"
+                            android:visibility="visible"
+                            app:layout_constraintEnd_toEndOf="parent"
+                            app:layout_constraintHorizontal_bias="0.0"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toTopOf="parent">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputEditText_precioConDesc"
+                                android:layout_width="match_parent"
+                                android:layout_height="57dp"
+                                android:backgroundTint="@color/morado"
+                                android:gravity="center"
+                                android:hint="NOMBRE DEL GRUPO"
+                                android:inputType="text"
+                                android:textColor="@color/gris_oscuro" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <androidx.recyclerview.widget.RecyclerView
+                            android:id="@+id/recycler_propiedades_1"
+                            android:layout_width="0dp"
+                            android:layout_height="0dp"
+                            android:layout_marginTop="8dp"
+                            android:layout_marginBottom="8dp"
+                            app:layout_constraintBottom_toTopOf="@+id/editTextText_lisding_art_prop_1"
+                            app:layout_constraintEnd_toEndOf="parent"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toBottomOf="@+id/textInputLay_recioConDesc" />
+
+                        <EditText
+                            android:id="@+id/editTextText_lisding_art_prop_1"
+                            android:layout_width="0dp"
+                            android:layout_height="45dp"
+                            android:layout_marginStart="8dp"
+                            android:layout_marginEnd="8dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="@drawable/blanco_muy_red"
+                            android:ems="10"
+                            android:hint="NOMBRE DE LA TALLA"
+                            android:inputType="text"
+                            android:paddingLeft="8dp"
+                            android:paddingRight="8dp"
+                            android:textColor="@color/negro"
+                            android:textStyle="italic"
+                            app:layout_constraintBottom_toBottomOf="parent"
+                            app:layout_constraintEnd_toStartOf="@+id/but_agregar_art_prop"
+                            app:layout_constraintStart_toStartOf="parent" />
+
+                        <TextView
+                            android:id="@+id/textView269"
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_marginEnd="8dp"
+                            android:layout_marginBottom="6dp"
+                            android:background="@color/azul_1"
+                            app:layout_constraintBottom_toBottomOf="@+id/editTextText_lisding_art_prop_1"
+                            app:layout_constraintEnd_toEndOf="@+id/editTextText_lisding_art_prop_1"
+                            app:layout_constraintStart_toStartOf="@+id/editTextText_lisding_art_prop_1" />
+
+                        <Button
+                            android:id="@+id/but_agregar_art_prop"
+                            android:layout_width="120dp"
+                            android:layout_height="0dp"
+                            android:layout_marginEnd="8dp"
+                            android:autoSizeTextType="uniform"
+                            android:background="@drawable/medio_red_morado"
+                            android:drawableStart="@drawable/baseline_add_circle_24"
+                            android:maxLines="1"
+                            android:onClick="onClick"
+                            android:paddingLeft="8dp"
+                            android:paddingRight="12dp"
+                            android:text=" agregar "
+                            android:textColor="@color/blanco"
+                            app:layout_constraintBottom_toBottomOf="@+id/editTextText_lisding_art_prop_1"
+                            app:layout_constraintEnd_toEndOf="parent"
+                            app:layout_constraintTop_toTopOf="@+id/editTextText_lisding_art_prop_1" />
+
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+
+                    <Button
+                        android:id="@+id/butagregar_propiedades"
+                        android:layout_width="0dp"
+                        android:layout_height="55dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_marginBottom="21dp"
+                        android:background="@drawable/blanco_medio_red"
+                        android:drawableStart="@drawable/baseline_save_24"
+                        android:elevation="5dp"
+                        android:onClick="onClick"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="12dp"
+                        android:text="guardar cambios"
+                        android:textColor="@color/gris_oscuro"
+                        android:visibility="visible"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent" />
+
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </teclado.KeyboardAwareLinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

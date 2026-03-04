@@ -1,0 +1,5 @@
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="8dp"/> <!-- Ajusta este valor para controlar la redondez -->
+    <solid android:color="@color/naranja_bajo"/> <!-- Elige tu color preferido para el fondo -->
+</shape>

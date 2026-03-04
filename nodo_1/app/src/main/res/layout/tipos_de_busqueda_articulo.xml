@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_gravity="bottom"
+    >
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/medio_red_morado"
+        android:elevation="3dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <Button
+            android:id="@+id/but_tipo_de_busqueda_existencia"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:onClick="onClick"
+            android:text="en existencia"
+            android:textColor="@color/gris_medio"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <Button
+            android:id="@+id/but_tipo_de_busqueda_descuento"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:onClick="onClick"
+            android:text="con descuento"
+            android:textColor="@color/gris_medio"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/but_tipo_de_busqueda_existencia"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <Button
+            android:id="@+id/but_tipo_de_busqueda_mayoreo"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:onClick="onClick"
+            android:text="mayoreo"
+            android:textColor="@color/gris_medio"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/but_tipo_de_busqueda_descuento"
+            app:layout_constraintVertical_bias="0.0" />
+
+
+        <Button
+            android:id="@+id/but_tipo_de_busqueda_2x1"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:onClick="onClick"
+            android:text="2 x 1"
+            android:textColor="@color/gris_medio"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/but_tipo_de_busqueda_mayoreo" />
+
+        <Button
+            android:id="@+id/but_tipo_de_busqueda_seña"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:onClick="onClick"
+            android:text="seña"
+            android:textColor="@color/gris_medio"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/but_tipo_de_busqueda_talla" />
+
+        <Button
+            android:id="@+id/but_tipo_de_busqueda_ver_text_imput"
+            android:layout_width="120dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:onClick="onClick"
+            android:text="ver"
+            android:textColor="@color/gris_medio"
+            app:layout_constraintBottom_toBottomOf="@+id/textInputLayout3"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="1.0"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/textInputLayout3" />
+
+        <Button
+            android:id="@+id/but_tipo_de_busqueda_talla"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:onClick="onClick"
+            android:text="talla"
+            android:textColor="@color/gris_medio"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/but_tipo_de_busqueda_2x1"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/textInputLayout3"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="8dp"
+            android:textColorHint="@color/blanco"
+            app:cursorColor="@color/blanco"
+            android:backgroundTint="@color/blanco"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/but_tipo_de_busqueda_ver_text_imput"
+            app:layout_constraintStart_toStartOf="@+id/but_tipo_de_busqueda_seña"
+            app:layout_constraintTop_toBottomOf="@+id/but_tipo_de_busqueda_seña"
+            app:layout_constraintVertical_bias="0.0"
+            app:hintTextColor="@color/color_text_imput_blanco">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/textImput_no_venta_x_dias_vista_art"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:autoSizeTextType="uniform"
+                android:backgroundTint="@color/color_text_imput_linea_blanco"
+                android:gravity="center"
+                android:hint="NO VENTA EN X DÌAS"
+                android:inputType="number"
+                android:textColor="@color/blanco"
+                android:textColorHint="@color/color_text_imput_linea_blanco"/>
+        </com.google.android.material.textfield.TextInputLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

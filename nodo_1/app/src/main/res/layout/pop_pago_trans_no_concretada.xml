@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#99000000">
+
+    <TextView
+        android:id="@+id/txtviewUTL"
+        android:layout_width="613dp"
+        android:layout_height="386dp"
+        android:fontFamily="@font/abeezee"
+        android:text="¡Gracias por tu pago! Has completado la primera parte de tu compra mediante transferencia. Recuerda que ahora es el momento de realizar el pago en efectivo para finalizar la transacción.  Si decides no realizar el pago en efectivo, ten en cuenta que el monto transferido ya ha sido registrado como parte de tu compra y no es reembolsable. Puedes optar por cancelar la compra, en cuyo caso no se te entregará ningún producto.  Si deseas continuar con la compra y realizar el pago en efectivo, por favor procede con la segunda parte del proceso. \n \n POR SU COMPRENCIÓN GRACIAS. "
+        android:textAlignment="center"
+        android:textColor="@color/blanco"
+        android:textSize="20sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/button9"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="cancelar compra"
+        app:layout_constraintBottom_toBottomOf="@+id/txtviewUTL"
+        app:layout_constraintEnd_toEndOf="@+id/txtviewUTL"
+        app:layout_constraintStart_toStartOf="@+id/txtviewUTL"
+        app:layout_constraintTop_toBottomOf="@+id/txtviewUTL" />
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#99000000"
+    >
+
+    <EditText
+        android:id="@+id/nota_pedido"
+        android:layout_width="345dp"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textColorHint="@color/blanco"
+        android:paddingLeft="8dp"
+        android:paddingRight="8dp"
+        android:textColor="@color/blanco"
+        android:backgroundTint="@color/blanco"
+        app:layout_constraintBottom_toTopOf="@+id/but_guardarNota_cliente_ap"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/but_guardarNota_cliente_ap"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:background="@color/azulDatosSegmento"
+        android:text="guardar"
+        android:textColor="@color/blanco"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="@+id/nota_pedido"
+        app:layout_constraintStart_toStartOf="@+id/nota_pedido"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.58000004" />
+</androidx.constraintlayout.widget.ConstraintLayout>

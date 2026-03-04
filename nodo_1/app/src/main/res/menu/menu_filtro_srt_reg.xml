@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:title="K-POP"
+        android:id="@+id/but_k_pop"/>
+    <item
+        android:title="ANIME"
+        android:id="@+id/but_anime"/>
+    <item
+        android:title="ANIME Y K-POP"
+        android:id="@+id/butanimeYkpop"/>
+    <item
+        android:title="ANIME, K-POPANIME, SERIES Y PELICULAS"
+        android:id="@+id/butanime_kpop_series_peliculas"/>
+    <item
+        android:title="PELICULAS Y SERIES"
+        android:id="@+id/but_peliculasYseries"/>
+    <item
+        android:title="ACCESORIOS"
+        android:id="@+id/butAccsesorios"/>
+</menu>

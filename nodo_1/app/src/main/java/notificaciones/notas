@@ -1,0 +1,52 @@
+  private static void intentet(String s, Context context){
+
+        if(s.equals(context.getString(R.string.mostrarBotonPagoTarjeta))){
+
+            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_mostrarBotonPagoTarjeta_notificacion");
+            intent.putExtra("datos", context.getString(R.string.mostrarBotonPagoTarjeta));  // 'data' es el dato actualizado de Firestore
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+        }else if(s.equals(context.getString(R.string.mostrarBotonTransferencia))){
+
+            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_mostrarBotonTransferencia_notificacion");
+            intent.putExtra("datos", context.getString(R.string.mostrarBotonTransferencia));  // 'data' es el dato actualizado de Firestor
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+        }else if(s.equals(context.getString(R.string.val_2X1_mostrar))){
+
+            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_2x1_notificacion");
+            intent.putExtra("datos", context.getString(R.string.val_2X1_mostrar));  // 'data' es el dato actualizado de Firestore
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+        }else if(s.equals(context.getString(R.string.dar_ticket))){
+
+            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_dar_ticket_notificacion");
+            intent.putExtra("datos",  context.getString(R.string.dar_ticket));  // 'data' es el dato actualizado de Firestore
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+        }else if(s.equals(context.getString(R.string.cobrar_comision))){
+
+            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_cobrar_comision_notificacion");
+            intent.putExtra("datos", context.getString(R.string.cobrar_comision));  // 'data' es el dato actualizado de Firestore
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+        }else if(s.equals(context.getString(R.string.statusFacial))){
+            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_facial_notificacion");
+            intent.putExtra("datos", context.getString(R.string.statusFacial));  // 'data' es el dato actualizado de Firestore
+            intent.putExtra("nodo", "nodo");  // 'data' es el dato actualizado de Firestore
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+        }else if(s.equals(context.getString(R.string.limitarVenta_a_existencia))){
+
+            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_limitarVenta_a_existencia_notificacion");
+            intent.putExtra("datos", context.getString(R.string.limitarVenta_a_existencia));  // 'data' es el dato actualizado de Firestore
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+        }else if(s.equals(context.getString(R.string.mostrarBotonTransferencia))){
+
+        }else if (s.equals("jsonCorteHistorial")){
+            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_jsonCorteHistorial_notificacion");
+            intent.putExtra("datos", "jsonCorteHistorial");  // 'data' es el dato actualizado de Firestore
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+        }
+    }

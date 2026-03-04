@@ -1,0 +1,1199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:orientation="horizontal"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <Button
+        android:id="@+id/butAgregarEditarRegPedidos"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/red_poco_cuadro"
+        android:elevation="1dp"
+        android:fontFamily="@font/abeezee"
+        android:onClick="onClick"
+        android:text="  Nuevo Cliente  "
+        android:textColor="#4E75A9"
+        app:layout_constraintBottom_toBottomOf="@+id/autocomplete_getClientes"
+        app:layout_constraintStart_toEndOf="@+id/but_filtroAp_popUp"
+        app:layout_constraintTop_toTopOf="@+id/autocomplete_getClientes" />
+
+    <Button
+        android:id="@+id/but_filtroAp_popUp"
+        android:layout_width="wrap_content"
+        android:layout_height="29dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/red_poco_cuadro"
+        android:elevation="1dp"
+        android:fontFamily="@font/abeezee"
+        android:onClick="onClick"
+        android:text="filtro"
+        android:textColor="#4E75A9"
+        app:layout_constraintStart_toStartOf="@+id/recyclerRegistroClientes_P"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerRegistroClientes_P"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="2dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/textView75"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/but_filtroAp_popUp"
+        app:layout_constraintVertical_bias="0.0" />
+
+    <TextView
+        android:id="@+id/item_apartadoIndicadorColorSelec"
+        android:layout_width="3dp"
+        android:layout_height="38dp"
+        android:layout_marginStart="2dp"
+        android:layout_marginTop="8dp"
+        android:background="@color/rojo"
+        app:layout_constraintStart_toStartOf="@+id/recyclerRegistroClientes_P"
+        app:layout_constraintTop_toTopOf="@+id/recyclerRegistroClientes_P" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/constraintLayout16"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#C5DAE0"
+        android:elevation="1dp"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="@+id/recyclerRegistroClientes_P"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toEndOf="@+id/recyclerRegistroClientes_P"
+        app:layout_constraintTop_toTopOf="@+id/recyclerRegistroClientes_P"
+        app:layout_constraintVertical_bias="0.0">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout15"
+            android:layout_width="wrap_content"
+            android:layout_height="0dp"
+            android:layout_marginStart="8dp"
+            app:layout_constraintBottom_toBottomOf="@+id/but_notaApartado"
+            app:layout_constraintStart_toEndOf="@+id/but_agregarAp_masdeuno"
+            app:layout_constraintTop_toTopOf="@+id/but_notaApartado"
+            app:layout_constraintVertical_bias="0.385">
+
+            <Button
+                android:id="@+id/but_abono_ap"
+                android:layout_width="wrap_content"
+                android:layout_height="31dp"
+                android:background="@drawable/red_poco_cuadro"
+                android:elevation="3dp"
+                android:fontFamily="@font/abeezee"
+                android:onClick="onClick"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="ABONO"
+                android:textColor="@color/gris_oscuro"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <Button
+                android:id="@+id/but_verOcultarAgregarAnt2"
+                android:layout_width="wrap_content"
+                android:layout_height="31dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/red_poco_cuadro"
+                android:elevation="3dp"
+                android:fontFamily="@font/abeezee"
+                android:onClick="onClick"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="liquidar"
+                android:textColor="@color/gris_oscuro"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toEndOf="@+id/but_abono_ap"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <Button
+                android:id="@+id/but_cancelarAp"
+                android:layout_width="wrap_content"
+                android:layout_height="31dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/red_poco_cuadro"
+                android:elevation="3dp"
+                android:fontFamily="@font/abeezee"
+                android:onClick="onClick"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="cancelar"
+                android:textColor="@color/gris_oscuro"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toEndOf="@+id/but_verOcultarAgregarAnt2"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <Button
+            android:id="@+id/but_agregarAp_masdeuno"
+            android:layout_width="wrap_content"
+            android:layout_height="31dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/red_poco_cuadro"
+            android:elevation="3dp"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="agregar apartado"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toBottomOf="@+id/but_abono_ap"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/but_notaApartado"
+            app:layout_constraintVertical_bias="1.0" />
+
+        <Button
+            android:id="@+id/but_notaApartado"
+            android:layout_width="31dp"
+            android:layout_height="31dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/nota_blanco"
+            android:elevation="3dp"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.0"
+            app:layout_constraintStart_toEndOf="@+id/constraintLayout15"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/but_printComp_Hist"
+            android:layout_width="31dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/print_icon"
+            android:elevation="3dp"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="12sp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@+id/but_notaApartado"
+            app:layout_constraintStart_toEndOf="@+id/but_notaApartado"
+            app:layout_constraintTop_toTopOf="@+id/but_notaApartado" />
+
+        <Button
+            android:id="@+id/tresPuntosPedido"
+            android:layout_width="31dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/puntos_more"
+            android:elevation="3dp"
+            android:fontFamily="@font/abeezee"
+            android:onClick="onClick"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toBottomOf="@+id/but_printComp_Hist"
+            app:layout_constraintStart_toEndOf="@+id/but_printComp_Hist"
+            app:layout_constraintTop_toTopOf="@+id/but_printComp_Hist" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerArticulosPedidos"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@color/blanco"
+            android:elevation="3dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/but_notaApartado"
+            app:layout_constraintVertical_bias="0.0" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <AutoCompleteTextView
+        android:id="@+id/autocomplete_getClientes"
+        android:layout_width="190dp"
+        android:layout_height="29dp"
+        android:layout_marginEnd="8dp"
+        android:background="#D7DDE5"
+        android:ems="10"
+        android:hint="ENCONTRAR"
+        android:inputType="textPersonName"
+        android:paddingLeft="12dp"
+        android:paddingRight="32dp"
+        android:textColor="#747F8E"
+        android:textColorHint="@color/gris_claro"
+        android:textSize="14sp"
+        android:textStyle="italic"
+        app:layout_constraintBottom_toBottomOf="@+id/but_filtroAp_popUp"
+        app:layout_constraintEnd_toStartOf="@+id/textView131"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toEndOf="@+id/recyclerRegistroClientes_P"
+        app:layout_constraintTop_toTopOf="@+id/but_filtroAp_popUp" />
+
+    <AutoCompleteTextView
+        android:id="@+id/autocomplete_getClientes2"
+        android:layout_width="120dp"
+        android:layout_height="29dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:background="#D7DDE5"
+        android:ems="10"
+        android:hint="ID"
+        android:inputType="number"
+        android:paddingLeft="12dp"
+        android:paddingRight="32dp"
+        android:textColor="#747F8E"
+        android:textColorHint="@color/gris_claro"
+        android:textSize="14sp"
+        android:textStyle="italic"
+        app:layout_constraintBottom_toBottomOf="@+id/but_filtroAp_popUp"
+        app:layout_constraintEnd_toStartOf="@+id/textView131"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toEndOf="@+id/autocomplete_getClientes"
+        app:layout_constraintTop_toTopOf="@+id/but_filtroAp_popUp" />
+
+    <Button
+        android:id="@+id/button67"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:background="@drawable/x_blanca"
+        app:layout_constraintBottom_toBottomOf="@+id/autocomplete_getClientes"
+        app:layout_constraintEnd_toEndOf="@+id/autocomplete_getClientes"
+        app:layout_constraintTop_toTopOf="@+id/autocomplete_getClientes" />
+
+    <Button
+        android:id="@+id/button68"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:background="@drawable/x_blanca"
+        app:layout_constraintBottom_toBottomOf="@+id/autocomplete_getClientes"
+        app:layout_constraintEnd_toEndOf="@+id/autocomplete_getClientes2"
+        app:layout_constraintTop_toTopOf="@+id/autocomplete_getClientes" />
+
+    <Spinner
+        android:id="@+id/spinnerEnturno"
+        android:layout_width="wrap_content"
+        android:layout_height="33dp"
+        app:layout_constraintBottom_toBottomOf="@+id/autocomplete_getClientes"
+        app:layout_constraintEnd_toStartOf="@+id/textViewFechaActual"
+        app:layout_constraintTop_toTopOf="@+id/autocomplete_getClientes" />
+
+    <TextView
+        android:id="@+id/textView131"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/abeezee"
+        android:text="En turno"
+        android:textColor="#4E75A9"
+        android:textSize="14sp"
+        app:layout_constraintBottom_toBottomOf="@+id/spinnerEnturno"
+        app:layout_constraintEnd_toStartOf="@+id/spinnerEnturno"
+        app:layout_constraintTop_toTopOf="@+id/spinnerEnturno" />
+
+    <TextView
+        android:id="@+id/textViewFechaActual"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:fontFamily="@font/abeezee"
+        android:text="21 ene 2021"
+        android:textColor="@color/negro"
+        android:textSize="14sp"
+        app:layout_constraintBottom_toBottomOf="@+id/spinnerEnturno"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/spinnerEnturno" />
+
+    <TextView
+        android:id="@+id/textView75"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.35"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView132"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toStartOf="@+id/textView75"
+        app:layout_constraintHorizontal_bias="0.81"
+        app:layout_constraintStart_toEndOf="@+id/textView109"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView109"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="@+id/autocomplete_getClientes"
+        app:layout_constraintStart_toStartOf="@+id/autocomplete_getClientes"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView79"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/textView75"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/cons_ConComp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#99FFFFFF"
+        android:elevation="5dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <Button
+            android:id="@+id/butConfirmarCompra_noTicket"
+            android:layout_width="65dp"
+            android:layout_height="65dp"
+            android:background="@drawable/check_circle_outline_24"
+            android:onClick="onClick"
+            app:layout_constraintBottom_toBottomOf="@+id/constraintLayout8"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.14"
+            app:layout_constraintStart_toEndOf="@+id/constraintLayout8"
+            app:layout_constraintTop_toTopOf="@+id/constraintLayout8"
+            app:layout_constraintVertical_bias="0.52" />
+
+        <Button
+            android:id="@+id/butXventanaTicketPedido"
+            android:layout_width="65dp"
+            android:layout_height="65dp"
+            android:background="@drawable/x_rojo"
+            android:onClick="onClick"
+            app:layout_constraintBottom_toBottomOf="@+id/butConfirmarCompra_noTicket"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.14"
+            app:layout_constraintStart_toEndOf="@+id/butConfirmarCompra_noTicket"
+            app:layout_constraintTop_toTopOf="@+id/butConfirmarCompra_noTicket"
+            app:layout_constraintVertical_bias="0.52" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout8"
+            android:layout_width="wrap_content"
+            android:layout_height="0dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/cuadro_esq_red_blanco"
+            android:elevation="3dp"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/imageView3"
+                android:layout_width="149dp"
+                android:layout_height="39dp"
+                android:layout_marginTop="8dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:srcCompat="@drawable/amise" />
+
+            <TextView
+                android:id="@+id/textView16"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:text="Anticipo No."
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/imageView3" />
+
+            <TextView
+                android:id="@+id/textView90"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="Monto del pago"
+                app:layout_constraintBottom_toTopOf="@+id/textView92"
+                app:layout_constraintStart_toStartOf="@+id/textView68" />
+
+            <TextView
+                android:id="@+id/textView91"
+                android:layout_width="wrap_content"
+                android:layout_height="19dp"
+                android:layout_marginBottom="8dp"
+                android:text="Anticipo"
+                app:layout_constraintBottom_toTopOf="@+id/textView168"
+                app:layout_constraintStart_toStartOf="@+id/textView90" />
+
+            <TextView
+                android:id="@+id/textView92"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="Cambio"
+                app:layout_constraintBottom_toTopOf="@+id/textView91"
+                app:layout_constraintStart_toStartOf="@+id/textView168" />
+
+            <TextView
+                android:id="@+id/itemTicket_Date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Jul 5, 2020 2:37:04 PM"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toStartOf="@+id/textView94"
+                app:layout_constraintTop_toTopOf="@+id/textView68" />
+
+            <TextView
+                android:id="@+id/textViewTipoPago"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toStartOf="@+id/itemTicket_Date"
+                app:layout_constraintTop_toTopOf="@+id/textView16" />
+
+            <TextView
+                android:id="@+id/textView93"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="$"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toStartOf="@+id/textView94"
+                app:layout_constraintTop_toTopOf="@+id/textView91" />
+
+            <TextView
+                android:id="@+id/textView95"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="$"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toStartOf="@+id/textView189"
+                app:layout_constraintTop_toTopOf="@+id/textView92" />
+
+            <TextView
+                android:id="@+id/textView94"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="$"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toEndOf="@+id/textView90"
+                app:layout_constraintTop_toTopOf="@+id/textView90" />
+
+            <TextView
+                android:id="@+id/itemTicket_MontoPago"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:text="0.00"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toEndOf="@+id/textView94"
+                app:layout_constraintTop_toTopOf="@+id/textView90" />
+
+            <TextView
+                android:id="@+id/textView168"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:text="Resta"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="@+id/textView91" />
+
+            <TextView
+                android:id="@+id/textView189"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="$"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toStartOf="@+id/textView93"
+                app:layout_constraintTop_toTopOf="@+id/textView168" />
+
+            <TextView
+                android:id="@+id/itemTicket_Resta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:text="0.00"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toEndOf="@+id/textView189"
+                app:layout_constraintTop_toTopOf="@+id/textView189" />
+
+            <TextView
+                android:id="@+id/itemTicket_MontoCobro"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:text="0.00"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toEndOf="@+id/textView93"
+                app:layout_constraintTop_toTopOf="@+id/textView93" />
+
+            <TextView
+                android:id="@+id/itemTicket_Cambio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:text="0.00"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintStart_toEndOf="@+id/textView95"
+                app:layout_constraintTop_toTopOf="@+id/textView95" />
+
+            <TextView
+                android:id="@+id/itemTicket_Enturno"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="16dp"
+                android:text="Valeria"
+                android:textColor="@color/naranja_fuerte"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@+id/textView82"
+                app:layout_constraintTop_toTopOf="@+id/textView82" />
+
+            <TextView
+                android:id="@+id/textView68"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:text="Fecha y hora"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/textView16" />
+
+            <TextView
+                android:id="@+id/textView82"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="En turno"
+                app:layout_constraintStart_toEndOf="@+id/itemTicket_Date"
+                app:layout_constraintTop_toTopOf="@+id/itemTicket_Date" />
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="4dp"
+                app:layout_constraintBottom_toTopOf="@+id/itemTicket_MontoPago"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/textView82">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerHistorialAbonos"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:visibility="visible"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/consventarealizada"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@color/blanco"
+        android:elevation="3dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/textViewApRealizado"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/abeezee"
+            android:text="apartado realizado"
+            android:textColor="@color/azulamise"
+            android:textSize="30sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/textView89"
+            android:layout_width="139dp"
+            android:layout_height="139dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/palomita"
+            android:fontFamily="@font/abeezee"
+            android:textColor="@color/azulamise"
+            android:textSize="30sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/textViewApRealizado"
+            app:layout_constraintVertical_bias="0.0" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/consbutEditarApartado"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#99FFFFFF"
+        android:clickable="true"
+        android:elevation="3dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <Button
+            android:id="@+id/cerrar_reciclerEditAp"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/x_rojo"
+            android:elevation="3dp"
+            android:onClick="onClick"
+            app:layout_constraintStart_toEndOf="@+id/consB"
+            app:layout_constraintTop_toTopOf="@+id/consB" />
+
+        <Button
+            android:id="@+id/regresarRegPagos"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/flecha_larga"
+            android:elevation="3dp"
+            android:onClick="onClick"
+            android:visibility="gone"
+            app:layout_constraintStart_toEndOf="@+id/consB"
+            app:layout_constraintTop_toBottomOf="@+id/cerrar_reciclerEditAp" />
+
+        <TextView
+            android:id="@+id/txtIndicadorNoAp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/blanco_muy_red"
+            android:elevation="3dp"
+            android:fontFamily="@font/abeezee"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="NO. DE APARTADO 1"
+            android:textColor="@color/gris_oscuro"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@+id/consB"
+            app:layout_constraintEnd_toStartOf="@+id/cerrar_reciclerEditAp"
+            app:layout_constraintStart_toStartOf="@+id/consB" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/consB"
+            android:layout_width="408dp"
+            android:layout_height="440dp"
+            android:background="@drawable/cuadro_esq_red_blanco"
+            android:elevation="2dp"
+            android:visibility="visible"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <Button
+                android:id="@+id/but_liquidarPedido"
+                android:layout_width="0dp"
+                android:layout_height="31dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/red_poco_cuadro"
+                android:elevation="3dp"
+                android:fontFamily="@font/abeezee"
+                android:onClick="onClick"
+                android:text="  liquidar  "
+                android:textColor="@color/gris_oscuro"
+                android:textSize="12sp"
+                app:layout_constraintEnd_toEndOf="@+id/consAnticipoPedido"
+                app:layout_constraintStart_toStartOf="@+id/consAnticipoPedido"
+                app:layout_constraintTop_toBottomOf="@+id/consAnticipoPedido" />
+
+            <Button
+                android:id="@+id/button4"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/nota_blanco"
+                android:elevation="3dp"
+                android:lineSpacingExtra="10sp"
+                android:textSize="10sp"
+                app:layout_constraintEnd_toEndOf="@+id/consAnticipoPedido"
+                app:layout_constraintHorizontal_bias="0.17"
+                app:layout_constraintStart_toStartOf="@+id/consAnticipoPedido"
+                app:layout_constraintTop_toBottomOf="@+id/but_liquidarPedido" />
+
+            <Button
+                android:id="@+id/butguardarcambioapartado"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:background="@drawable/check_circle_outline_24"
+                android:elevation="3dp"
+                android:fontFamily="@font/abeezee"
+                android:onClick="onClick"
+                android:textColor="@color/blanco"
+                app:layout_constraintEnd_toEndOf="@+id/consAnticipoPedido"
+                app:layout_constraintHorizontal_bias="0.82"
+                app:layout_constraintStart_toStartOf="@+id/consAnticipoPedido"
+                app:layout_constraintTop_toTopOf="@+id/button4" />
+
+            <HorizontalScrollView
+                android:id="@+id/horizontalScrollView2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:scrollbars="none"
+                android:visibility="visible"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/butguardarcambioapartado"
+                app:layout_constraintVertical_bias="0.100000024">
+
+                <LinearLayout
+                    android:id="@+id/icon_bar_up_linearLayout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <androidx.constraintlayout.widget.ConstraintLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <Button
+                            android:id="@+id/butBilleteDocientos"
+                            android:layout_width="110dp"
+                            android:layout_height="54dp"
+                            android:layout_marginStart="4dp"
+                            android:background="@drawable/billetedocientos"
+                            android:elevation="5dp"
+                            android:onClick="onClick"
+                            app:layout_constraintStart_toEndOf="@+id/butBilleteCien"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteCien" />
+
+                        <Button
+                            android:id="@+id/butBilleteMil"
+                            android:layout_width="114dp"
+                            android:layout_height="54dp"
+                            android:layout_marginStart="4dp"
+                            android:background="@drawable/billetemil"
+                            android:elevation="5dp"
+                            android:onClick="onClick"
+                            app:layout_constraintStart_toEndOf="@+id/butBilleteQuinientos"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteQuinientos" />
+
+                        <Button
+                            android:id="@+id/butBilleteCien"
+                            android:layout_width="110dp"
+                            android:layout_height="54dp"
+                            android:layout_marginStart="4dp"
+                            android:background="@drawable/billetecien"
+                            android:elevation="5dp"
+                            android:onClick="onClick"
+                            app:layout_constraintStart_toEndOf="@+id/butBilleteCincuenta"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteCincuenta" />
+
+                        <Button
+                            android:id="@+id/butBilleteQuinientos"
+                            android:layout_width="110dp"
+                            android:layout_height="54dp"
+                            android:layout_marginStart="4dp"
+                            android:background="@drawable/billetequinientos"
+                            android:elevation="5dp"
+                            android:onClick="onClick"
+                            app:layout_constraintBottom_toBottomOf="@+id/butBilleteDocientos"
+                            app:layout_constraintStart_toEndOf="@+id/butBilleteDocientos"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteDocientos" />
+
+                        <Button
+                            android:id="@+id/butBilleteCincuenta"
+                            android:layout_width="100dp"
+                            android:layout_height="54dp"
+                            android:layout_marginStart="4dp"
+                            android:background="@drawable/billetecincuenta"
+                            android:elevation="5dp"
+                            android:onClick="onClick"
+                            app:layout_constraintBottom_toBottomOf="@+id/butBilleteVeinte"
+                            app:layout_constraintStart_toEndOf="@+id/butBilleteVeinte"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteVeinte" />
+
+                        <Button
+                            android:id="@+id/butBilleteVeinte"
+                            android:layout_width="100dp"
+                            android:layout_height="54dp"
+                            android:layout_marginStart="8dp"
+                            android:layout_marginTop="8dp"
+                            android:layout_marginBottom="8dp"
+                            android:background="@drawable/billeteveinte"
+                            android:elevation="5dp"
+                            android:onClick="onClick"
+                            app:layout_constraintBottom_toBottomOf="parent"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toTopOf="parent" />
+
+                        <TextView
+                            android:id="@+id/butBilleteDocientos2"
+                            android:layout_width="117dp"
+                            android:layout_height="61dp"
+                            android:background="@drawable/solo_borde_blanco"
+                            android:elevation="3dp"
+                            android:visibility="gone"
+                            app:layout_constraintBottom_toBottomOf="@+id/butBilleteDocientos"
+                            app:layout_constraintEnd_toEndOf="@+id/butBilleteDocientos"
+                            app:layout_constraintStart_toStartOf="@+id/butBilleteDocientos"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteDocientos">
+
+                        </TextView>
+
+                        <TextView
+                            android:id="@+id/butBilleteMil2"
+                            android:layout_width="117dp"
+                            android:layout_height="61dp"
+                            android:background="@drawable/solo_borde_blanco"
+                            android:elevation="3dp"
+                            android:visibility="invisible"
+                            app:layout_constraintBottom_toBottomOf="@+id/butBilleteMil"
+                            app:layout_constraintEnd_toEndOf="@+id/butBilleteMil"
+                            app:layout_constraintStart_toStartOf="@+id/butBilleteMil"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteMil">
+
+                        </TextView>
+
+                        <TextView
+                            android:id="@+id/butBilleteCien2"
+                            android:layout_width="116dp"
+                            android:layout_height="61dp"
+                            android:background="@drawable/solo_borde_blanco"
+                            android:elevation="3dp"
+                            android:visibility="gone"
+                            app:layout_constraintBottom_toBottomOf="@+id/butBilleteCien"
+                            app:layout_constraintEnd_toEndOf="@+id/butBilleteCien"
+                            app:layout_constraintStart_toStartOf="@+id/butBilleteCien"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteCien">
+
+                        </TextView>
+
+                        <TextView
+                            android:id="@+id/butBilleteQuinientos2"
+                            android:layout_width="117dp"
+                            android:layout_height="61dp"
+                            android:background="@drawable/solo_borde_blanco"
+                            android:elevation="3dp"
+                            android:visibility="gone"
+                            app:layout_constraintBottom_toBottomOf="@+id/butBilleteQuinientos"
+                            app:layout_constraintEnd_toEndOf="@+id/butBilleteQuinientos"
+                            app:layout_constraintStart_toStartOf="@+id/butBilleteQuinientos"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteQuinientos">
+
+                        </TextView>
+
+                        <TextView
+                            android:id="@+id/butBilleteCincuenta2"
+                            android:layout_width="107dp"
+                            android:layout_height="61dp"
+                            android:background="@drawable/solo_borde_blanco"
+                            android:elevation="3dp"
+                            android:visibility="gone"
+                            app:layout_constraintBottom_toBottomOf="@+id/butBilleteCincuenta"
+                            app:layout_constraintEnd_toEndOf="@+id/butBilleteCincuenta"
+                            app:layout_constraintStart_toStartOf="@+id/butBilleteCincuenta"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteCincuenta">
+
+                        </TextView>
+
+                        <TextView
+                            android:id="@+id/butBilleteVeinte2"
+                            android:layout_width="107dp"
+                            android:layout_height="61dp"
+                            android:background="@drawable/solo_borde_blanco"
+                            android:elevation="3dp"
+                            android:visibility="gone"
+                            app:layout_constraintBottom_toBottomOf="@+id/butBilleteVeinte"
+                            app:layout_constraintEnd_toEndOf="@+id/butBilleteVeinte"
+                            app:layout_constraintStart_toStartOf="@+id/butBilleteVeinte"
+                            app:layout_constraintTop_toTopOf="@+id/butBilleteVeinte">
+
+                        </TextView>
+
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+                </LinearLayout>
+            </HorizontalScrollView>
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/consAnticipoPedido"
+                android:layout_width="310dp"
+                android:layout_height="146dp"
+                android:background="@drawable/cuadro_esq_red_blanco"
+                android:elevation="2dp"
+                android:visibility="visible"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintVertical_bias="0.13999999">
+
+                <EditText
+                    android:id="@+id/itemfecha"
+                    android:layout_width="wrap_content"
+                    android:layout_height="0dp"
+                    android:background="@color/grey_300"
+                    android:ems="10"
+                    android:fontFamily="@font/abeezee"
+                    android:gravity="center|left"
+                    android:inputType="textPersonName"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="14sp"
+                    app:layout_constraintBottom_toBottomOf="@+id/textView142"
+                    app:layout_constraintStart_toStartOf="@+id/itemTotalPedidos"
+                    app:layout_constraintTop_toTopOf="@+id/textView142" />
+
+                <EditText
+                    android:id="@+id/itemAnticipoPedidos"
+                    android:layout_width="50dp"
+                    android:layout_height="0dp"
+                    android:background="@color/grey_300"
+                    android:ems="10"
+                    android:fontFamily="@font/abeezee"
+                    android:inputType="number"
+                    android:paddingLeft="4dp"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="14sp"
+                    app:layout_constraintBottom_toBottomOf="@+id/textView158"
+                    app:layout_constraintEnd_toEndOf="@+id/itemRestaPedidos"
+                    app:layout_constraintStart_toStartOf="@+id/itemRestaPedidos"
+                    app:layout_constraintTop_toTopOf="@+id/textView158" />
+
+                <EditText
+                    android:id="@+id/itemMontoPAgoPedidos"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:background="@color/grey_300"
+                    android:ems="10"
+                    android:fontFamily="@font/abeezee"
+                    android:inputType="number"
+                    android:paddingLeft="4dp"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="14sp"
+                    app:layout_constraintBottom_toBottomOf="@+id/textView167"
+                    app:layout_constraintEnd_toEndOf="@+id/itemAnticipoPedidos"
+                    app:layout_constraintStart_toStartOf="@+id/itemAnticipoPedidos"
+                    app:layout_constraintTop_toTopOf="@+id/textView167" />
+
+                <TextView
+                    android:id="@+id/itemRestaPedidos"
+                    android:layout_width="50dp"
+                    android:layout_height="0dp"
+                    android:background="@color/grey_300"
+                    android:fontFamily="@font/abeezee"
+                    android:inputType="textPersonName"
+                    android:paddingLeft="4dp"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="14sp"
+                    app:layout_constraintBottom_toBottomOf="@+id/textView169"
+                    app:layout_constraintEnd_toEndOf="@+id/itemTotalPedidos"
+                    app:layout_constraintStart_toStartOf="@+id/itemTotalPedidos"
+                    app:layout_constraintTop_toTopOf="@+id/textView169" />
+
+                <TextView
+                    android:id="@+id/itemTotalPedidos"
+                    android:layout_width="50dp"
+                    android:layout_height="0dp"
+                    android:layout_marginStart="2dp"
+                    android:background="@color/grey_300"
+                    android:fontFamily="@font/abeezee"
+                    android:inputType="textPersonName"
+                    android:paddingLeft="4dp"
+                    android:textColor="@color/gris_oscuro"
+                    android:textSize="14sp"
+                    app:layout_constraintBottom_toBottomOf="@+id/textView183"
+                    app:layout_constraintStart_toEndOf="@+id/textView184"
+                    app:layout_constraintTop_toTopOf="@+id/textView183" />
+
+                <TextView
+                    android:id="@+id/textView142"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="8dp"
+                    android:text="Fecha"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/textView158"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="8dp"
+                    android:text="Antinticipo"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView169" />
+
+                <TextView
+                    android:id="@+id/textView169"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="8dp"
+                    android:text="Resta"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView183" />
+
+                <TextView
+                    android:id="@+id/textView185"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="$"
+                    app:layout_constraintStart_toStartOf="@+id/textView187"
+                    app:layout_constraintTop_toBottomOf="@+id/textView183" />
+
+                <TextView
+                    android:id="@+id/textView186"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="$"
+                    app:layout_constraintStart_toStartOf="@+id/textView187"
+                    app:layout_constraintTop_toTopOf="@+id/itemAnticipoPedidos" />
+
+                <TextView
+                    android:id="@+id/textView187"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="$"
+                    app:layout_constraintStart_toEndOf="@+id/textView167"
+                    app:layout_constraintTop_toTopOf="@+id/itemMontoPAgoPedidos" />
+
+                <TextView
+                    android:id="@+id/textView183"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="8dp"
+                    android:text="Total"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView142" />
+
+                <TextView
+                    android:id="@+id/textView184"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="$"
+                    app:layout_constraintStart_toStartOf="@+id/textView185"
+                    app:layout_constraintTop_toBottomOf="@+id/textView142" />
+
+                <TextView
+                    android:id="@+id/textView167"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="8dp"
+                    android:text="Monto pago"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@+id/textView158" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/consReciclerEditAp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#99000000"
+        android:elevation="5dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <Button
+            android:id="@+id/cerrarEditAp"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginStart="16dp"
+            android:background="@drawable/x_blanca"
+            android:onClick="onClick"
+            app:layout_constraintBottom_toBottomOf="@+id/textView130"
+            app:layout_constraintStart_toEndOf="@+id/textView130"
+            app:layout_constraintTop_toTopOf="@+id/textView130" />
+
+        <TextView
+            android:id="@+id/textView130"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:fontFamily="@font/abeezee"
+            android:text="SELECCIONA UN NO. DE APARTADO"
+            android:textColor="@color/blanco"
+            android:textSize="14sp"
+            android:textStyle="italic"
+            app:layout_constraintBottom_toTopOf="@+id/constraintLayout7"
+            app:layout_constraintEnd_toEndOf="@+id/constraintLayout7"
+            app:layout_constraintStart_toStartOf="@+id/constraintLayout7" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/constraintLayout7"
+            android:layout_width="290dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:layout_marginBottom="32dp"
+            android:background="@color/colortransparente"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/reciclerEditAp"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="4dp"
+                android:layout_marginBottom="8dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

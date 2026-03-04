@@ -1,0 +1,309 @@
+{
+  "project_info": {
+    "project_number": "201997907687",
+    "firebase_url": "https://amisetienda-c7eab.firebaseio.com",
+    "project_id": "amisetienda-c7eab",
+    "storage_bucket": "amisetienda-c7eab.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:13efa30d0ec77c33959442",
+        "android_client_info": {
+          "package_name": "com.example.admin_1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:6f6d486b4db7e769959442",
+        "android_client_info": {
+          "package_name": "com.example.amise_tienda"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-sbp1iufj3b0c2ummihqa3b2fdcv5jeok.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.amise_tienda",
+            "certificate_hash": "62da18875227eec9139aad437947bc0bac6d8d56"
+          }
+        },
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:289d6b71ff7f983c959442",
+        "android_client_info": {
+          "package_name": "com.example.amise_tienda_c"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:1a1b8f68b1f638d4959442",
+        "android_client_info": {
+          "package_name": "com.example.amisepuntos"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:20bba724964a807d959442",
+        "android_client_info": {
+          "package_name": "com.example.amse_tienda_b"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:e2dafd427e05b892959442",
+        "android_client_info": {
+          "package_name": "com.example.dispositivo_1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:71a88f2dad20617c959442",
+        "android_client_info": {
+          "package_name": "com.example.nodo_1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:5eb6024582318c77959442",
+        "android_client_info": {
+          "package_name": "com.example.nueva_amise"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:7752996311bd5e9a959442",
+        "android_client_info": {
+          "package_name": "com.example.ventas"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201997907687:android:c4fcd249fce92928959442",
+        "android_client_info": {
+          "package_name": "com.example.ventas_uno"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEOpgxcy7o3Y_46bKLNM7f-N-k7wGc7gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201997907687-nmbosln74j1lgcr7ev261t59s183qjkc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

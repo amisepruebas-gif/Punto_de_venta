@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:title="K-POP"
+        android:id="@+id/sup_kpop"/>
+    <item
+        android:title="ANIME"
+        android:id="@+id/sup_anime"/>
+    <item
+        android:title="ANIME-K POP"
+        android:id="@+id/sup_anime_kpop"/>
+    <item
+        android:title="PELICULAS Y SERIES"
+        android:id="@+id/sup_peliculasYseries"/>
+    <item
+        android:title="ANIME-K POP-PELICULAS Y SERIES"
+        android:id="@+id/sup_anime_kpop_peliculasYseries"/>
+    <item
+        android:title="ACCESORIOS"
+        android:id="@+id/sup_accesorios"/>
+    <item
+        android:title="PAPELERIA"
+        android:id="@+id/sup_papeleria"/>
+    <item
+        android:title="ACERO"
+        android:id="@+id/sup_acero"/>
+
+</menu>
