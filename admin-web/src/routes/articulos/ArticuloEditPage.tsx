@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Save, Trash2, X as XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +66,11 @@ const FORM_EMPTY: FormState = {
 export function ArticuloEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // `?sub=v-NN-XXX` viene del click en el autocomplete de ArticulosPage cuando
+  // la sugerencia es una subvariación específica. Lo bajamos a
+  // SubvariacionesEditor para que expanda + scrollee a esa sub al cargar.
+  const [searchParams] = useSearchParams();
+  const initialExpandCodigo = searchParams.get("sub") ?? undefined;
   const { negocioId } = useNegocio();
   const { user } = useAuth();
   const editing = !!id;
@@ -417,6 +422,7 @@ export function ArticuloEditPage() {
         subvariaciones={form.subvariaciones}
         files={subvFiles}
         viaNanobanana={subvViaNanobanana}
+        initialExpandCodigo={initialExpandCodigo}
         onChange={(sub, files, via) => {
           set("subvariaciones", sub);
           setSubvFiles(files);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,11 @@ type Props = {
   files: Array<File | null>;
   /** Paralelo a `files` — true cuando la imagen vino de Gemini. */
   viaNanobanana: boolean[];
+  /** Código `v-NN-XXX` de la sub a expandir + scrollee al montar. Viene de
+   *  `?sub=` cuando se entró al editor desde un click en el autocomplete
+   *  de ArticulosPage. Se aplica una sola vez por valor — re-renders
+   *  posteriores no re-disparan el scroll para no interrumpir al usuario. */
+  initialExpandCodigo?: string;
   onChange: (
     subvariaciones: ArticuloSubvariacion[],
     files: Array<File | null>,
@@ -32,12 +37,51 @@ export function SubvariacionesEditor({
   subvariaciones,
   files,
   viaNanobanana,
+  initialExpandCodigo,
   onChange,
 }: Props) {
   // Las nuevas subvariaciones (recién agregadas con "+ Agregar") quedan
   // expandidas por defecto. Las cargadas del artículo existente arrancan
   // colapsadas para que la lista entre completa en pantalla.
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  // Refs por sub para scrollIntoView. Map keyed por codigo — el índice no
+  // sirve porque puede cambiar al editar/quitar otras subs.
+  const itemRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+
+  // Aplicamos initialExpandCodigo una sola vez por valor: si el deep-link
+  // trae `?sub=v-NN-XXX` y la sub aparece en el array (puede llegar después
+  // si articulo carga async), expandimos + scrollee y marcamos como
+  // aplicado. Si el codigo no existe en el array (sub borrada, link viejo)
+  // marcamos igual para no quedar en bucle.
+  const appliedExpandRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialExpandCodigo) return;
+    if (appliedExpandRef.current === initialExpandCodigo) return;
+    const idx = subvariaciones.findIndex((sv) => sv.codigo === initialExpandCodigo);
+    if (idx < 0) {
+      // La sub aún no está en el array (articulo cargando) — reintentamos
+      // en la próxima render. No marcamos applied todavía.
+      if (subvariaciones.length === 0) return;
+      // Subs cargaron y no existe el codigo: marcamos applied para no
+      // reintentar indefinidamente.
+      appliedExpandRef.current = initialExpandCodigo;
+      return;
+    }
+    appliedExpandRef.current = initialExpandCodigo;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.add(idx);
+      return next;
+    });
+    // Scroll al frame siguiente para que el body expandido ya esté en el
+    // DOM (el body se monta siempre pero se oculta vía CSS — el header
+    // siempre está, así que esto funciona en ambos casos).
+    requestAnimationFrame(() => {
+      const el = itemRefs.current.get(initialExpandCodigo);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [initialExpandCodigo, subvariaciones]);
 
   function toggle(idx: number) {
     setExpanded((prev) => {
@@ -147,6 +191,13 @@ export function SubvariacionesEditor({
             return (
               <div
                 key={sv.codigo ?? `nuevo-${idx}`}
+                ref={(el) => {
+                  // Indexamos por codigo (estable) para que el deep-link
+                  // `?sub=v-NN-XXX` pueda hacer scrollIntoView aunque el
+                  // índice cambie. Subs sin codigo (recién agregadas en
+                  // sesión) no necesitan ref.
+                  if (sv.codigo) itemRefs.current.set(sv.codigo, el);
+                }}
                 className="rounded-md border bg-background"
               >
                 {/* Header — siempre visible, click para plegar/desplegar. */}

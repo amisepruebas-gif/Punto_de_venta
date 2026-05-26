@@ -182,7 +182,14 @@ export function ArticulosPage() {
     if (!entry) return;
     setAutocompleteOpen(false);
     setQ("");
-    navigate(`/articulos/${entry.idPadre}`);
+    // Si el match es una subvariación específica, propagamos el código por
+    // query (`?sub=v-NN-XXX`). ArticuloEditPage lo lee y le pide al
+    // SubvariacionesEditor que expanda + scrollee a esa sub. Match al
+    // padre (por nombre/sigla/id) no agrega el query.
+    const sub = entry.subvariacionCodigo
+      ? `?sub=${encodeURIComponent(entry.subvariacionCodigo)}`
+      : "";
+    navigate(`/articulos/${entry.idPadre}${sub}`);
   }
 
   const subcategoriasFiltradas = useMemo(
