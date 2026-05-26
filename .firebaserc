@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "amisetienda-c7eab"
+  },
+  "targets": {
+    "amisetienda-c7eab": {
+      "hosting": {
+        "admin": ["amise-admin"],
+        "nodo": ["amise-nodo"],
+        "mercancia": ["amise-mercancia"]
+      }
+    }
+  }
+}

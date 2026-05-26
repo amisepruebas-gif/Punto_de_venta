@@ -1,0 +1,128 @@
+{
+  "12300001": {
+    "name": "projects/amisetienda-c7eab/databases/(default)/documents/negocios_web_new_version/amise/articulos_n_web_new_version/12300001",
+    "fields": {
+      "sigla": {
+        "stringValue": "A"
+      },
+      "fecha": {
+        "stringValue": "2026-05-11 11:29:05"
+      },
+      "id": {
+        "stringValue": "12300001"
+      },
+      "utilidadTotal": {
+        "stringValue": "345"
+      },
+      "codigo": {
+        "stringValue": "12300001"
+      },
+      "nombre": {
+        "stringValue": "Llavero Ranita Estrella"
+      },
+      "referencia": {
+        "stringValue": "Herraje"
+      },
+      "categoriaId": {
+        "stringValue": "llavero"
+      },
+      "utilidad": {
+        "stringValue": "69"
+      },
+      "cantidad": {
+        "stringValue": "5"
+      },
+      "precioVenta": {
+        "stringValue": "89"
+      },
+      "preciCompra": {
+        "stringValue": "20"
+      }
+    },
+    "createTime": "2026-04-25T02:52:48.289524Z",
+    "updateTime": "2026-05-11T17:29:06.472898Z"
+  },
+  "12300002": {
+    "name": "projects/amisetienda-c7eab/databases/(default)/documents/negocios_web_new_version/amise/articulos_n_web_new_version/12300002",
+    "fields": {
+      "referencia": {
+        "stringValue": "Peluche"
+      },
+      "sigla": {
+        "stringValue": "A"
+      },
+      "precioVenta": {
+        "stringValue": "220"
+      },
+      "nombre": {
+        "stringValue": "Peluche Gojo S Pequeño"
+      },
+      "utilidadTotal": {
+        "stringValue": "560"
+      },
+      "categoriaId": {
+        "stringValue": "peluche"
+      },
+      "cantidad": {
+        "stringValue": "4"
+      },
+      "utilidad": {
+        "stringValue": "140"
+      },
+      "codigo": {
+        "stringValue": "12300002"
+      },
+      "id": {
+        "stringValue": "12300002"
+      },
+      "preciCompra": {
+        "stringValue": "80"
+      },
+      "fecha": {
+        "stringValue": "2026-05-11 11:30:04"
+      }
+    },
+    "createTime": "2026-04-25T02:52:48.357196Z",
+    "updateTime": "2026-05-11T17:30:04.995014Z"
+  },
+  "12300003": {
+    "name": "projects/amisetienda-c7eab/databases/(default)/documents/negocios_web_new_version/amise/articulos_n_web_new_version/12300003",
+    "fields": {
+      "referencia": {
+        "stringValue": "chikawa"
+      },
+      "cantidad": {
+        "stringValue": "12"
+      },
+      "nombre": {
+        "stringValue": "Figura Coleccionable"
+      },
+      "codigo": {
+        "stringValue": "12300003"
+      },
+      "utilidad": {
+        "stringValue": "90"
+      },
+      "sigla": {
+        "stringValue": "A"
+      },
+      "fecha": {
+        "stringValue": "2026-05-11 11:33:42"
+      },
+      "utilidadTotal": {
+        "stringValue": "1080"
+      },
+      "id": {
+        "stringValue": "12300003"
+      },
+      "preciCompra": {
+        "stringValue": "79"
+      },
+      "precioVenta": {
+        "stringValue": "169"
+      }
+    },
+    "createTime": "2026-04-25T02:52:48.413939Z",
+    "updateTime": "2026-05-11T17:33:43.331011Z"
+  }
+}

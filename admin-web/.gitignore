@@ -1,0 +1,4 @@
+
+# Secrets — nunca commitear
+apikey_*
+.env*.local

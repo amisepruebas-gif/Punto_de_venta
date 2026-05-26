@@ -1,0 +1,518 @@
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useNodoSession } from "@/hooks/useNodoSession";
+import { useSucursal } from "@/features/sucursal/useSucursal";
+import { useCorteActivo } from "@/features/cortes/useCorteActivo";
+import { Button } from "@/components/ui/button";
+import { SelectorVendedor } from "@/features/ventas/SelectorVendedor";
+import {
+  BuscadorArticulo,
+  type BuscadorArticuloHandle,
+} from "@/features/ventas/BuscadorArticulo";
+import { VariacionPickerModal } from "@/features/ventas/VariacionPickerModal";
+import { SenaPickerModal } from "@/features/ventas/SenaPickerModal";
+import { CarritoPanel } from "@/features/ventas/CarritoPanel";
+import { PagoFooter, type CobrarPayload } from "@/features/ventas/PagoFooter";
+import { NoRegistradoModal } from "@/features/ventas/NoRegistradoModal";
+import { ConfirmarVentaModal } from "@/features/ventas/ConfirmarVentaModal";
+import { ConfirmarSalidaModal } from "@/features/ventas/ConfirmarSalidaModal";
+import { CorteModal } from "@/features/cortes/CorteModal";
+import { ChatGrupoModal } from "@/features/chat-grupo/ChatGrupoModal";
+import { useChatGrupoNodo } from "@/features/chat-grupo/useChatGrupoNodo";
+import { ApartadoModal } from "@/features/apartados/ApartadoModal";
+import { ApartadosSheet } from "@/features/apartados/ApartadosSheet";
+import { TicketModal } from "@/features/ventas/TicketModal";
+import { VentaRealizadaOverlay } from "@/features/ventas/VentaRealizadaOverlay";
+import { FloatingChatButton } from "@/features/chat-grupo/FloatingChatButton";
+import { FloatingApartarButton } from "@/features/apartados/FloatingApartarButton";
+import { FloatingNoRegistradoButton } from "@/features/ventas/FloatingNoRegistradoButton";
+import { FloatingReimprimirButton } from "@/features/ventas/FloatingReimprimirButton";
+import { RegistrosVentasSheet } from "@/features/ventas/historial/RegistrosVentasSheet";
+import { PinPromptModal } from "@/features/ventas/historial/PinPromptModal";
+import { usePinVentas } from "@/features/ventas/historial/usePinVentas";
+import { useCarrito } from "@/features/ventas/carritoStore";
+import { crearVenta } from "@/features/ventas/ventaService";
+import { generarID } from "@shared";
+import { formatearTicketEscPos } from "@/features/ventas/ticketEscPos";
+import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
+import { useBackHandler } from "@/lib/back-handler";
+import { useApariencia } from "@/features/apariencia/useApariencia";
+import { Bookmark, ListOrdered, Settings, Truck } from "lucide-react";
+import { useResurtidosPendientesCount } from "@/features/resurtidos/useResurtidosPendientesCount";
+import type { Articulo, Venta } from "@shared";
+
+export function Ventas() {
+  const navigate = useNavigate();
+  const { negocioId, sucursalId, nodoId } = useNodoSession();
+  const { sucursal } = useSucursal();
+  const { corte } = useCorteActivo();
+  const { limpiar, enTurno, items, agregar } = useCarrito();
+  const { fondo, fondoOpacidad, cabecera, cabeceraOpacidad, logo } =
+    useApariencia();
+  const resurtidosPendientes = useResurtidosPendientesCount();
+  const sinVendedor = !enTurno;
+  const carritoVacio = items.length === 0;
+  const banner =
+    sinVendedor && !carritoVacio
+      ? "Selecciona un vendedor para cobrar"
+      : carritoVacio && sinVendedor
+      ? "Carrito vacío · selecciona un vendedor"
+      : null;
+  const [corteOpen, setCorteOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [apartarOpen, setApartarOpen] = useState(false);
+  const [apartadosOpen, setApartadosOpen] = useState(false);
+  const [registrosOpen, setRegistrosOpen] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const { pin: pinRegistros } = usePinVentas(negocioId);
+  const [noRegOpen, setNoRegOpen] = useState(false);
+  const [salidaOpen, setSalidaOpen] = useState(false);
+  const [varPickerPadre, setVarPickerPadre] = useState<Articulo | null>(null);
+  const [senaPadre, setSenaPadre] = useState<Articulo | null>(null);
+  // Ref al buscador de artículos para devolverle el foco al input tras
+  // cerrar VariacionPickerModal o SenaPickerModal. Sin esto, después de
+  // cada escaneo que abre modal el siguiente scan se pierde en `body`.
+  const buscadorRef = useRef<BuscadorArticuloHandle>(null);
+
+  // Hook del chat del nodo a nivel app — el sonido de notificación y el
+  // badge de no-leídos deben funcionar aunque el modal esté cerrado. Si
+  // lo dejáramos dentro de ChatGrupoModal, el cajero solo escucharía el
+  // sonido al tener el chat abierto, que es lo contrario de lo útil.
+  const chatData = useChatGrupoNodo();
+
+  // Altura real del PagoFooter — la usa CarritoPanel como padding inferior
+  // del scroll. Sin esto, los items que caen detrás del footer (cuando hay
+  // muchos en el carrito) quedan inalcanzables: scroll bottom no los
+  // muestra completos. Reactivo a transferencia, banners, comisión, etc.
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [footerHeight, setFooterHeight] = useState(280);
+
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect.height;
+      if (typeof h === "number" && h > 0) setFooterHeight(Math.ceil(h));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // El preview lleva una `idempotencyKey` generada al momento de cobrar,
+  // para que un retry de `crearVenta` (timeout, etc.) no duplique la venta:
+  // misma key → mismo doc id → la transacción detecta que ya existe y
+  // devuelve los datos. Si el usuario cancela el preview y vuelve a cobrar,
+  // se genera una nueva key (es venta nueva).
+  const [preview, setPreview] = useState<
+    (CobrarPayload & { idempotencyKey: string }) | null
+  >(null);
+  // `ultimaVenta` se conserva todo el tiempo que el cajero esté en la
+  // pantalla — la usa el FAB de reimprimir. NO se muestra como modal
+  // automáticamente al cerrar la venta: el modal de ticket solo aparece
+  // cuando el cajero lo solicita explícitamente (FAB) y solo si no hay
+  // bridge POS para imprimir directo (fallback PDF).
+  const [ultimaVenta, setUltimaVenta] = useState<Venta | null>(null);
+  const [overlayShow, setOverlayShow] = useState(false);
+  const [ticketModalOpen, setTicketModalOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Handler del back físico/gesto del Android. Prioridad de cierre:
+  // sheets/modales abiertos primero, después la app deja que el navegador
+  // navegue atrás (lo hace `__handleAndroidBack` en back-handler.ts).
+  useBackHandler(
+    () => {
+      if (salidaOpen) {
+        setSalidaOpen(false);
+        return true;
+      }
+      if (varPickerPadre) {
+        setVarPickerPadre(null);
+        // Restaurar foco al buscador para que el siguiente scan no se
+        // pierda — mismo motivo que en onClose/onSelect del modal.
+        buscadorRef.current?.focus();
+        return true;
+      }
+      if (senaPadre) {
+        setSenaPadre(null);
+        buscadorRef.current?.focus();
+        return true;
+      }
+      if (pinOpen) {
+        setPinOpen(false);
+        return true;
+      }
+      if (registrosOpen) {
+        setRegistrosOpen(false);
+        return true;
+      }
+      if (apartadosOpen) {
+        setApartadosOpen(false);
+        return true;
+      }
+      if (chatOpen) {
+        setChatOpen(false);
+        return true;
+      }
+      if (corteOpen) {
+        setCorteOpen(false);
+        return true;
+      }
+      if (apartarOpen) {
+        setApartarOpen(false);
+        return true;
+      }
+      if (noRegOpen) {
+        setNoRegOpen(false);
+        return true;
+      }
+      if (ticketModalOpen) {
+        setTicketModalOpen(false);
+        return true;
+      }
+      if (preview) {
+        setPreview(null);
+        return true;
+      }
+      // El overlay "venta realizada" es transitorio (1.4s) — consumimos el
+      // back para que no haga nada mientras se muestra.
+      if (overlayShow) return true;
+      // Catchall en la vista principal: en lugar de dejar que el APK cierre
+      // la activity, mostramos el popup de confirmación de salida (replica
+      // de `pop.preguntar_salir_app` del nodo_1). Solo el botón "Salir" del
+      // modal cierra la app vía `POS.cerrarApp()`.
+      setSalidaOpen(true);
+      return true;
+    },
+    [
+      salidaOpen,
+      varPickerPadre,
+      senaPadre,
+      pinOpen,
+      registrosOpen,
+      apartadosOpen,
+      chatOpen,
+      corteOpen,
+      apartarOpen,
+      noRegOpen,
+      ticketModalOpen,
+      preview,
+      overlayShow,
+    ],
+  );
+
+  // Impresión vía bridge nativo (APK). No se await — el toast aparece
+  // cuando la APK responde, mientras tanto el cajero ya puede seguir
+  // operando. Si no hay POS, devuelve false para que el caller decida
+  // el fallback (en este flujo: abrir TicketModal PDF).
+  function imprimirTicketNativo(venta: Venta): boolean {
+    if (!posDisponible()) return false;
+    const formato = formatearTicketEscPos(venta, sucursal);
+    imprimirTicket({ formato }).then((res) => {
+      if (res.ok) {
+        setToast(`Ticket impreso #${venta.numeroDeVenta}`);
+        window.setTimeout(() => setToast(null), 3000);
+      } else {
+        setToast(`No se pudo imprimir: ${res.error}`);
+        window.setTimeout(() => setToast(null), 6000);
+      }
+    });
+    return true;
+  }
+
+  async function confirmarVenta() {
+    if (!preview) throw new Error("Sin preview de venta");
+    if (!negocioId || !sucursalId || !nodoId) {
+      throw new Error("Sesión del nodo inválida");
+    }
+    const result = await crearVenta({
+      negocioId,
+      sucursalId,
+      nodoId,
+      ...preview,
+    });
+    limpiar();
+    setPreview(null);
+    setUltimaVenta(result.venta);
+    setOverlayShow(true);
+    if (result.offline) {
+      setToast(
+        `Venta OFFLINE (${result.venta.numeroDeVenta}). Se reconcilia al reconectar.`,
+      );
+      window.setTimeout(() => setToast(null), 4000);
+    }
+
+    // Impresión automática. No abrimos modal de ticket: el cajero puede
+    // reimprimir cuando lo necesite con el FAB de reimprimir.
+    imprimirTicketNativo(result.venta);
+  }
+
+  function handleReimprimir() {
+    if (!ultimaVenta) return;
+    const printed = imprimirTicketNativo(ultimaVenta);
+    if (!printed) {
+      // Fallback web/PDF cuando la APK no está disponible.
+      setTicketModalOpen(true);
+    }
+  }
+
+  return (
+    <div className="flex h-screen flex-col bg-background">
+      <header className="relative flex shrink-0 items-center gap-2 overflow-hidden border-b px-3 py-2">
+        {/* Capa de imagen de cabecera con opacidad ajustable. Va detrás del
+            contenido. Si no hay cabecera elegida, no se renderiza. */}
+        {cabecera.src && (
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${cabecera.src})`,
+              opacity: cabeceraOpacidad,
+            }}
+            aria-hidden
+          />
+        )}
+        <div className="relative z-10 flex min-w-0 max-w-[14rem] shrink items-center">
+          {logo.src ? (
+            <img
+              src={logo.src}
+              alt="Logo"
+              className="h-9 max-w-[12rem] object-contain"
+              draggable={false}
+            />
+          ) : (
+            <span className="truncate text-sm font-semibold">Amise</span>
+          )}
+        </div>
+        <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
+          <SelectorVendedor className="max-w-[18rem]" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setPinOpen(true)}
+            aria-label="Registros de venta"
+          >
+            <ListOrdered className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setApartadosOpen(true)}
+            aria-label="Apartados"
+          >
+            <Bookmark className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/resurtidos")}
+            aria-label="Resurtidos"
+            className="relative"
+          >
+            <Truck className="h-5 w-5" />
+            {resurtidosPendientes > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">
+                {resurtidosPendientes}
+              </span>
+            )}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setCorteOpen(true)}
+            className={`h-7 rounded-full border border-white/30 backdrop-blur-sm transition-colors ${
+              corte
+                ? "bg-emerald-500/70 text-white hover:bg-emerald-500/80"
+                : "bg-white/20 text-foreground hover:bg-white/40"
+            }`}
+          >
+            {corte ? "Corte en curso" : "Iniciar corte"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/ajustes")}
+            aria-label="Ajustes"
+          >
+            <Settings className="h-5 w-5" />
+          </Button>
+        </div>
+      </header>
+
+      {/* Cuerpo principal — wrapper con imagen de fondo. La imagen va en
+          una capa absoluta detrás de todo el contenido; el contenido sigue
+          como siblings normales pero con `z-10` para quedar encima. */}
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        {fondo.src && (
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${fondo.src})`,
+              opacity: fondoOpacidad,
+            }}
+            aria-hidden
+          />
+        )}
+
+        {/* Banner de estado (sin vendedor / carrito vacío) */}
+        {banner && (
+          <div className="relative z-10 border-b bg-amber-50 px-3 py-1 text-center text-xs font-medium text-amber-900">
+            {banner}
+          </div>
+        )}
+
+        {/* Buscador (autocomplete) en la parte superior; carrito ocupa el área principal.
+            z-30 (mayor que el bloque de abajo z-10) para que el desplegable de
+            sugerencias quede por encima de la fila carrito+footer. */}
+        <div className="relative z-30">
+          <BuscadorArticulo
+            ref={buscadorRef}
+            onPedirVariacion={setVarPickerPadre}
+            onPedirSena={setSenaPadre}
+          />
+        </div>
+        {/* `relative` para anclar el PagoFooter como overlay al fondo. El carrito
+            se extiende a toda la altura disponible y es scrollable; el footer
+            flota encima con fondo transparente y `pointer-events-none` en las
+            zonas vacías para que puedas ver y hacer click en los items que
+            quedan detrás de los huecos entre botones. */}
+        <div className="relative z-10 flex flex-1 overflow-hidden">
+          <CarritoPanel bottomPadding={footerHeight} />
+
+          <div
+            ref={footerRef}
+            className="pointer-events-none absolute inset-x-0 bottom-0"
+          >
+            <PagoFooter
+              onCobrar={(data) =>
+                setPreview({ ...data, idempotencyKey: generarID() })
+              }
+            />
+          </div>
+        </div>
+      </div>
+
+      <ConfirmarVentaModal
+        data={preview}
+        onCancel={() => setPreview(null)}
+        onConfirm={confirmarVenta}
+      />
+
+      <FloatingNoRegistradoButton onClick={() => setNoRegOpen(true)} />
+      <FloatingApartarButton onClick={() => setApartarOpen(true)} />
+      <FloatingChatButton
+        onClick={() => setChatOpen(true)}
+        // Mientras el chat está abierto, el badge se oculta (los mensajes
+        // se están viendo en vivo). marcarApertura ya marca leídos al
+        // abrir, así que cerrar dejará noLeidos en 0 hasta que llegue
+        // un mensaje nuevo.
+        noLeidos={chatOpen ? 0 : chatData.noLeidos}
+      />
+
+      <VentaRealizadaOverlay
+        show={overlayShow}
+        onDone={() => setOverlayShow(false)}
+      />
+
+      <FloatingReimprimirButton
+        onClick={handleReimprimir}
+        disabled={!ultimaVenta}
+        numeroDeVenta={ultimaVenta?.numeroDeVenta}
+      />
+
+      <NoRegistradoModal open={noRegOpen} onClose={() => setNoRegOpen(false)} />
+      <ConfirmarSalidaModal
+        open={salidaOpen}
+        onCancel={() => setSalidaOpen(false)}
+      />
+      <VariacionPickerModal
+        padre={varPickerPadre}
+        onClose={() => {
+          setVarPickerPadre(null);
+          buscadorRef.current?.focus();
+        }}
+        onSelect={(padre, sv) => {
+          const imagenUrl = sv.imagenUrl ?? padre.imagenUrl;
+          agregar(padre, {
+            ...(sv.codigo ? { subvariacionCodigo: sv.codigo } : {}),
+            subvariacionNombre: sv.nombre,
+            ...(imagenUrl ? { imagenUrl } : {}),
+          });
+          setVarPickerPadre(null);
+          buscadorRef.current?.focus();
+        }}
+        onSelectOtro={(padre, nombre) => {
+          const imagenUrl = padre.imagenUrl;
+          agregar(padre, {
+            // Variación libre: el item carga el texto del cajero como
+            // subvariacionNombre y el flag variacionLibre=true para que
+            // admin-web pueda distinguirlo en reportes. No hay
+            // subvariacionCodigo (no está en catálogo).
+            variacionLibre: true,
+            subvariacionNombre: nombre,
+            ...(imagenUrl ? { imagenUrl } : {}),
+          });
+          setVarPickerPadre(null);
+          buscadorRef.current?.focus();
+        }}
+      />
+      <SenaPickerModal
+        padre={senaPadre}
+        onClose={() => {
+          setSenaPadre(null);
+          buscadorRef.current?.focus();
+        }}
+        onConfirm={(padre, descripcion) => {
+          const imagenUrl = padre.imagenUrl;
+          agregar(padre, {
+            seña: descripcion,
+            ...(imagenUrl ? { imagenUrl } : {}),
+          });
+          setSenaPadre(null);
+          buscadorRef.current?.focus();
+        }}
+      />
+      <TicketModal
+        venta={ticketModalOpen ? ultimaVenta : null}
+        onClose={() => setTicketModalOpen(false)}
+      />
+      <CorteModal open={corteOpen} onClose={() => setCorteOpen(false)} />
+      <ChatGrupoModal
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        data={chatData}
+      />
+      <ApartadoModal
+        open={apartarOpen}
+        onClose={() => setApartarOpen(false)}
+        onSuccess={(id) => {
+          setToast(`Apartado creado (${id.slice(0, 10)}…)`);
+          window.setTimeout(() => setToast(null), 4000);
+        }}
+      />
+      <ApartadosSheet
+        open={apartadosOpen}
+        onClose={() => setApartadosOpen(false)}
+      />
+      <RegistrosVentasSheet
+        open={registrosOpen}
+        onClose={() => setRegistrosOpen(false)}
+      />
+      <PinPromptModal
+        open={pinOpen}
+        pinCorrecto={pinRegistros}
+        onClose={() => setPinOpen(false)}
+        onSuccess={() => {
+          setPinOpen(false);
+          setRegistrosOpen(true);
+        }}
+      />
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-32 left-1/2 z-40 w-[min(90vw,28rem)] -translate-x-1/2 rounded-md bg-primary px-4 py-3 text-center text-sm text-primary-foreground shadow-lg"
+        >
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}

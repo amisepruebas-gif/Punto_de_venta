@@ -1,0 +1,91 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs20",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "hosting": [
+    {
+      "target": "admin",
+      "public": "admin-web/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }],
+      "headers": [
+        {
+          "source": "**/*.@(js|css|woff2|svg)",
+          "headers": [{ "key": "Cache-Control", "value": "max-age=31536000, immutable" }]
+        },
+        {
+          "source": "**/*.@(png|jpg|jpeg|webp|ico)",
+          "headers": [{ "key": "Cache-Control", "value": "max-age=86400" }]
+        }
+      ]
+    },
+    {
+      "target": "mercancia",
+      "public": "mercancia-web/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }],
+      "headers": [
+        {
+          "source": "**/*.@(js|css|woff2|svg)",
+          "headers": [{ "key": "Cache-Control", "value": "max-age=31536000, immutable" }]
+        },
+        {
+          "source": "**/*.@(png|jpg|jpeg|webp|ico)",
+          "headers": [{ "key": "Cache-Control", "value": "max-age=86400" }]
+        }
+      ]
+    },
+    {
+      "target": "nodo",
+      "public": "nodo-web/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }],
+      "headers": [
+        {
+          "source": "/sw.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Service-Worker-Allowed", "value": "/" }
+          ]
+        },
+        {
+          "source": "/registerSW.js",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+        },
+        {
+          "source": "/manifest.webmanifest",
+          "headers": [
+            { "key": "Content-Type", "value": "application/manifest+json" },
+            { "key": "Cache-Control", "value": "max-age=3600" }
+          ]
+        },
+        {
+          "source": "**/*.@(js|css|woff2|svg)",
+          "headers": [{ "key": "Cache-Control", "value": "max-age=31536000, immutable" }]
+        },
+        {
+          "source": "**/*.@(png|jpg|jpeg|webp|ico)",
+          "headers": [{ "key": "Cache-Control", "value": "max-age=86400" }]
+        }
+      ]
+    }
+  ]
+}

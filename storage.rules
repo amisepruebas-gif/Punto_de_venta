@@ -1,0 +1,22 @@
+rules_version = '2';
+
+// ============================================================
+// ⚠️  REGLAS ABIERTAS (DESARROLLO)
+// ============================================================
+// Lectura y escritura sin restricciones a TODOS los buckets.
+//
+// Pendiente de re-aplicar antes de pasar a producción:
+//   docs/13-rules-pendientes-produccion.md
+//
+// La versión hardened previa validaba isAuthenticated + image/* + < 5 MB
+// y había un namespace separado para mensajes_media y catálogo. Está
+// todo documentado en el MD.
+// ============================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

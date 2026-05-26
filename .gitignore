@@ -1,0 +1,41 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build outputs
+dist/
+build/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# env & secrets
+.env
+.env.local
+.env.*.local
+*.key
+service-account-*.json
+
+# firebase cache
+.firebase/
+
+# logs
+*.log
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+
+# editor
+.vscode/
+.idea/
+.DS_Store
+
+# android / gradle (ya ignorado en subproyectos pero reforzamos)
+nodo_1/app/build/
+nodo_1/.gradle/
+dispositivo_1/app/build/
+dispositivo_1/.gradle/
+
+# archivos temporales de trabajo (se eliminan al cerrar migración)
+_NOTAS_*.md
