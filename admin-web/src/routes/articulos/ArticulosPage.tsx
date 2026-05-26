@@ -107,7 +107,9 @@ export function ArticulosPage() {
     return ids[0];
   }, [negocio?.sucursalDefaultId, sucursales]);
   // Autocomplete: dropdown de sugerencias mientras se escribe.
-  // Click en una sugerencia → navega al detalle (`/articulos/{idPadre}`).
+  // Click en una sugerencia → navega al detalle (`/articulos/{idPadre}`),
+  // agregando `?sub=v-NN-XXX` cuando la sugerencia es una subvariación
+  // específica (el editor lee el query y expande + scrollea a esa sub).
   // El input también sigue filtrando la lista de abajo (mismo `q`).
   const [autocompleteOpen, setAutocompleteOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
