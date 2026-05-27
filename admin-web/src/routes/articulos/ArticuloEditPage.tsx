@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCategorias } from "@/features/categorias/useCategorias";
 import { ImageUpload } from "@/features/articulos/ImageUpload";
 import { SubvariacionesEditor } from "@/features/articulos/SubvariacionesEditor";
+import { ArticulosSearchBar } from "@/features/articulos/ArticulosSearchBar";
 import {
   crearArticulo,
   actualizarArticulo,
@@ -225,6 +226,11 @@ export function ArticuloEditPage() {
       onSubmit={onSubmit}
       className="mx-auto w-full max-w-3xl space-y-6 px-3 pb-[calc(11rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-6 sm:pt-6"
     >
+      {/* Buscador sticky en la parte superior — mismo componente que la
+          página de lista. Persiste al hacer scroll del form. Permite saltar
+          a otro artículo (o sub) sin volver a /articulos. */}
+      <ArticulosSearchBar sticky />
+
       <div className="flex items-center justify-between">
         <Button
           type="button"
