@@ -41,7 +41,20 @@ export function Login() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      await signInWithPopup(auth, provider);
+      const cred = await signInWithPopup(auth, provider);
+
+      // Si la cuenta YA trae claims de superadmin/admin, saltamos la
+      // verificación de whitelist. La whitelist sólo sirve para *elevar*
+      // admin-delegados nuevos; para el superadmin (jesús, bootstrapeado por
+      // setup-initial y que NO está en la whitelist) `verificarAdminWhitelist`
+      // lanzaría permission-denied y el catch lo sacaría con signOut →
+      // "abre y se regresa al login". Forzamos refresh del token para leer
+      // los claims server-side más recientes.
+      const tokenResult = await cred.user.getIdTokenResult(true);
+      const rolActual = tokenResult.claims.role;
+      if (rolActual === "superadmin" || rolActual === "admin") {
+        return; // onIdTokenChanged ya tiene al usuario con rol válido.
+      }
 
       // Verificar contra la whitelist del negocio. La CF persiste el `uid`
       // en el doc de la whitelist y eleva claims a {role:"admin", negocioId}.
