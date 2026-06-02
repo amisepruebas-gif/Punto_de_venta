@@ -21,6 +21,31 @@ export type ChatListItem = ChatMeta & {
 };
 
 /**
+ * Normaliza `fechaActividad` a milisegundos para poder ordenar.
+ *
+ * OJO: aunque el tipo `ChatMeta` declara `fechaActividad: string`, en runtime
+ * el campo llega como un `Timestamp` de Firestore, porque tanto la CF
+ * `inicializarChatGrupoNodo` como `chatAdminService` lo escriben con
+ * `serverTimestamp()`. Un `Timestamp` NO tiene `.localeCompare`, así que
+ * compararlo como string truena el callback de `onSnapshot` y vacía la lista
+ * entera (sólo se notaba con ≥2 chats: `Array.sort` no invoca el comparador
+ * con 0/1 elementos). Por eso normalizamos a número antes de ordenar.
+ */
+function tiempoOrden(v: unknown): number {
+  if (!v) return 0;
+  if (typeof v === "string") {
+    const ms = Date.parse(v);
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+  if (typeof v === "object") {
+    const o = v as { toMillis?: () => number; seconds?: number };
+    if (typeof o.toMillis === "function") return o.toMillis();
+    if (typeof o.seconds === "number") return o.seconds * 1000;
+  }
+  return 0;
+}
+
+/**
  * Lista de chats accesibles al admin actual. Suscribe a `onSnapshot` para
  * mantener el preview del último mensaje en vivo.
  *
@@ -75,8 +100,8 @@ export function useChatList() {
         });
         // Orden descendente por fechaActividad para que el chat más reciente
         // aparezca arriba.
-        arr.sort((a, b) =>
-          (b.fechaActividad ?? "").localeCompare(a.fechaActividad ?? ""),
+        arr.sort(
+          (a, b) => tiempoOrden(b.fechaActividad) - tiempoOrden(a.fechaActividad),
         );
         setGrupos(arr);
         setLoading(false);
@@ -103,8 +128,8 @@ export function useChatList() {
           const data = d.data() as ChatMeta;
           arr.push({ ...data, docId: d.id });
         });
-        arr.sort((a, b) =>
-          (b.fechaActividad ?? "").localeCompare(a.fechaActividad ?? ""),
+        arr.sort(
+          (a, b) => tiempoOrden(b.fechaActividad) - tiempoOrden(a.fechaActividad),
         );
         setDirectos(arr);
       },
