@@ -2032,3 +2032,54 @@ exports.acreditarPuntos = onCall(
     },
 );
 
+// Consulta el saldo del cliente (por teléfono o correo) para mostrarlo al cobrar.
+// Input: { email?, phone? } → { exists, saldoPuntos, valorPunto, saldoDinero, saldoUsable }.
+exports.consultarSaldoPuntos = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = requireAuth(request.auth);
+      if (!ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso para consultar puntos");
+      }
+      const {email, phone} = request.data || {};
+      if (!email && !phone) {
+        throw new HttpsError("invalid-argument", "email o phone requerido");
+      }
+      return await llamarAmise("/api/loyalty/balance", {email, phone});
+    },
+);
+
+// Canjea (debita) puntos al cobrar. Idempotente por idempotencyKey (= ventaId).
+// Input: { email?|phone?, points, idempotencyKey } → { ok, redeemed, balance, money }.
+exports.canjearPuntos = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = requireAuth(request.auth);
+      if (!ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso para canjear puntos");
+      }
+      const {email, phone, points, idempotencyKey} = request.data || {};
+      if (!idempotencyKey || typeof idempotencyKey !== "string") {
+        throw new HttpsError("invalid-argument", "idempotencyKey requerido");
+      }
+      const pts = Number(points);
+      if (!isFinite(pts) || pts <= 0) {
+        throw new HttpsError("invalid-argument", "points inválido");
+      }
+      if (!email && !phone) {
+        throw new HttpsError("invalid-argument", "email o phone requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/redeem", {
+        email, phone, points: pts, idempotencyKey,
+        sucursalId: t.sucursalId || request.data.sucursalId || null,
+        nodoId: t.nodoId || request.data.nodoId || null,
+      });
+      return {
+        ok: true,
+        redeemed: Number(data.redeemed) || 0,
+        balance: Number(data.balance) || 0,
+        money: Number(data.money) || 0,
+      };
+    },
+);
+

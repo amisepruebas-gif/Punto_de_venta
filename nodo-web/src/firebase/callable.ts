@@ -107,3 +107,33 @@ export type AcreditarPuntosOutput = { ok: boolean; added: number; balance: numbe
 export const fnAcreditarPuntos = callable<AcreditarPuntosInput, AcreditarPuntosOutput>(
   "acreditarPuntos",
 );
+
+export type ConsultarSaldoInput = { email?: string; phone?: string };
+export type ConsultarSaldoOutput = {
+  exists: boolean;
+  saldoPuntos?: number;
+  valorPunto?: number;
+  saldoDinero?: number;
+  /** Equivalente en dinero redondeado HACIA ABAJO a $0.50 (lo usable). */
+  saldoUsable?: number;
+};
+export const fnConsultarSaldoPuntos = callable<
+  ConsultarSaldoInput,
+  ConsultarSaldoOutput
+>("consultarSaldoPuntos");
+
+export type CanjearPuntosInput = {
+  email?: string;
+  phone?: string;
+  points: number;
+  idempotencyKey: string;
+};
+export type CanjearPuntosOutput = {
+  ok: boolean;
+  redeemed: number;
+  balance: number;
+  money: number;
+};
+export const fnCanjearPuntos = callable<CanjearPuntosInput, CanjearPuntosOutput>(
+  "canjearPuntos",
+);
