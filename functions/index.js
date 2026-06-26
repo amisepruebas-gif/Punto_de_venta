@@ -15,6 +15,11 @@ const {defineSecret} = require("firebase-functions/params");
 // La function que la usa la declara en `secrets: [GEMINI_API_KEY]` para
 // que el runtime se la inyecte como variable de entorno.
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+// Secreto compartido con amise.mx para el monedero de puntos.
+// Setear con: firebase functions:secrets:set LOYALTY_POS_SECRET
+const LOYALTY_POS_SECRET = defineSecret("LOYALTY_POS_SECRET");
+const AMISE_API_BASE = "https://amise.mx";
+const ROLES_PUNTOS = ["nodo", "vendedor", "admin", "superadmin"];
 const admin = require("firebase-admin");
 const express = require("express");
 const cors = require("cors");
@@ -1943,4 +1948,81 @@ async function inicializarChatGrupoNodo(negocioId, nodoId) {
     fechaActividad: admin.firestore.FieldValue.serverTimestamp(),
   });
 }
+
+// ============================================================
+// PUNTOS / MONEDERO — CF intermediarias hacia amise.mx
+// El cliente (nodo-web) NUNCA ve LOYALTY_POS_SECRET; solo lo usa la CF.
+// ============================================================
+
+/** Llama a una API de amise.mx con el Bearer secret. Lanza HttpsError útil. */
+async function llamarAmise(path, payload) {
+  let resp;
+  try {
+    resp = await fetch(`${AMISE_API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${LOYALTY_POS_SECRET.value()}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    throw new HttpsError("unavailable", `No se pudo contactar a amise.mx: ${e.message}`);
+  }
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new HttpsError(
+        resp.status === 409 ? "already-exists" : "internal",
+        (data && data.error) || `amise.mx ${resp.status}`);
+  }
+  return data;
+}
+
+// Pre-registro del cliente de puntos (correo + teléfono + nombre + contraseña
+// temporal generada en el POS). Input: { email, phone, nombre?, code }.
+exports.registrarClientePuntos = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = requireAuth(request.auth);
+      if (!ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso para registrar puntos");
+      }
+      const {email, phone, nombre, code} = request.data || {};
+      if (!email || typeof email !== "string") {
+        throw new HttpsError("invalid-argument", "email requerido");
+      }
+      if (!code || typeof code !== "string") {
+        throw new HttpsError("invalid-argument", "code requerido");
+      }
+      await llamarAmise("/api/loyalty/register", {email, phone, nombre, code});
+      return {ok: true};
+    },
+);
+
+// Acredita los puntos de una venta. Input: { email?|phone?, amount, ventaId,
+// sucursalId, nodoId }. Idempotente por ventaId del lado de amise.mx.
+exports.acreditarPuntos = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = requireAuth(request.auth);
+      if (!ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso para acreditar puntos");
+      }
+      const {email, phone, amount, ventaId, sucursalId, nodoId} = request.data || {};
+      if (!ventaId || typeof ventaId !== "string") {
+        throw new HttpsError("invalid-argument", "ventaId requerido");
+      }
+      if (!email && !phone) {
+        throw new HttpsError("invalid-argument", "email o phone requerido");
+      }
+      const amt = Number(amount);
+      if (!isFinite(amt) || amt < 0) {
+        throw new HttpsError("invalid-argument", "amount inválido");
+      }
+      const data = await llamarAmise("/api/loyalty/earn", {
+        email, phone, amount: amt, ventaId, sucursalId, nodoId,
+      });
+      return {ok: true, added: Number(data.added) || 0, balance: Number(data.balance) || 0};
+    },
+);
 

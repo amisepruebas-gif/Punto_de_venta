@@ -80,3 +80,30 @@ export const fnAsegurarChatGrupoNodo = callable<
   AsegurarChatGrupoNodoInput,
   AsegurarChatGrupoNodoOutput
 >("asegurarChatGrupoNodo");
+
+// ---- Puntos / monedero (CF intermediaria → amise.mx; el secreto vive en la CF) ----
+export type RegistrarClientePuntosInput = {
+  email: string;
+  phone: string;
+  nombre?: string;
+  /** Contraseña temporal generada en el POS. */
+  code: string;
+};
+export type RegistrarClientePuntosOutput = { ok: boolean };
+export const fnRegistrarClientePuntos = callable<
+  RegistrarClientePuntosInput,
+  RegistrarClientePuntosOutput
+>("registrarClientePuntos");
+
+export type AcreditarPuntosInput = {
+  email?: string;
+  phone?: string;
+  amount: number;
+  ventaId: string;
+  sucursalId: string;
+  nodoId: string;
+};
+export type AcreditarPuntosOutput = { ok: boolean; added: number; balance: number };
+export const fnAcreditarPuntos = callable<AcreditarPuntosInput, AcreditarPuntosOutput>(
+  "acreditarPuntos",
+);
