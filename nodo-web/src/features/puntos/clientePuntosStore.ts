@@ -44,9 +44,11 @@ export const useClientePuntos = create<State>()(
       setPendiente: (c) => set({ pendiente: c }),
       limpiarPendiente: () => set({ pendiente: null }),
       encolar: (tipo, payload) =>
-        set((st) => ({
-          cola: [...st.cola, { id: nuevoId(tipo), tipo, payload, intentos: 0 }],
-        })),
+        set((st) => {
+          const cola = [...st.cola, { id: nuevoId(tipo), tipo, payload, intentos: 0 }];
+          // Cap defensivo: si crece demasiado, descarta los más antiguos (FIFO).
+          return { cola: cola.length > 100 ? cola.slice(cola.length - 100) : cola };
+        }),
       quitarDeCola: (id) =>
         set((st) => ({ cola: st.cola.filter((x) => x.id !== id) })),
       incrementarIntento: (id) =>

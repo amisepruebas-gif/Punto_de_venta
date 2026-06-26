@@ -1991,6 +1991,9 @@ exports.registrarClientePuntos = onCall(
       if (!email || typeof email !== "string") {
         throw new HttpsError("invalid-argument", "email requerido");
       }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new HttpsError("invalid-argument", "email inválido");
+      }
       if (!code || typeof code !== "string") {
         throw new HttpsError("invalid-argument", "code requerido");
       }
@@ -2008,7 +2011,7 @@ exports.acreditarPuntos = onCall(
       if (!ROLES_PUNTOS.includes(t.role)) {
         throw new HttpsError("permission-denied", "Sin permiso para acreditar puntos");
       }
-      const {email, phone, amount, ventaId, sucursalId, nodoId} = request.data || {};
+      const {email, phone, amount, ventaId} = request.data || {};
       if (!ventaId || typeof ventaId !== "string") {
         throw new HttpsError("invalid-argument", "ventaId requerido");
       }
@@ -2019,8 +2022,11 @@ exports.acreditarPuntos = onCall(
       if (!isFinite(amt) || amt < 0) {
         throw new HttpsError("invalid-argument", "amount inválido");
       }
+      // sucursal/nodo: del TOKEN (confiable), no de lo que mande el cliente.
       const data = await llamarAmise("/api/loyalty/earn", {
-        email, phone, amount: amt, ventaId, sucursalId, nodoId,
+        email, phone, amount: amt, ventaId,
+        sucursalId: t.sucursalId || request.data.sucursalId || null,
+        nodoId: t.nodoId || request.data.nodoId || null,
       });
       return {ok: true, added: Number(data.added) || 0, balance: Number(data.balance) || 0};
     },

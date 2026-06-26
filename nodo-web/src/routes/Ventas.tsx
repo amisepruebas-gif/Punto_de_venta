@@ -50,6 +50,8 @@ import { useClientePuntos } from "@/features/puntos/clientePuntosStore";
 import { usePuntosColaFlush } from "@/features/puntos/usePuntosColaFlush";
 import { generarCodigoPuntos } from "@/features/puntos/codigoPuntos";
 import { fnRegistrarClientePuntos, fnAcreditarPuntos } from "@/firebase/callable";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/firebase/config";
 
 export function Ventas() {
   const navigate = useNavigate();
@@ -83,6 +85,7 @@ export function Ventas() {
   const [ventaParaVincular, setVentaParaVincular] = useState<{
     venta: Venta;
     monto: string;
+    path: string;
   } | null>(null);
   const [salidaOpen, setSalidaOpen] = useState(false);
   const [varPickerPadre, setVarPickerPadre] = useState<Articulo | null>(null);
@@ -267,7 +270,7 @@ export function Ventas() {
     // Si hay un cliente pre-registrado pendiente, ofrecer vincular ANTES del
     // ticket. Si no, finalizar (imprimir) directo.
     if (useClientePuntos.getState().pendiente) {
-      setVentaParaVincular({ venta: result.venta, monto });
+      setVentaParaVincular({ venta: result.venta, monto, path: result.path });
       setVinculacionOpen(true);
       return;
     }
@@ -285,9 +288,11 @@ export function Ventas() {
       code,
     });
     const payload = { email: data.correo, phone: data.telefono, nombre: data.nombre, code };
-    fnRegistrarClientePuntos(payload).catch(() =>
-      useClientePuntos.getState().encolar("register", payload),
-    );
+    fnRegistrarClientePuntos(payload).catch(() => {
+      useClientePuntos.getState().encolar("register", payload);
+      setToast(`Registrado sin conexión (se sincroniza). Código: ${code}`);
+      window.setTimeout(() => setToast(null), 6000);
+    });
     setToast(`Cliente registrado. Código: ${code}`);
     window.setTimeout(() => setToast(null), 5000);
   }
@@ -312,9 +317,17 @@ export function Ventas() {
       sucursalId,
       nodoId,
     };
-    fnAcreditarPuntos(payload).catch(() =>
-      useClientePuntos.getState().encolar("earn", payload),
-    );
+    fnAcreditarPuntos(payload).catch(() => {
+      useClientePuntos.getState().encolar("earn", payload);
+      setToast("Puntos: se acreditarán al reconectar (sin conexión).");
+      window.setTimeout(() => setToast(null), 4000);
+    });
+    // Marca de auditoría en la venta: correo/teléfono del cliente (NO la
+    // contraseña temporal, que es una credencial). Best-effort, no bloquea.
+    void updateDoc(doc(db, sel.path), {
+      puntosClienteEmail: pend.correo,
+      puntosClienteTelefono: pend.telefono,
+    }).catch(() => {});
     useClientePuntos.getState().limpiarPendiente();
     finalizarVenta(venta);
   }
