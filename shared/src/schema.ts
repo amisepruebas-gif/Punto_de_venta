@@ -399,6 +399,8 @@ export type Venta = {
   codigoPuntos?: string;
   /** Puntos ganados en esta venta (informativo para el ticket). */
   puntosGanados?: string;
+  /** Descuento aplicado por canje de puntos (pesos) — para el ticket/registro. */
+  descuentoPuntos?: string;
 };
 
 // ---------- Corte de caja ----------

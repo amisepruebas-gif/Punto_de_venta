@@ -255,6 +255,19 @@ export async function generarTicketPDF(params: {
             bold: true,
           }
         : {},
+      venta.descuentoPuntos && Number(venta.descuentoPuntos) > 0
+        ? {
+            columns: [
+              { text: "Descuento por puntos", fontSize: 9 },
+              {
+                text: `-$${venta.descuentoPuntos}`,
+                alignment: "right",
+                fontSize: 9,
+                bold: true,
+              },
+            ],
+          }
+        : {},
       venta.codigoPuntos
         ? {
             text: "* PUNTOS AMISE *",

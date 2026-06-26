@@ -49,7 +49,11 @@ import { VinculacionClienteModal } from "@/features/puntos/VinculacionClienteMod
 import { useClientePuntos } from "@/features/puntos/clientePuntosStore";
 import { usePuntosColaFlush } from "@/features/puntos/usePuntosColaFlush";
 import { generarCodigoPuntos } from "@/features/puntos/codigoPuntos";
-import { fnRegistrarClientePuntos, fnAcreditarPuntos } from "@/firebase/callable";
+import {
+  fnRegistrarClientePuntos,
+  fnAcreditarPuntos,
+  fnCanjearPuntos,
+} from "@/firebase/callable";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
 
@@ -252,6 +256,9 @@ export function Ventas() {
       throw new Error("Sesión del nodo inválida");
     }
     const monto = preview.montoCobro;
+    const puntosTel = preview.puntosTelefono;
+    const puntosRedeem = Number(preview.puntosRedeem) || 0;
+    const descPuntos = preview.descuentoPuntos;
     const result = await crearVenta({
       negocioId,
       sucursalId,
@@ -265,6 +272,40 @@ export function Ventas() {
         `Venta OFFLINE (${result.venta.numeroDeVenta}). Se reconcilia al reconectar.`,
       );
       window.setTimeout(() => setToast(null), 4000);
+    }
+
+    // PT-10: cliente EXISTENTE identificado al cobrar (canje y/o acumulación).
+    // Primero se debitan los puntos usados; luego se acreditan sobre lo pagado
+    // por método (= montoCobro neto). Ambos idempotentes por ventaId.
+    if (puntosTel) {
+      const ventaFinal: Venta =
+        descPuntos && Number(descPuntos) > 0
+          ? { ...result.venta, descuentoPuntos: descPuntos }
+          : result.venta;
+      if (puntosRedeem > 0) {
+        const canjePayload = {
+          phone: puntosTel,
+          points: puntosRedeem,
+          idempotencyKey: result.venta.ventaId
+        };
+        fnCanjearPuntos(canjePayload).catch(() => {
+          useClientePuntos.getState().encolar("canje", canjePayload);
+          setToast("Canje encolado (sin conexión).");
+          window.setTimeout(() => setToast(null), 4000);
+        });
+      }
+      const earnPayload = {
+        phone: puntosTel,
+        amount: Number(monto) || 0,
+        ventaId: result.venta.ventaId,
+        sucursalId,
+        nodoId
+      };
+      fnAcreditarPuntos(earnPayload).catch(() =>
+        useClientePuntos.getState().encolar("earn", earnPayload),
+      );
+      finalizarVenta(ventaFinal);
+      return;
     }
 
     // Si hay un cliente pre-registrado pendiente, ofrecer vincular ANTES del

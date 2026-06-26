@@ -169,6 +169,12 @@ export function formatearTicketEscPos(
   );
   out.push("[L]\n");
 
+  // Descuento por canje de puntos (informativo; el TOTAL ya viene neto).
+  if (venta.descuentoPuntos && Number(venta.descuentoPuntos) > 0) {
+    out.push(`[L]Descuento por puntos[R]-$${s(venta.descuentoPuntos)}\n`);
+    out.push("[L]\n");
+  }
+
   // Puntos de lealtad: contraseña temporal para activar la cuenta en amise.mx.
   if (venta.codigoPuntos) {
     out.push("[C]<b>* PUNTOS AMISE *</b>\n");

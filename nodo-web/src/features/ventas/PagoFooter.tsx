@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useCarrito, subtotalItem } from "./carritoStore";
 import { useNodoSession } from "@/hooks/useNodoSession";
 import { useSucursal } from "@/features/sucursal/useSucursal";
+import { UsarPuntosModal } from "@/features/puntos/UsarPuntosModal";
 import type { MovimientoPago, VentaArticulo } from "@shared";
 
 /** Billetes con sus imágenes copiadas de `nodo_1/.../drawable/billete*`.
@@ -37,6 +38,10 @@ export type CobrarPayload = {
   vendedorIdUsuario?: string;
   comicion?: string;
   statusComision?: string;
+  /** Canje de puntos (POS): descuento aplicado + cliente para acreditar/debitar. */
+  descuentoPuntos?: string;
+  puntosTelefono?: string;
+  puntosRedeem?: string;
 };
 
 type Props = {
@@ -68,7 +73,7 @@ export function PagoFooter({ onCobrar }: Props) {
   );
   const tieneDesmarcados = items.some((it) => it.desmarcado);
 
-  const total = useMemo(
+  const subtotalBruto = useMemo(
     () => itemsActivos.reduce((acc, it) => acc + subtotalItem(it), 0),
     [itemsActivos],
   );
@@ -76,6 +81,16 @@ export function PagoFooter({ onCobrar }: Props) {
   const [recibido, setRecibido] = useState("");
   const [metodo, setMetodo] = useState<Metodo>("pagoEfectivo");
   const [error, setError] = useState<string | null>(null);
+  // Canje de puntos: descuento (pesos) + cliente identificado para acreditar.
+  const [descuentoPuntos, setDescuentoPuntos] = useState(0);
+  const [clientePuntos, setClientePuntos] = useState<{
+    telefono: string;
+    puntos: number;
+  } | null>(null);
+  const [usarPuntosOpen, setUsarPuntosOpen] = useState(false);
+
+  // Total a cobrar = bruto menos los puntos aplicados como descuento.
+  const total = Math.max(0, subtotalBruto - descuentoPuntos);
 
   // Comisión — solo aplica con tarjeta y si la sucursal tiene cobrarComision=true
   const comisionPct = sucursal?.comisionTarjetaPct ?? COMISION_DEFAULT;
@@ -99,6 +114,8 @@ export function PagoFooter({ onCobrar }: Props) {
       setRecibido("");
       setMetodo("pagoEfectivo");
       setError(null);
+      setDescuentoPuntos(0);
+      setClientePuntos(null);
     }
   }, [items.length]);
 
@@ -173,6 +190,13 @@ export function PagoFooter({ onCobrar }: Props) {
             statusComision: comisionEnabled ? "con comision" : "sin comision",
           }
         : {}),
+      ...(clientePuntos
+        ? {
+            puntosTelefono: clientePuntos.telefono,
+            puntosRedeem: String(clientePuntos.puntos),
+            descuentoPuntos: String(descuentoPuntos),
+          }
+        : {}),
     });
   }
 
@@ -192,6 +216,16 @@ export function PagoFooter({ onCobrar }: Props) {
 
   return (
     <div className="w-full bg-transparent">
+      <UsarPuntosModal
+        open={usarPuntosOpen}
+        maxTotal={subtotalBruto}
+        onClose={() => setUsarPuntosOpen(false)}
+        onAplicar={({ telefono, descuento, puntos }) => {
+          setDescuentoPuntos(descuento);
+          setClientePuntos({ telefono, puntos });
+          setUsarPuntosOpen(false);
+        }}
+      />
       {tieneDesmarcados && !error && (
         <p className="pointer-events-auto bg-amber-100 px-3 py-0.5 text-center text-[11px] font-semibold text-amber-900">
           Hay artículos desmarcados — desliza la fila a la derecha para
@@ -328,6 +362,13 @@ export function PagoFooter({ onCobrar }: Props) {
                     ${totalConTarjeta}
                   </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setUsarPuntosOpen(true)}
+                  className="text-[11px] font-semibold text-indigo-600 underline"
+                >
+                  {clientePuntos ? "Puntos ✓" : "Puntos"}
+                </button>
               </div>
             ) : (
               <div className="leading-tight">
@@ -337,6 +378,18 @@ export function PagoFooter({ onCobrar }: Props) {
                 <p className="text-2xl font-bold tabular-nums">
                   ${total.toFixed(0)}
                 </p>
+                {descuentoPuntos > 0 && (
+                  <p className="text-[11px] font-semibold text-indigo-600 tabular-nums">
+                    − ${descuentoPuntos.toFixed(2)} por puntos
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setUsarPuntosOpen(true)}
+                  className="text-[11px] font-semibold text-indigo-600 underline"
+                >
+                  {clientePuntos ? "Puntos ✓" : "Puntos"}
+                </button>
               </div>
             )}
 

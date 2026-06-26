@@ -15,7 +15,7 @@ export type ClientePendiente = {
 /** Operación de puntos encolada para reintento (offline-robusto). */
 export type LlamadaPuntos = {
   id: string;
-  tipo: "register" | "earn";
+  tipo: "register" | "earn" | "canje";
   payload: Record<string, unknown>;
   intentos: number;
 };

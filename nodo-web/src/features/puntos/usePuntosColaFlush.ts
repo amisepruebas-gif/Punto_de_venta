@@ -3,8 +3,10 @@ import { useClientePuntos } from "./clientePuntosStore";
 import {
   fnRegistrarClientePuntos,
   fnAcreditarPuntos,
+  fnCanjearPuntos,
   type RegistrarClientePuntosInput,
   type AcreditarPuntosInput,
+  type CanjearPuntosInput,
 } from "@/firebase/callable";
 
 const MAX_INTENTOS = 8;
@@ -27,6 +29,8 @@ export function usePuntosColaFlush() {
             await fnRegistrarClientePuntos(
               item.payload as unknown as RegistrarClientePuntosInput,
             );
+          } else if (item.tipo === "canje") {
+            await fnCanjearPuntos(item.payload as unknown as CanjearPuntosInput);
           } else {
             await fnAcreditarPuntos(item.payload as unknown as AcreditarPuntosInput);
           }
