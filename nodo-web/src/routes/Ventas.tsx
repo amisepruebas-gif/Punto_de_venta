@@ -40,6 +40,16 @@ import { useApariencia } from "@/features/apariencia/useApariencia";
 import { Bookmark, ListOrdered, Settings, Truck } from "lucide-react";
 import { useResurtidosPendientesCount } from "@/features/resurtidos/useResurtidosPendientesCount";
 import type { Articulo, Venta } from "@shared";
+import { FloatingPreRegistroButton } from "@/features/puntos/FloatingPreRegistroButton";
+import {
+  PreRegistroClienteModal,
+  type PreRegistroData,
+} from "@/features/puntos/PreRegistroClienteModal";
+import { VinculacionClienteModal } from "@/features/puntos/VinculacionClienteModal";
+import { useClientePuntos } from "@/features/puntos/clientePuntosStore";
+import { usePuntosColaFlush } from "@/features/puntos/usePuntosColaFlush";
+import { generarCodigoPuntos } from "@/features/puntos/codigoPuntos";
+import { fnRegistrarClientePuntos, fnAcreditarPuntos } from "@/firebase/callable";
 
 export function Ventas() {
   const navigate = useNavigate();
@@ -50,6 +60,8 @@ export function Ventas() {
   const { fondo, fondoOpacidad, cabecera, cabeceraOpacidad, logo } =
     useApariencia();
   const resurtidosPendientes = useResurtidosPendientesCount();
+  usePuntosColaFlush();
+  const pendientePuntos = useClientePuntos((s) => s.pendiente);
   const sinVendedor = !enTurno;
   const carritoVacio = items.length === 0;
   const banner =
@@ -66,6 +78,12 @@ export function Ventas() {
   const [pinOpen, setPinOpen] = useState(false);
   const { pin: pinRegistros } = usePinVentas(negocioId);
   const [noRegOpen, setNoRegOpen] = useState(false);
+  const [preRegOpen, setPreRegOpen] = useState(false);
+  const [vinculacionOpen, setVinculacionOpen] = useState(false);
+  const [ventaParaVincular, setVentaParaVincular] = useState<{
+    venta: Venta;
+    monto: string;
+  } | null>(null);
   const [salidaOpen, setSalidaOpen] = useState(false);
   const [varPickerPadre, setVarPickerPadre] = useState<Articulo | null>(null);
   const [senaPadre, setSenaPadre] = useState<Articulo | null>(null);
@@ -218,11 +236,19 @@ export function Ventas() {
     return true;
   }
 
+  // Finaliza la venta: registra como última, muestra overlay e imprime.
+  function finalizarVenta(venta: Venta) {
+    setUltimaVenta(venta);
+    setOverlayShow(true);
+    imprimirTicketNativo(venta);
+  }
+
   async function confirmarVenta() {
     if (!preview) throw new Error("Sin preview de venta");
     if (!negocioId || !sucursalId || !nodoId) {
       throw new Error("Sesión del nodo inválida");
     }
+    const monto = preview.montoCobro;
     const result = await crearVenta({
       negocioId,
       sucursalId,
@@ -231,8 +257,6 @@ export function Ventas() {
     });
     limpiar();
     setPreview(null);
-    setUltimaVenta(result.venta);
-    setOverlayShow(true);
     if (result.offline) {
       setToast(
         `Venta OFFLINE (${result.venta.numeroDeVenta}). Se reconcilia al reconectar.`,
@@ -240,9 +264,67 @@ export function Ventas() {
       window.setTimeout(() => setToast(null), 4000);
     }
 
-    // Impresión automática. No abrimos modal de ticket: el cajero puede
-    // reimprimir cuando lo necesite con el FAB de reimprimir.
-    imprimirTicketNativo(result.venta);
+    // Si hay un cliente pre-registrado pendiente, ofrecer vincular ANTES del
+    // ticket. Si no, finalizar (imprimir) directo.
+    if (useClientePuntos.getState().pendiente) {
+      setVentaParaVincular({ venta: result.venta, monto });
+      setVinculacionOpen(true);
+      return;
+    }
+    finalizarVenta(result.venta);
+  }
+
+  // Pre-registro de cliente (FAB): genera la contraseña temporal local, guarda
+  // el pendiente y llama a la CF (encola si offline — el código ya está local).
+  function handlePreRegistrar(data: PreRegistroData) {
+    const code = generarCodigoPuntos();
+    useClientePuntos.getState().setPendiente({
+      correo: data.correo,
+      telefono: data.telefono,
+      nombre: data.nombre,
+      code,
+    });
+    const payload = { email: data.correo, phone: data.telefono, nombre: data.nombre, code };
+    fnRegistrarClientePuntos(payload).catch(() =>
+      useClientePuntos.getState().encolar("register", payload),
+    );
+    setToast(`Cliente registrado. Código: ${code}`);
+    window.setTimeout(() => setToast(null), 5000);
+  }
+
+  // "Sí": acreditar los puntos de esta venta + imprimir el ticket con la
+  // contraseña temporal + limpiar el pendiente.
+  function handleVincularSi() {
+    const sel = ventaParaVincular;
+    const pend = useClientePuntos.getState().pendiente;
+    setVinculacionOpen(false);
+    setVentaParaVincular(null);
+    if (!sel || !pend || !sucursalId || !nodoId) {
+      if (sel) finalizarVenta(sel.venta);
+      return;
+    }
+    const venta: Venta = { ...sel.venta, codigoPuntos: pend.code };
+    const payload = {
+      email: pend.correo,
+      phone: pend.telefono,
+      amount: Number(sel.monto) || 0,
+      ventaId: sel.venta.ventaId,
+      sucursalId,
+      nodoId,
+    };
+    fnAcreditarPuntos(payload).catch(() =>
+      useClientePuntos.getState().encolar("earn", payload),
+    );
+    useClientePuntos.getState().limpiarPendiente();
+    finalizarVenta(venta);
+  }
+
+  // "No": no acreditar esta venta; el pendiente se mantiene para la correcta.
+  function handleVincularNo() {
+    const sel = ventaParaVincular;
+    setVinculacionOpen(false);
+    setVentaParaVincular(null);
+    if (sel) finalizarVenta(sel.venta);
   }
 
   function handleReimprimir() {
@@ -395,6 +477,18 @@ export function Ventas() {
       />
 
       <FloatingNoRegistradoButton onClick={() => setNoRegOpen(true)} />
+      <FloatingPreRegistroButton onClick={() => setPreRegOpen(true)} />
+      <PreRegistroClienteModal
+        open={preRegOpen}
+        onClose={() => setPreRegOpen(false)}
+        onRegistrar={handlePreRegistrar}
+      />
+      <VinculacionClienteModal
+        open={vinculacionOpen}
+        correo={pendientePuntos?.correo ?? ""}
+        onSi={handleVincularSi}
+        onNo={handleVincularNo}
+      />
       <FloatingApartarButton onClick={() => setApartarOpen(true)} />
       <FloatingChatButton
         onClick={() => setChatOpen(true)}

@@ -169,6 +169,17 @@ export function formatearTicketEscPos(
   );
   out.push("[L]\n");
 
+  // Puntos de lealtad: contraseña temporal para activar la cuenta en amise.mx.
+  if (venta.codigoPuntos) {
+    out.push("[C]<b>* PUNTOS AMISE *</b>\n");
+    if (venta.puntosGanados) {
+      out.push(`[L]Puntos ganados[R]<b>${s(venta.puntosGanados)}</b>\n`);
+    }
+    out.push(`[L]Contrasena temporal[R]<b>${s(venta.codigoPuntos)}</b>\n`);
+    out.push("[C]<font size='small'>Activala en amise.mx con tu correo</font>\n");
+    out.push("[L]\n");
+  }
+
   // Pie — usa ticketConfig.pie si tiene líneas; si no, fallback automático.
   const pie = sucursal?.ticketConfig?.pie ?? [];
   if (pie.length > 0) {

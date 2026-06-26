@@ -393,6 +393,12 @@ export type Venta = {
   comicion?: string;
   /** "con comision" | "sin comision" — replica el field Android. */
   statusComision?: string;
+
+  /** Contraseña temporal de puntos a imprimir en el ticket (solo al vincular un
+   *  cliente registrado a esta venta). No se persiste en Firestore. */
+  codigoPuntos?: string;
+  /** Puntos ganados en esta venta (informativo para el ticket). */
+  puntosGanados?: string;
 };
 
 // ---------- Corte de caja ----------

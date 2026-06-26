@@ -255,6 +255,31 @@ export async function generarTicketPDF(params: {
             bold: true,
           }
         : {},
+      venta.codigoPuntos
+        ? {
+            text: "* PUNTOS AMISE *",
+            alignment: "center",
+            fontSize: 9,
+            bold: true,
+            margin: [0, 4, 0, 0] as [number, number, number, number],
+          }
+        : {},
+      venta.codigoPuntos
+        ? {
+            columns: [
+              { text: "Contraseña temporal", fontSize: 9 },
+              { text: venta.codigoPuntos, alignment: "right", fontSize: 9, bold: true },
+            ],
+          }
+        : {},
+      venta.codigoPuntos
+        ? {
+            text: "Actívala en amise.mx con tu correo",
+            alignment: "center",
+            fontSize: 8,
+            italics: true,
+          }
+        : {},
       { text: "─".repeat(32), alignment: "center", fontSize: 8, margin: [0, 6, 0, 6] as [number, number, number, number] },
       ...(pie.length > 0
         ? pie.map(lineaAPdf)
