@@ -137,3 +137,10 @@ export type CanjearPuntosOutput = {
 export const fnCanjearPuntos = callable<CanjearPuntosInput, CanjearPuntosOutput>(
   "canjearPuntos",
 );
+
+export type RecuperarCodigoInput = { phone?: string; email?: string };
+export type RecuperarCodigoOutput = { ok: boolean; email: string; code: string };
+export const fnRecuperarCodigoPuntos = callable<
+  RecuperarCodigoInput,
+  RecuperarCodigoOutput
+>("recuperarCodigoPuntos");

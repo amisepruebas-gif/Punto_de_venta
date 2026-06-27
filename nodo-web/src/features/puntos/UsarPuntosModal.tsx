@@ -1,7 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fnConsultarSaldoPuntos } from "@/firebase/callable";
+import { fnConsultarSaldoPuntos, fnRecuperarCodigoPuntos } from "@/firebase/callable";
+import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
+import { useSucursal } from "@/features/sucursal/useSucursal";
+import { formatearTicketRecuperacion } from "./ticketRecuperacion";
 
 export type AplicarPuntos = {
   telefono: string;
@@ -36,6 +39,11 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   } | null>(null);
   const [monto, setMonto] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Recuperación de contraseña (re-emite una nueva; la vieja va hasheada).
+  const { sucursal } = useSucursal();
+  const [recuperando, setRecuperando] = useState(false);
+  const [recovered, setRecovered] = useState<{ email: string; code: string } | null>(null);
+  const [printMsg, setPrintMsg] = useState<string | null>(null);
 
   if (!open) return null;
 
@@ -97,11 +105,51 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     reset();
   }
 
+  async function recuperar() {
+    setError(null);
+    setRecovered(null);
+    setPrintMsg(null);
+    const tel = telefono.trim();
+    if (tel.replace(/\D/g, "").length < 10) {
+      setError("Teléfono inválido.");
+      return;
+    }
+    setRecuperando(true);
+    try {
+      const res = await fnRecuperarCodigoPuntos({ phone: tel });
+      setRecovered({ email: res.data.email, code: res.data.code });
+      setSaldo(null);
+    } catch (e) {
+      setError((e as Error)?.message || "No se pudo recuperar la contraseña.");
+    } finally {
+      setRecuperando(false);
+    }
+  }
+
+  function imprimirRecuperacion() {
+    if (!recovered) return;
+    const formato = formatearTicketRecuperacion({
+      email: recovered.email,
+      code: recovered.code,
+      fecha: new Date().toLocaleString("es-MX"),
+      sucursalNombre: sucursal?.nombre
+    });
+    if (!posDisponible()) {
+      setPrintMsg("Sin impresora conectada. La contraseña está visible arriba.");
+      return;
+    }
+    imprimirTicket({ formato }).then((r) => {
+      setPrintMsg(r.ok ? "Ticket enviado a la impresora." : `No se pudo imprimir: ${r.error}`);
+    });
+  }
+
   function reset() {
     setTelefono("");
     setSaldo(null);
     setMonto("");
     setError(null);
+    setRecovered(null);
+    setPrintMsg(null);
     onClose();
   }
 
@@ -132,9 +180,40 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
           </Button>
         </form>
 
+        {!recovered && (
+          <button
+            type="button"
+            onClick={recuperar}
+            disabled={recuperando}
+            className="text-sm font-semibold text-indigo-600 underline disabled:opacity-50"
+          >
+            {recuperando ? "Recuperando…" : "Recuperar contraseña"}
+          </button>
+        )}
+
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        {saldo && (
+        {recovered && (
+          <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">
+            <p className="text-sm">
+              Contraseña nueva para <strong>{recovered.email}</strong>:
+            </p>
+            <p className="text-center text-3xl font-bold tracking-[0.3em]">
+              {recovered.code}
+            </p>
+            {printMsg && <p className="text-[12px] text-text-soft">{printMsg}</p>}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={reset}>
+                Listo
+              </Button>
+              <Button type="button" className="flex-1" onClick={imprimirRecuperacion}>
+                Imprimir
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {saldo && !recovered && (
           <div className="space-y-3">
             <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
               Disponible para usar:{" "}
@@ -169,7 +248,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
           </div>
         )}
 
-        {!saldo && (
+        {!saldo && !recovered && (
           <Button type="button" variant="ghost" className="w-full" onClick={onClose}>
             Cancelar
           </Button>

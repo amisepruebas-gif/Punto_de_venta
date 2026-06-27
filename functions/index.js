@@ -2091,3 +2091,23 @@ exports.canjearPuntos = onCall(
     },
 );
 
+// Recupera la contraseña de puntos (re-emite una NUEVA: la vieja se guarda
+// hasheada y no se puede leer). Solo para cuentas NO activadas.
+// Input: { phone?|email? } → { ok, email, code }.
+exports.recuperarCodigoPuntos = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      // auth best-effort (POS sin login fijo). Seguridad real: secreto server-side.
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {phone, email} = request.data || {};
+      if (!phone && !email) {
+        throw new HttpsError("invalid-argument", "phone o email requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/recover-code", {phone, email});
+      return {ok: true, email: data.email || "", code: data.code || ""};
+    },
+);
+
