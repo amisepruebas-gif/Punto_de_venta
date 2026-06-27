@@ -259,6 +259,26 @@ export function Ventas() {
     const puntosTel = preview.puntosTelefono;
     const puntosRedeem = Number(preview.puntosRedeem) || 0;
     const descPuntos = preview.descuentoPuntos;
+
+    // USAR puntos REQUIERE conexión: se debitan EN LÍNEA *antes* de crear la venta.
+    // Si falla (sin red o saldo), se aborta el cobro: NO se aplica el descuento y
+    // NO se crea la venta (el modal muestra el error; el cajero quita los puntos o
+    // reintenta). Idempotente por la idempotencyKey del preview (estable en retry).
+    // (Acumular puntos SÍ funciona offline — es seguro porque solo suma.)
+    if (puntosTel && puntosRedeem > 0) {
+      try {
+        await fnCanjearPuntos({
+          phone: puntosTel,
+          points: puntosRedeem,
+          idempotencyKey: preview.idempotencyKey
+        });
+      } catch {
+        throw new Error(
+          "No se pudieron usar los puntos (sin conexión o saldo). Quita los puntos o reintenta.",
+        );
+      }
+    }
+
     const result = await crearVenta({
       negocioId,
       sucursalId,
@@ -274,26 +294,14 @@ export function Ventas() {
       window.setTimeout(() => setToast(null), 4000);
     }
 
-    // PT-10: cliente EXISTENTE identificado al cobrar (canje y/o acumulación).
-    // Primero se debitan los puntos usados; luego se acreditan sobre lo pagado
-    // por método (= montoCobro neto). Ambos idempotentes por ventaId.
+    // PT-10: cliente EXISTENTE. El canje (débito) ya ocurrió en línea arriba; aquí
+    // solo se ACREDITA sobre lo pagado por método (= montoCobro neto). La
+    // acreditación es best-effort y puede encolarse offline (idempotente por ventaId).
     if (puntosTel) {
       const ventaFinal: Venta =
         descPuntos && Number(descPuntos) > 0
           ? { ...result.venta, descuentoPuntos: descPuntos }
           : result.venta;
-      if (puntosRedeem > 0) {
-        const canjePayload = {
-          phone: puntosTel,
-          points: puntosRedeem,
-          idempotencyKey: result.venta.ventaId
-        };
-        fnCanjearPuntos(canjePayload).catch(() => {
-          useClientePuntos.getState().encolar("canje", canjePayload);
-          setToast("Canje encolado (sin conexión).");
-          window.setTimeout(() => setToast(null), 4000);
-        });
-      }
       const earnPayload = {
         phone: puntosTel,
         amount: Number(monto) || 0,
