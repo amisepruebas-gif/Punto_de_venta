@@ -18,7 +18,9 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 // Secreto compartido con amise.mx para el monedero de puntos.
 // Setear con: firebase functions:secrets:set LOYALTY_POS_SECRET
 const LOYALTY_POS_SECRET = defineSecret("LOYALTY_POS_SECRET");
-const AMISE_API_BASE = "https://amise.mx";
+// Dominio CANÓNICO: amise.mx (apex) hace 308 → www y se pierde el header
+// Authorization. Hay que llamar directo a www para que el Bearer llegue.
+const AMISE_API_BASE = "https://www.amise.mx";
 const ROLES_PUNTOS = ["nodo", "vendedor", "admin", "superadmin"];
 const admin = require("firebase-admin");
 const express = require("express");
