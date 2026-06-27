@@ -401,6 +401,10 @@ export type Venta = {
   puntosGanados?: string;
   /** Descuento aplicado por canje de puntos (pesos) — para el ticket/registro. */
   descuentoPuntos?: string;
+  /** Cliente de puntos vinculado a la venta (auditoría). NO se guarda la
+   *  contraseña temporal — es credencial. Se escriben vía updateDoc post-venta. */
+  puntosClienteEmail?: string;
+  puntosClienteTelefono?: string;
 };
 
 // ---------- Corte de caja ----------

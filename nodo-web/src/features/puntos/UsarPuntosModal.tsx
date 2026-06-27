@@ -43,8 +43,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   // Descuento REAL que se aplicará (puntos enteros): puede ser ≤ lo pedido si el
   // punto vale más de $1. Se muestra en vivo para que no haya sorpresas.
   const pedido = Math.min(Number(monto) || 0, tope);
-  const puntosPreview = saldo ? Math.floor(pedido / saldo.valorPunto) : 0;
-  const descuentoPreview = puntosPreview * (saldo?.valorPunto ?? 0);
+  // Defensa: el server garantiza valorPunto > 0, pero evitamos dividir por 0/NaN.
+  const vp = saldo && saldo.valorPunto > 0 ? saldo.valorPunto : 1;
+  const puntosPreview = saldo ? Math.floor(pedido / vp) : 0;
+  const descuentoPreview = puntosPreview * vp;
 
   async function consultar(e: FormEvent) {
     e.preventDefault();
