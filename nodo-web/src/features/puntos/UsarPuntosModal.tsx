@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fnConsultarSaldoPuntos, fnRecuperarCodigoPuntos } from "@/firebase/callable";
@@ -168,7 +169,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     onClose();
   }
 
-  return (
+  // Portal a document.body: el modal se renderiza dentro de PagoFooter (bloque
+  // `z-10`), y sin portal su `z-[60]` queda ATRAPADO bajo el buscador (`z-30`,
+  // contexto de apilamiento hermano). El portal lo saca al body → sobre todo.
+  return createPortal(
     <div
       className="pointer-events-auto fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
       onClick={onClose}
@@ -279,6 +283,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
           </Button>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
