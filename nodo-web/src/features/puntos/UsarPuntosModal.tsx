@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fnConsultarSaldoPuntos, fnRecuperarCodigoPuntos } from "@/firebase/callable";
@@ -44,6 +44,19 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   const [recuperando, setRecuperando] = useState(false);
   const [recovered, setRecovered] = useState<{ email: string; code: string } | null>(null);
   const [printMsg, setPrintMsg] = useState<string | null>(null);
+
+  // El componente queda montado (return null abajo) → el estado local persiste.
+  // Limpiar al ABRIR para no arrastrar el teléfono/saldo del cliente anterior.
+  useEffect(() => {
+    if (open) {
+      setTelefono("");
+      setSaldo(null);
+      setMonto("");
+      setError(null);
+      setRecovered(null);
+      setPrintMsg(null);
+    }
+  }, [open]);
 
   if (!open) return null;
 

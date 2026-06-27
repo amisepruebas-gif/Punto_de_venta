@@ -109,6 +109,8 @@ export type AcreditarPuntosOutput = {
   balance: number;
   /** Valor en pesos de 1 punto (para mostrar el saldo en dinero). */
   valorPunto?: number;
+  /** true si la acreditación ya existía (idempotente) — para distinguir del monto bajo. */
+  already?: boolean;
 };
 export const fnAcreditarPuntos = callable<AcreditarPuntosInput, AcreditarPuntosOutput>(
   "acreditarPuntos",

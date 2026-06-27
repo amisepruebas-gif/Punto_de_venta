@@ -9,7 +9,8 @@ import {
   type CanjearPuntosInput,
 } from "@/firebase/callable";
 
-const MAX_INTENTOS = 8;
+const MAX_INTENTOS = 60; // ~60 min de reintentos (antes 8 = solo 8 min). La cola
+// persiste en localStorage (sobrevive recargas), así que esto da margen amplio.
 
 /**
  * Reintenta las llamadas de puntos encoladas (offline-robusto): al montar, al
@@ -37,6 +38,15 @@ export function usePuntosColaFlush() {
           useClientePuntos.getState().quitarDeCola(item.id);
         } catch {
           if (item.intentos + 1 >= MAX_INTENTOS) {
+            // Descarte tras agotar reintentos: dejar rastro para auditoría (no
+            // se pierde en silencio). Lo idóneo a futuro: bandera en admin-web.
+            console.error(
+              "[PUNTOS] Movimiento DESCARTADO tras",
+              MAX_INTENTOS,
+              "intentos:",
+              item.tipo,
+              item.payload,
+            );
             useClientePuntos.getState().quitarDeCola(item.id);
           } else {
             useClientePuntos.getState().incrementarIntento(item.id);

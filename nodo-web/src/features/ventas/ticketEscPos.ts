@@ -169,6 +169,13 @@ export function formatearTicketEscPos(
   );
   out.push("[L]\n");
 
+  // Aviso INTERNO de sobreventa (se cobró sin stock suficiente). Discreto
+  // (letra chica) para auditoría/inventario sin alarmar al cliente.
+  if (venta.sobreventa) {
+    out.push("[C]<font size='small'>* articulo sin stock al cobrar *</font>\n");
+    out.push("[L]\n");
+  }
+
   // Descuento por canje de puntos (informativo; el TOTAL ya viene neto).
   if (venta.descuentoPuntos && Number(venta.descuentoPuntos) > 0) {
     out.push(`[L]Descuento por puntos[R]-$${s(venta.descuentoPuntos)}\n`);

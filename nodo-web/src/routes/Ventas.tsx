@@ -130,6 +130,9 @@ export function Ventas() {
   const [preview, setPreview] = useState<
     (CobrarPayload & { idempotencyKey: string }) | null
   >(null);
+  // Señal para limpiar clientePuntos/descuentoPuntos en PagoFooter al
+  // FINALIZAR o CANCELAR una venta (que no quede anclado entre ventas).
+  const [resetPuntosSignal, setResetPuntosSignal] = useState(0);
   // `ultimaVenta` se conserva todo el tiempo que el cajero esté en la
   // pantalla — la usa el FAB de reimprimir. NO se muestra como modal
   // automáticamente al cerrar la venta: el modal de ticket solo aparece
@@ -228,13 +231,18 @@ export function Ventas() {
   // cuando la APK responde, mientras tanto el cajero ya puede seguir
   // operando. Si no hay POS, devuelve false para que el caller decida
   // el fallback (en este flujo: abrir TicketModal PDF).
-  function imprimirTicketNativo(venta: Venta): boolean {
+  function imprimirTicketNativo(venta: Venta, puntosMsg?: string): boolean {
     if (!posDisponible()) return false;
     const formato = formatearTicketEscPos(venta, sucursal);
     imprimirTicket({ formato }).then((res) => {
       if (res.ok) {
-        setToast(`Ticket impreso #${venta.numeroDeVenta}`);
-        window.setTimeout(() => setToast(null), 3000);
+        // Unifica el feedback de puntos con el de impresión para que NO se pise.
+        setToast(
+          puntosMsg
+            ? `${puntosMsg} · Ticket #${venta.numeroDeVenta}`
+            : `Ticket impreso #${venta.numeroDeVenta}`,
+        );
+        window.setTimeout(() => setToast(null), puntosMsg ? 6000 : 3000);
       } else {
         setToast(`No se pudo imprimir: ${res.error}`);
         window.setTimeout(() => setToast(null), 6000);
@@ -244,10 +252,17 @@ export function Ventas() {
   }
 
   // Finaliza la venta: registra como última, muestra overlay e imprime.
-  function finalizarVenta(venta: Venta) {
+  function finalizarVenta(venta: Venta, puntosMsg?: string) {
     setUltimaVenta(venta);
     setOverlayShow(true);
-    imprimirTicketNativo(venta);
+    const printed = imprimirTicketNativo(venta, puntosMsg);
+    // Sin impresora no hay toast desde imprimir → mostrar el de puntos aquí.
+    if (!printed && puntosMsg) {
+      setToast(puntosMsg);
+      window.setTimeout(() => setToast(null), 5000);
+    }
+    // Limpiar clientePuntos/descuentoPuntos del footer (no anclar entre ventas).
+    setResetPuntosSignal((n) => n + 1);
   }
 
   async function confirmarVenta() {
@@ -309,8 +324,9 @@ export function Ventas() {
         sucursalId,
         nodoId
       };
-      // Esperamos la acreditación para dar FEEDBACK (toast + ticket). Si falla
-      // (sin red), se encola y se reintenta — la venta NO se bloquea.
+      // Esperamos la acreditación para dar FEEDBACK (toast unificado en el ticket).
+      // Si falla (sin red), se encola y reintenta — la venta NO se bloquea.
+      let puntosMsg = "";
       try {
         const res = await fnAcreditarPuntos(earnPayload);
         const added = Number(res.data.added) || 0;
@@ -322,17 +338,22 @@ export function Ventas() {
             puntosGanados: String(added),
             puntosSaldoDinero: saldoDinero.toFixed(2)
           };
-          setToast(`Acumuló ${added} pts · saldo $${saldoDinero.toFixed(2)}`);
+          puntosMsg = `Acumuló ${added} pts · saldo $${saldoDinero.toFixed(2)}`;
+          // Persistir en la venta para auditoría en admin-web. Best-effort.
+          void updateDoc(doc(db, result.path), {
+            puntosGanados: String(added),
+            puntosSaldoDinero: saldoDinero.toFixed(2)
+          }).catch(() => {});
+        } else if (res.data.already) {
+          puntosMsg = "Puntos ya acreditados (reintento).";
         } else {
-          setToast("Esta venta no generó puntos (monto mínimo no alcanzado).");
+          puntosMsg = "Sin puntos en esta venta (monto mínimo no alcanzado).";
         }
-        window.setTimeout(() => setToast(null), 5000);
       } catch {
         useClientePuntos.getState().encolar("earn", earnPayload);
-        setToast("Puntos: se acreditarán al reconectar.");
-        window.setTimeout(() => setToast(null), 4000);
+        puntosMsg = "Puntos: se acreditarán al reconectar.";
       }
-      finalizarVenta(ventaFinal);
+      finalizarVenta(ventaFinal, puntosMsg);
       return;
     }
 
@@ -368,7 +389,7 @@ export function Ventas() {
 
   // "Sí": acreditar los puntos de esta venta + imprimir el ticket con la
   // contraseña temporal + limpiar el pendiente.
-  function handleVincularSi() {
+  async function handleVincularSi() {
     const sel = ventaParaVincular;
     const pend = useClientePuntos.getState().pendiente;
     setVinculacionOpen(false);
@@ -377,7 +398,7 @@ export function Ventas() {
       if (sel) finalizarVenta(sel.venta);
       return;
     }
-    const venta: Venta = { ...sel.venta, codigoPuntos: pend.code };
+    let venta: Venta = { ...sel.venta, codigoPuntos: pend.code };
     const payload = {
       email: pend.correo,
       phone: pend.telefono,
@@ -386,19 +407,40 @@ export function Ventas() {
       sucursalId,
       nodoId,
     };
-    fnAcreditarPuntos(payload).catch(() => {
+    // Esperar la acreditación para feedback + reflejarla en el ticket; si falla,
+    // encolar (no bloquea el ticket con la contraseña temporal).
+    let puntosMsg = "";
+    try {
+      const res = await fnAcreditarPuntos(payload);
+      const added = Number(res.data.added) || 0;
+      const balance = Number(res.data.balance) || 0;
+      const saldoDinero = balance * (Number(res.data.valorPunto) || 1);
+      if (added > 0) {
+        venta = {
+          ...venta,
+          puntosGanados: String(added),
+          puntosSaldoDinero: saldoDinero.toFixed(2)
+        };
+        puntosMsg = `Acumuló ${added} pts · saldo $${saldoDinero.toFixed(2)}`;
+      }
+    } catch {
       useClientePuntos.getState().encolar("earn", payload);
-      setToast("Puntos: se acreditarán al reconectar (sin conexión).");
-      window.setTimeout(() => setToast(null), 4000);
-    });
-    // Marca de auditoría en la venta: correo/teléfono del cliente (NO la
-    // contraseña temporal, que es una credencial). Best-effort, no bloquea.
+      puntosMsg = "Puntos: se acreditarán al reconectar (sin conexión).";
+    }
+    // Auditoría en la venta: correo/teléfono (NO la contraseña, es credencial)
+    // + puntos ganados. Best-effort, no bloquea.
     void updateDoc(doc(db, sel.path), {
       puntosClienteEmail: pend.correo,
       puntosClienteTelefono: pend.telefono,
+      ...(venta.puntosGanados
+        ? {
+            puntosGanados: venta.puntosGanados,
+            puntosSaldoDinero: venta.puntosSaldoDinero
+          }
+        : {})
     }).catch(() => {});
     useClientePuntos.getState().limpiarPendiente();
-    finalizarVenta(venta);
+    finalizarVenta(venta, puntosMsg);
   }
 
   // "No": no acreditar esta venta; el pendiente se mantiene para la correcta.
@@ -544,6 +586,7 @@ export function Ventas() {
             className="pointer-events-none absolute inset-x-0 bottom-0"
           >
             <PagoFooter
+              resetSignal={resetPuntosSignal}
               onCobrar={(data) =>
                 setPreview({ ...data, idempotencyKey: generarID() })
               }
@@ -554,7 +597,10 @@ export function Ventas() {
 
       <ConfirmarVentaModal
         data={preview}
-        onCancel={() => setPreview(null)}
+        onCancel={() => {
+          setPreview(null);
+          setResetPuntosSignal((n) => n + 1);
+        }}
         onConfirm={confirmarVenta}
       />
 

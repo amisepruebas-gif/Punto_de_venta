@@ -46,6 +46,10 @@ export type CobrarPayload = {
 
 type Props = {
   onCobrar: (data: CobrarPayload) => void;
+  /** Contador que, al cambiar, fuerza limpiar clientePuntos/descuentoPuntos.
+   *  El padre lo incrementa al finalizar o cancelar una venta para que NO quede
+   *  anclado el cliente/descuento de la venta anterior. */
+  resetSignal?: number;
 };
 
 /**
@@ -59,7 +63,7 @@ type Props = {
  *
  * Sin TARJETA/TRANSFERENCIA activas, COBRAR usa EFECTIVO por default.
  */
-export function PagoFooter({ onCobrar }: Props) {
+export function PagoFooter({ onCobrar, resetSignal }: Props) {
   const { items, enTurno, vendedorIdUsuario } = useCarrito();
   const { negocioId, sucursalId, nodoId } = useNodoSession();
   const { sucursal } = useSucursal();
@@ -99,6 +103,14 @@ export function PagoFooter({ onCobrar }: Props) {
     setDescuentoPuntos(0);
     setClientePuntos(null);
   }, [subtotalBruto]);
+
+  // Reset explícito por señal del padre (al FINALIZAR o CANCELAR una venta) para
+  // que el cliente/descuento de puntos NUNCA quede anclado entre ventas, aunque
+  // el carrito no cambie de subtotal.
+  useEffect(() => {
+    setDescuentoPuntos(0);
+    setClientePuntos(null);
+  }, [resetSignal]);
 
   // Comisión — solo aplica con tarjeta y si la sucursal tiene cobrarComision=true
   const comisionPct = sucursal?.comisionTarjetaPct ?? COMISION_DEFAULT;

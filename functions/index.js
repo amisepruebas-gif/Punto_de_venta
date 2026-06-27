@@ -2039,6 +2039,7 @@ exports.acreditarPuntos = onCall(
         added: Number(data.added) || 0,
         balance: Number(data.balance) || 0,
         valorPunto: Number(data.valorPunto) || 1,
+        already: Boolean(data.already),
       };
     },
 );

@@ -90,6 +90,7 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
   let numeroDeVenta = "";
   let offline = false;
   let yaExistia = false;
+  let huboSobreventa = false;
 
   // FASE 3A: si la venta cierra un apartado existente, el stock ya fue
   // reservado al crear ese apartado → no decrementar otra vez.
@@ -125,7 +126,8 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
       // venta caía a falso-"OFFLINE" aunque hubiera internet. Solo aborta por
       // artículo/variación inexistente (errores reales), no por falta de stock.
       if (!desdeApartado) {
-        planearDecremento(stockEstados, input.articulos, { permitirSobreventa: true });
+        const r = planearDecremento(stockEstados, input.articulos, { permitirSobreventa: true });
+        huboSobreventa = r.sobreventa;
       }
 
       // FASE 1: arrancar contador en 0 (primera venta = "1") en vez de -1.
@@ -135,7 +137,7 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
       numeroDeVenta = String(prev + 1);
 
       // ---------- FASE DE ESCRITURAS ----------
-      const v = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d });
+      const v = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d, sobreventa: huboSobreventa });
       tx.set(ventaRef, v);
       tx.set(
         contadorRef,
@@ -155,7 +157,7 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
     // sigue siendo idempotente vía `numeroDeVenta.startsWith("OFFLINE-")`.
     offline = true;
     numeroDeVenta = `OFFLINE-${nodoId.slice(0, 6)}-${Date.now()}`;
-    const v = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d });
+    const v = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d, sobreventa: huboSobreventa });
     await setDoc(ventaRef, v);
     console.warn("Venta en modo OFFLINE:", (err as Error).message);
   }
@@ -164,11 +166,11 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
     // El doc ya existía — devolvemos su path con offline=false (no se
     // creó nada nuevo). El caller decide qué hacer (típicamente, mostrar
     // el ticket existente como si la venta hubiera sido fresca).
-    const venta = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d });
+    const venta = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d, sobreventa: huboSobreventa });
     return { venta, path: ventaRef.path, offline: false };
   }
 
-  const venta = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d });
+  const venta = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d, sobreventa: huboSobreventa });
 
   // Actualizar huella fuera de la transacción (trigger de sync). Best-effort.
   try {
@@ -192,6 +194,7 @@ function buildVenta(p: NuevaVentaInput & {
   y: string;
   m: string;
   d: string;
+  sobreventa?: boolean;
 }): Venta {
   const v: Venta = {
     ventaId: p.ventaId,
@@ -219,6 +222,7 @@ function buildVenta(p: NuevaVentaInput & {
   if (p.descuentoPuntos && Number(p.descuentoPuntos) > 0) {
     v.descuentoPuntos = p.descuentoPuntos;
   }
+  if (p.sobreventa) v.sobreventa = true;
   return v;
 }
 
