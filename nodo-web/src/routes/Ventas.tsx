@@ -422,6 +422,8 @@ export function Ventas() {
           puntosSaldoDinero: saldoDinero.toFixed(2)
         };
         puntosMsg = `Acumuló ${added} pts · saldo $${saldoDinero.toFixed(2)}`;
+      } else if (res.data.already) {
+        puntosMsg = "Puntos ya acreditados (reintento).";
       }
     } catch {
       useClientePuntos.getState().encolar("earn", payload);
