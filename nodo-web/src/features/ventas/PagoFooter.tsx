@@ -115,6 +115,19 @@ export function PagoFooter({ onCobrar }: Props) {
   const sinSesion = !negocioId || !sucursalId || !nodoId;
   const efectivoOK = metodo !== "pagoEfectivo" || recibidoNum >= total;
 
+  // Motivo por el que COBRAR queda deshabilitado, para que el cajero NO quede
+  // adivinando. Reusa los MISMOS booleanos del `disabled` del botón (single
+  // source of truth). Solo cubre los casos sin aviso propio: carrito vacío,
+  // sin vendedor y desmarcados ya tienen su banner en otro lado.
+  const motivoCobrar =
+    vacio || sinVendedor || tieneDesmarcados
+      ? null
+      : sinSesion
+      ? "Este equipo no tiene sesión de nodo: regístralo para poder cobrar."
+      : !efectivoOK
+      ? `Ingresa el efectivo recibido (faltan $${Math.max(0, total - recibidoNum).toFixed(0)}).`
+      : null;
+
   // Si el padre vacía el carrito tras una venta confirmada, reseteamos el
   // estado local del footer (recibido + método).
   useEffect(() => {
@@ -246,6 +259,11 @@ export function PagoFooter({ onCobrar }: Props) {
           role="alert"
         >
           {error}
+        </p>
+      )}
+      {motivoCobrar && !error && (
+        <p className="pointer-events-auto bg-amber-100 px-3 py-0.5 text-center text-[11px] font-semibold text-amber-900">
+          {motivoCobrar}
         </p>
       )}
 
