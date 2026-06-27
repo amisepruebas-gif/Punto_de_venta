@@ -399,6 +399,8 @@ export type Venta = {
   codigoPuntos?: string;
   /** Puntos ganados en esta venta (informativo para el ticket). */
   puntosGanados?: string;
+  /** Saldo del cliente en dinero tras acreditar (informativo para el ticket). No se persiste. */
+  puntosSaldoDinero?: string;
   /** Descuento aplicado por canje de puntos (pesos) — para el ticket/registro. */
   descuentoPuntos?: string;
   /** Cliente de puntos vinculado a la venta (auditoría). NO se guarda la

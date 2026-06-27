@@ -120,9 +120,12 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
         : await leerStockEnTx(tx, negocioId, input.articulos);
 
       // ---------- FASE DE VALIDACIÓN ----------
-      // FASE 3A: si falla validación de stock, lanza y aborta sin escribir.
+      // SOBREVENTA permitida al cobrar (decisión de negocio): si el stock es
+      // insuficiente NO se aborta — se reduce hasta 0 (clamp). Antes lanzaba y la
+      // venta caía a falso-"OFFLINE" aunque hubiera internet. Solo aborta por
+      // artículo/variación inexistente (errores reales), no por falta de stock.
       if (!desdeApartado) {
-        planearDecremento(stockEstados, input.articulos);
+        planearDecremento(stockEstados, input.articulos, { permitirSobreventa: true });
       }
 
       // FASE 1: arrancar contador en 0 (primera venta = "1") en vez de -1.

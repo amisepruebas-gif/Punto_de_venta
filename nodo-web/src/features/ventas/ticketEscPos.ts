@@ -175,6 +175,17 @@ export function formatearTicketEscPos(
     out.push("[L]\n");
   }
 
+  // Puntos ACUMULADOS en esta venta (cliente recurrente). Informativo.
+  if (venta.puntosGanados && Number(venta.puntosGanados) > 0) {
+    out.push("[C]<b>* PUNTOS AMISE *</b>\n");
+    out.push(`[L]Puntos ganados[R]<b>+${s(venta.puntosGanados)}</b>\n`);
+    if (venta.puntosSaldoDinero) {
+      out.push(`[L]Saldo disponible[R]<b>$${s(venta.puntosSaldoDinero)}</b>\n`);
+    }
+    out.push("[C]<font size='small'>Consulta tus puntos en amise.mx</font>\n");
+    out.push("[L]\n");
+  }
+
   // Puntos de lealtad: contraseña temporal para activar la cuenta en amise.mx.
   if (venta.codigoPuntos) {
     out.push("[C]<b>* PUNTOS AMISE *</b>\n");

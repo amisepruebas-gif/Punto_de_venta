@@ -103,7 +103,13 @@ export type AcreditarPuntosInput = {
   sucursalId: string;
   nodoId: string;
 };
-export type AcreditarPuntosOutput = { ok: boolean; added: number; balance: number };
+export type AcreditarPuntosOutput = {
+  ok: boolean;
+  added: number;
+  balance: number;
+  /** Valor en pesos de 1 punto (para mostrar el saldo en dinero). */
+  valorPunto?: number;
+};
 export const fnAcreditarPuntos = callable<AcreditarPuntosInput, AcreditarPuntosOutput>(
   "acreditarPuntos",
 );

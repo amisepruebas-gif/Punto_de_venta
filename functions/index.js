@@ -2034,7 +2034,12 @@ exports.acreditarPuntos = onCall(
         sucursalId: t.sucursalId || request.data.sucursalId || null,
         nodoId: t.nodoId || request.data.nodoId || null,
       });
-      return {ok: true, added: Number(data.added) || 0, balance: Number(data.balance) || 0};
+      return {
+        ok: true,
+        added: Number(data.added) || 0,
+        balance: Number(data.balance) || 0,
+        valorPunto: Number(data.valorPunto) || 1,
+      };
     },
 );
 

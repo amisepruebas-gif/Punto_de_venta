@@ -69,10 +69,12 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     try {
       const res = await fnConsultarSaldoPuntos({ phone: tel });
       const d = res.data;
-      if (!d.exists || (d.saldoUsable ?? 0) <= 0) {
-        setError("Este cliente no tiene puntos disponibles.");
+      if (!d.exists) {
+        setError("Este cliente no tiene monedero. Regístralo primero.");
         setSaldo(null);
       } else {
+        // Existe: se puede ACUMULAR aunque tenga 0 puntos. "Usar" se habilita en
+        // el render solo si saldoUsable > 0.
         setSaldo({ saldoUsable: d.saldoUsable ?? 0, valorPunto: d.valorPunto ?? 1 });
       }
     } catch {
@@ -215,35 +217,45 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
         {saldo && !recovered && (
           <div className="space-y-3">
-            <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
-              Disponible para usar:{" "}
-              <strong className="text-base">{money(saldo.saldoUsable)}</strong>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">¿Cuánto usar en esta venta?</label>
-              <Input
-                type="number"
-                inputMode="decimal"
-                placeholder={`Máximo ${money(tope)}`}
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-              />
-              <p className="text-[12px] text-text-soft">
-                Tope: {money(tope)} (lo menor entre el total y su saldo).
-              </p>
-              {pedido > 0 && (
-                <p className="text-[13px] font-semibold text-indigo-600">
-                  Se aplicarán: {money(descuentoPreview)}
-                </p>
-              )}
-            </div>
+            {saldo.saldoUsable > 0 ? (
+              <>
+                <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
+                  Disponible para usar:{" "}
+                  <strong className="text-base">{money(saldo.saldoUsable)}</strong>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">¿Cuánto usar en esta venta?</label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder={`Máximo ${money(tope)}`}
+                    value={monto}
+                    onChange={(e) => setMonto(e.target.value)}
+                  />
+                  <p className="text-[12px] text-text-soft">
+                    Tope: {money(tope)} (lo menor entre el total y su saldo).
+                  </p>
+                  {pedido > 0 && (
+                    <p className="text-[13px] font-semibold text-indigo-600">
+                      Se aplicarán: {money(descuentoPreview)}
+                    </p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
+                Aún no tiene saldo para usar. Puedes <strong>acumular</strong> en esta venta.
+              </div>
+            )}
             <div className="flex gap-2 pt-1">
               <Button type="button" variant="outline" className="flex-1" onClick={soloAcumular}>
-                Solo acumular
+                Acumular en esta venta
               </Button>
-              <Button type="button" className="flex-1" onClick={aplicarUsar}>
-                Usar puntos
-              </Button>
+              {saldo.saldoUsable > 0 && (
+                <Button type="button" className="flex-1" onClick={aplicarUsar}>
+                  Usar puntos
+                </Button>
+              )}
             </div>
           </div>
         )}

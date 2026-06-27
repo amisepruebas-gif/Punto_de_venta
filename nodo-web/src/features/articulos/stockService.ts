@@ -110,7 +110,12 @@ export async function leerStockEnTx(
 export function planearDecremento(
   estados: Map<string, StockEstado>,
   items: ItemStock[],
+  opts?: { permitirSobreventa?: boolean },
 ): void {
+  // Sobreventa: al COBRAR permitimos vender aunque el stock sea insuficiente
+  // (decisión de negocio). En vez de lanzar, el stock se reduce hasta 0 (clamp).
+  // Apartados u otros callers NO pasan el flag → siguen validando estricto.
+  const sobreventa = opts?.permitirSobreventa ?? false;
   const grupos = agruparItems(items);
   for (const g of grupos) {
     const e = estados.get(g.articuloId);
@@ -128,7 +133,7 @@ export function planearDecremento(
       }
       const sv = e.subvariaciones[idx];
       const stockSv = Number(sv.cantidad) || 0;
-      if (stockSv < g.cantidad) {
+      if (stockSv < g.cantidad && !sobreventa) {
         const etiqueta = sv.nombre || g.subvariacionCodigo;
         throw new Error(
           `Stock insuficiente: "${g.nombreLegible} · ${etiqueta}" — hay ${stockSv}, pides ${g.cantidad}`,
@@ -136,17 +141,17 @@ export function planearDecremento(
       }
       e.subvariaciones[idx] = {
         ...sv,
-        cantidad: String(stockSv - g.cantidad),
+        cantidad: String(Math.max(0, stockSv - g.cantidad)),
       };
       e.cantidad = Math.max(0, e.cantidad - g.cantidad);
       e.tocado = true;
     } else {
-      if (e.cantidad < g.cantidad) {
+      if (e.cantidad < g.cantidad && !sobreventa) {
         throw new Error(
           `Stock insuficiente: "${g.nombreLegible}" — hay ${e.cantidad}, pides ${g.cantidad}`,
         );
       }
-      e.cantidad = e.cantidad - g.cantidad;
+      e.cantidad = Math.max(0, e.cantidad - g.cantidad);
       e.tocado = true;
     }
   }

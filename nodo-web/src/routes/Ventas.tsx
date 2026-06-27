@@ -298,7 +298,7 @@ export function Ventas() {
     // solo se ACREDITA sobre lo pagado por método (= montoCobro neto). La
     // acreditación es best-effort y puede encolarse offline (idempotente por ventaId).
     if (puntosTel) {
-      const ventaFinal: Venta =
+      let ventaFinal: Venta =
         descPuntos && Number(descPuntos) > 0
           ? { ...result.venta, descuentoPuntos: descPuntos }
           : result.venta;
@@ -309,9 +309,29 @@ export function Ventas() {
         sucursalId,
         nodoId
       };
-      fnAcreditarPuntos(earnPayload).catch(() =>
-        useClientePuntos.getState().encolar("earn", earnPayload),
-      );
+      // Esperamos la acreditación para dar FEEDBACK (toast + ticket). Si falla
+      // (sin red), se encola y se reintenta — la venta NO se bloquea.
+      try {
+        const res = await fnAcreditarPuntos(earnPayload);
+        const added = Number(res.data.added) || 0;
+        const balance = Number(res.data.balance) || 0;
+        const saldoDinero = balance * (Number(res.data.valorPunto) || 1);
+        if (added > 0) {
+          ventaFinal = {
+            ...ventaFinal,
+            puntosGanados: String(added),
+            puntosSaldoDinero: saldoDinero.toFixed(2)
+          };
+          setToast(`Acumuló ${added} pts · saldo $${saldoDinero.toFixed(2)}`);
+        } else {
+          setToast("Esta venta no generó puntos (monto mínimo no alcanzado).");
+        }
+        window.setTimeout(() => setToast(null), 5000);
+      } catch {
+        useClientePuntos.getState().encolar("earn", earnPayload);
+        setToast("Puntos: se acreditarán al reconectar.");
+        window.setTimeout(() => setToast(null), 4000);
+      }
       finalizarVenta(ventaFinal);
       return;
     }
