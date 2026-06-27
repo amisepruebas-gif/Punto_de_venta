@@ -40,6 +40,11 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   if (!open) return null;
 
   const tope = saldo ? Math.min(maxTotal, saldo.saldoUsable) : 0;
+  // Descuento REAL que se aplicará (puntos enteros): puede ser ≤ lo pedido si el
+  // punto vale más de $1. Se muestra en vivo para que no haya sorpresas.
+  const pedido = Math.min(Number(monto) || 0, tope);
+  const puntosPreview = saldo ? Math.floor(pedido / saldo.valorPunto) : 0;
+  const descuentoPreview = puntosPreview * (saldo?.valorPunto ?? 0);
 
   async function consultar(e: FormEvent) {
     e.preventDefault();
@@ -69,19 +74,19 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
   function aplicarUsar() {
     if (!saldo) return;
-    const pesos = Math.min(Number(monto) || 0, tope);
-    if (pesos <= 0) {
+    if (pedido <= 0) {
       setError("Indica cuánto usar (mayor a 0).");
       return;
     }
-    // Puntos exactos que cubren ese monto (sin pasar el dinero pedido).
-    const puntos = Math.floor(pesos / saldo.valorPunto);
-    const descuentoReal = puntos * saldo.valorPunto;
-    if (puntos <= 0) {
+    if (puntosPreview <= 0) {
       setError("Monto demasiado bajo para usar puntos.");
       return;
     }
-    onAplicar({ telefono: telefono.trim(), descuento: descuentoReal, puntos });
+    onAplicar({
+      telefono: telefono.trim(),
+      descuento: descuentoPreview,
+      puntos: puntosPreview
+    });
     reset();
   }
 
@@ -145,6 +150,11 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
               <p className="text-[12px] text-text-soft">
                 Tope: {money(tope)} (lo menor entre el total y su saldo).
               </p>
+              {pedido > 0 && (
+                <p className="text-[13px] font-semibold text-indigo-600">
+                  Se aplicarán: {money(descuentoPreview)}
+                </p>
+              )}
             </div>
             <div className="flex gap-2 pt-1">
               <Button type="button" variant="outline" className="flex-1" onClick={soloAcumular}>

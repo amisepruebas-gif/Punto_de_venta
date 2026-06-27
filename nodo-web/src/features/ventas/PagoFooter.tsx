@@ -92,6 +92,14 @@ export function PagoFooter({ onCobrar }: Props) {
   // Total a cobrar = bruto menos los puntos aplicados como descuento.
   const total = Math.max(0, subtotalBruto - descuentoPuntos);
 
+  // Si el carrito cambia (se edita), invalidar el canje de puntos: el descuento
+  // se calculó sobre el total anterior y podría exceder el nuevo. El cajero
+  // vuelve a aplicarlo si quiere. Evita descontar más que el total.
+  useEffect(() => {
+    setDescuentoPuntos(0);
+    setClientePuntos(null);
+  }, [subtotalBruto]);
+
   // Comisión — solo aplica con tarjeta y si la sucursal tiene cobrarComision=true
   const comisionPct = sucursal?.comisionTarjetaPct ?? COMISION_DEFAULT;
   const comisionEnabled =
