@@ -9,10 +9,8 @@ import { formatearTicketRecuperacion } from "./ticketRecuperacion";
 
 export type AplicarPuntos = {
   telefono: string;
-  /** Descuento en pesos a aplicar a la venta (0 = solo acumular). */
+  /** Cashback en pesos a usar como descuento (0 = solo acumular). */
   descuento: number;
-  /** Puntos a debitar (0 = solo acumular). */
-  puntos: number;
 };
 
 type Props = {
@@ -34,10 +32,7 @@ const money = (n: number) =>
 export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   const [telefono, setTelefono] = useState("");
   const [consultando, setConsultando] = useState(false);
-  const [saldo, setSaldo] = useState<{
-    saldoUsable: number;
-    valorPunto: number;
-  } | null>(null);
+  const [saldo, setSaldo] = useState<{ saldoUsable: number } | null>(null);
   const [monto, setMonto] = useState("");
   const [error, setError] = useState<string | null>(null);
   // Recuperación de contraseña (re-emite una nueva; la vieja va hasheada).
@@ -62,13 +57,8 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   if (!open) return null;
 
   const tope = saldo ? Math.min(maxTotal, saldo.saldoUsable) : 0;
-  // Descuento REAL que se aplicará (puntos enteros): puede ser ≤ lo pedido si el
-  // punto vale más de $1. Se muestra en vivo para que no haya sorpresas.
-  const pedido = Math.min(Number(monto) || 0, tope);
-  // Defensa: el server garantiza valorPunto > 0, pero evitamos dividir por 0/NaN.
-  const vp = saldo && saldo.valorPunto > 0 ? saldo.valorPunto : 1;
-  const puntosPreview = saldo ? Math.floor(pedido / vp) : 0;
-  const descuentoPreview = puntosPreview * vp;
+  // Cashback 1:1 en $: el descuento es el monto pedido (a centavos), tope incluido.
+  const pedido = Math.round(Math.min(Number(monto) || 0, tope) * 100) / 100;
 
   async function consultar(e: FormEvent) {
     e.preventDefault();
@@ -89,7 +79,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
       } else {
         // Existe: se puede ACUMULAR aunque tenga 0 puntos. "Usar" se habilita en
         // el render solo si saldoUsable > 0.
-        setSaldo({ saldoUsable: d.saldoUsable ?? 0, valorPunto: d.valorPunto ?? 1 });
+        setSaldo({ saldoUsable: d.saldoUsable ?? 0 });
       }
     } catch {
       setError("No se pudo consultar el saldo. Revisa la conexión.");
@@ -104,20 +94,12 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
       setError("Indica cuánto usar (mayor a 0).");
       return;
     }
-    if (puntosPreview <= 0) {
-      setError("Monto demasiado bajo para usar puntos.");
-      return;
-    }
-    onAplicar({
-      telefono: telefono.trim(),
-      descuento: descuentoPreview,
-      puntos: puntosPreview
-    });
+    onAplicar({ telefono: telefono.trim(), descuento: pedido });
     reset();
   }
 
   function soloAcumular() {
-    onAplicar({ telefono: telefono.trim(), descuento: 0, puntos: 0 });
+    onAplicar({ telefono: telefono.trim(), descuento: 0 });
     reset();
   }
 
@@ -254,7 +236,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                   </p>
                   {pedido > 0 && (
                     <p className="text-[13px] font-semibold text-indigo-600">
-                      Se aplicarán: {money(descuentoPreview)}
+                      Se aplicarán: {money(pedido)}
                     </p>
                   )}
                 </div>
@@ -270,7 +252,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
               </Button>
               {saldo.saldoUsable > 0 && (
                 <Button type="button" className="flex-1" onClick={aplicarUsar}>
-                  Usar puntos
+                  Usar cashback
                 </Button>
               )}
             </div>

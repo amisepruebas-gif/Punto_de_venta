@@ -272,24 +272,24 @@ export function Ventas() {
     }
     const monto = preview.montoCobro;
     const puntosTel = preview.puntosTelefono;
-    const puntosRedeem = Number(preview.puntosRedeem) || 0;
     const descPuntos = preview.descuentoPuntos;
+    const cashbackUsar = Number(descPuntos) || 0;
 
-    // USAR puntos REQUIERE conexión: se debitan EN LÍNEA *antes* de crear la venta.
+    // USAR cashback REQUIERE conexión: se debita EN LÍNEA *antes* de crear la venta.
     // Si falla (sin red o saldo), se aborta el cobro: NO se aplica el descuento y
-    // NO se crea la venta (el modal muestra el error; el cajero quita los puntos o
-    // reintenta). Idempotente por la idempotencyKey del preview (estable en retry).
-    // (Acumular puntos SÍ funciona offline — es seguro porque solo suma.)
-    if (puntosTel && puntosRedeem > 0) {
+    // NO se crea la venta (el modal muestra el error; el cajero lo quita o reintenta).
+    // Idempotente por la idempotencyKey del preview (estable en retry).
+    // (Acumular cashback SÍ funciona offline — es seguro porque solo suma.)
+    if (puntosTel && cashbackUsar > 0) {
       try {
         await fnCanjearPuntos({
           phone: puntosTel,
-          points: puntosRedeem,
+          money: cashbackUsar,
           idempotencyKey: preview.idempotencyKey
         });
       } catch {
         throw new Error(
-          "No se pudieron usar los puntos (sin conexión o saldo). Quita los puntos o reintenta.",
+          "No se pudo usar el cashback (sin conexión o saldo). Quítalo o reintenta.",
         );
       }
     }
@@ -329,29 +329,28 @@ export function Ventas() {
       let puntosMsg = "";
       try {
         const res = await fnAcreditarPuntos(earnPayload);
-        const added = Number(res.data.added) || 0;
-        const balance = Number(res.data.balance) || 0;
-        const saldoDinero = balance * (Number(res.data.valorPunto) || 1);
+        const added = Number(res.data.added) || 0; // cashback $ acumulado
+        const balance = Number(res.data.balance) || 0; // saldo $ resultante
         if (added > 0) {
           ventaFinal = {
             ...ventaFinal,
-            puntosGanados: String(added),
-            puntosSaldoDinero: saldoDinero.toFixed(2)
+            puntosGanados: added.toFixed(2),
+            puntosSaldoDinero: balance.toFixed(2)
           };
-          puntosMsg = `Acumuló ${added} pts · saldo $${saldoDinero.toFixed(2)}`;
+          puntosMsg = `Acumuló $${added.toFixed(2)} de cashback · saldo $${balance.toFixed(2)}`;
           // Persistir en la venta para auditoría en admin-web. Best-effort.
           void updateDoc(doc(db, result.path), {
-            puntosGanados: String(added),
-            puntosSaldoDinero: saldoDinero.toFixed(2)
+            puntosGanados: added.toFixed(2),
+            puntosSaldoDinero: balance.toFixed(2)
           }).catch(() => {});
         } else if (res.data.already) {
-          puntosMsg = "Puntos ya acreditados (reintento).";
+          puntosMsg = "Cashback ya acreditado (reintento).";
         } else {
-          puntosMsg = "Sin puntos en esta venta (monto mínimo no alcanzado).";
+          puntosMsg = "Sin cashback en esta venta (monto mínimo no alcanzado).";
         }
       } catch {
         useClientePuntos.getState().encolar("earn", earnPayload);
-        puntosMsg = "Puntos: se acreditarán al reconectar.";
+        puntosMsg = "Cashback: se acreditará al reconectar.";
       }
       finalizarVenta(ventaFinal, puntosMsg);
       return;
@@ -412,22 +411,21 @@ export function Ventas() {
     let puntosMsg = "";
     try {
       const res = await fnAcreditarPuntos(payload);
-      const added = Number(res.data.added) || 0;
-      const balance = Number(res.data.balance) || 0;
-      const saldoDinero = balance * (Number(res.data.valorPunto) || 1);
+      const added = Number(res.data.added) || 0; // cashback $ acumulado
+      const balance = Number(res.data.balance) || 0; // saldo $ resultante
       if (added > 0) {
         venta = {
           ...venta,
-          puntosGanados: String(added),
-          puntosSaldoDinero: saldoDinero.toFixed(2)
+          puntosGanados: added.toFixed(2),
+          puntosSaldoDinero: balance.toFixed(2)
         };
-        puntosMsg = `Acumuló ${added} pts · saldo $${saldoDinero.toFixed(2)}`;
+        puntosMsg = `Acumuló $${added.toFixed(2)} de cashback · saldo $${balance.toFixed(2)}`;
       } else if (res.data.already) {
-        puntosMsg = "Puntos ya acreditados (reintento).";
+        puntosMsg = "Cashback ya acreditado (reintento).";
       }
     } catch {
       useClientePuntos.getState().encolar("earn", payload);
-      puntosMsg = "Puntos: se acreditarán al reconectar (sin conexión).";
+      puntosMsg = "Cashback: se acreditará al reconectar (sin conexión).";
     }
     // Auditoría en la venta: correo/teléfono (NO la contraseña, es credencial)
     // + puntos ganados. Best-effort, no bloquea.

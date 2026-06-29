@@ -38,10 +38,9 @@ export type CobrarPayload = {
   vendedorIdUsuario?: string;
   comicion?: string;
   statusComision?: string;
-  /** Canje de puntos (POS): descuento aplicado + cliente para acreditar/debitar. */
+  /** Canje de cashback (POS): $ descuento aplicado + cliente para acreditar/debitar. */
   descuentoPuntos?: string;
   puntosTelefono?: string;
-  puntosRedeem?: string;
 };
 
 type Props = {
@@ -87,10 +86,9 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   const [error, setError] = useState<string | null>(null);
   // Canje de puntos: descuento (pesos) + cliente identificado para acreditar.
   const [descuentoPuntos, setDescuentoPuntos] = useState(0);
-  const [clientePuntos, setClientePuntos] = useState<{
-    telefono: string;
-    puntos: number;
-  } | null>(null);
+  const [clientePuntos, setClientePuntos] = useState<{ telefono: string } | null>(
+    null,
+  );
   const [usarPuntosOpen, setUsarPuntosOpen] = useState(false);
 
   // Total a cobrar = bruto menos los puntos aplicados como descuento.
@@ -226,7 +224,6 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
       ...(clientePuntos
         ? {
             puntosTelefono: clientePuntos.telefono,
-            puntosRedeem: String(clientePuntos.puntos),
             descuentoPuntos: String(descuentoPuntos),
           }
         : {}),
@@ -253,9 +250,9 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
         open={usarPuntosOpen}
         maxTotal={subtotalBruto}
         onClose={() => setUsarPuntosOpen(false)}
-        onAplicar={({ telefono, descuento, puntos }) => {
+        onAplicar={({ telefono, descuento }) => {
           setDescuentoPuntos(descuento);
-          setClientePuntos({ telefono, puntos });
+          setClientePuntos({ telefono });
           setUsarPuntosOpen(false);
         }}
       />
@@ -405,7 +402,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
                   onClick={() => setUsarPuntosOpen(true)}
                   className="text-[11px] font-semibold text-indigo-600 underline"
                 >
-                  {clientePuntos ? "Puntos ✓" : "Puntos"}
+                  {clientePuntos ? "Cashback ✓" : "Cashback"}
                 </button>
               </div>
             ) : (
@@ -418,7 +415,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
                 </p>
                 {descuentoPuntos > 0 && (
                   <p className="text-[11px] font-semibold text-indigo-600 tabular-nums">
-                    − ${descuentoPuntos.toFixed(2)} por puntos
+                    − ${descuentoPuntos.toFixed(2)} de cashback
                   </p>
                 )}
                 <button
@@ -426,7 +423,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
                   onClick={() => setUsarPuntosOpen(true)}
                   className="text-[11px] font-semibold text-indigo-600 underline"
                 >
-                  {clientePuntos ? "Puntos ✓" : "Puntos"}
+                  {clientePuntos ? "Cashback ✓" : "Cashback"}
                 </button>
               </div>
             )}

@@ -176,20 +176,20 @@ export function formatearTicketEscPos(
     out.push("[L]\n");
   }
 
-  // Descuento por canje de puntos (informativo; el TOTAL ya viene neto).
+  // Descuento por canje de cashback (informativo; el TOTAL ya viene neto).
   if (venta.descuentoPuntos && Number(venta.descuentoPuntos) > 0) {
-    out.push(`[L]Descuento por puntos[R]-$${s(venta.descuentoPuntos)}\n`);
+    out.push(`[L]Descuento de cashback[R]-$${s(venta.descuentoPuntos)}\n`);
     out.push("[L]\n");
   }
 
-  // Puntos ACUMULADOS en esta venta (cliente recurrente). Informativo.
+  // Cashback ACUMULADO en esta venta (cliente recurrente). Informativo.
   if (venta.puntosGanados && Number(venta.puntosGanados) > 0) {
-    out.push("[C]<b>* PUNTOS AMISE *</b>\n");
-    out.push(`[L]Puntos ganados[R]<b>+${s(venta.puntosGanados)}</b>\n`);
+    out.push("[C]<b>* CASHBACK AMISE *</b>\n");
+    out.push(`[L]Cashback acumulado[R]<b>+$${s(venta.puntosGanados)}</b>\n`);
     if (venta.puntosSaldoDinero) {
       out.push(`[L]Saldo disponible[R]<b>$${s(venta.puntosSaldoDinero)}</b>\n`);
     }
-    out.push("[C]<font size='small'>Consulta tus puntos en amise.mx</font>\n");
+    out.push("[C]<font size='small'>Consulta tu cashback en amise.mx</font>\n");
     out.push("[L]\n");
   }
 

@@ -105,10 +105,12 @@ export type AcreditarPuntosInput = {
 };
 export type AcreditarPuntosOutput = {
   ok: boolean;
+  /** Cashback acumulado en esta venta, en $. */
   added: number;
+  /** Saldo de cashback resultante, en $. */
   balance: number;
-  /** Valor en pesos de 1 punto (para mostrar el saldo en dinero). */
-  valorPunto?: number;
+  /** $ de cashback por cada $1 de compra (regla vigente). */
+  valorPorPeso?: number;
   /** true si la acreditación ya existía (idempotente) — para distinguir del monto bajo. */
   already?: boolean;
 };
@@ -119,11 +121,12 @@ export const fnAcreditarPuntos = callable<AcreditarPuntosInput, AcreditarPuntosO
 export type ConsultarSaldoInput = { email?: string; phone?: string };
 export type ConsultarSaldoOutput = {
   exists: boolean;
-  saldoPuntos?: number;
-  valorPunto?: number;
+  /** Saldo de cashback en $. */
   saldoDinero?: number;
-  /** Equivalente en dinero redondeado HACIA ABAJO a $0.50 (lo usable). */
+  /** Saldo usable, redondeado HACIA ABAJO a $0.50. */
   saldoUsable?: number;
+  /** $ de cashback por cada $1 de compra (regla vigente). */
+  valorPorPeso?: number;
 };
 export const fnConsultarSaldoPuntos = callable<
   ConsultarSaldoInput,
@@ -133,7 +136,8 @@ export const fnConsultarSaldoPuntos = callable<
 export type CanjearPuntosInput = {
   email?: string;
   phone?: string;
-  points: number;
+  /** $ de cashback a canjear. */
+  money: number;
   idempotencyKey: string;
 };
 export type CanjearPuntosOutput = {

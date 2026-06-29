@@ -258,7 +258,7 @@ export async function generarTicketPDF(params: {
       venta.descuentoPuntos && Number(venta.descuentoPuntos) > 0
         ? {
             columns: [
-              { text: "Descuento por puntos", fontSize: 9 },
+              { text: "Descuento de cashback", fontSize: 9 },
               {
                 text: `-$${venta.descuentoPuntos}`,
                 alignment: "right",

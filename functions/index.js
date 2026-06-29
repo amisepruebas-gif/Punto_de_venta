@@ -2036,16 +2036,17 @@ exports.acreditarPuntos = onCall(
       });
       return {
         ok: true,
+        // Cashback: added/balance vienen en $ desde amise.mx.
         added: Number(data.added) || 0,
         balance: Number(data.balance) || 0,
-        valorPunto: Number(data.valorPunto) || 1,
+        valorPorPeso: Number(data.valorPorPeso) || 0,
         already: Boolean(data.already),
       };
     },
 );
 
-// Consulta el saldo del cliente (por teléfono o correo) para mostrarlo al cobrar.
-// Input: { email?, phone? } → { exists, saldoPuntos, valorPunto, saldoDinero, saldoUsable }.
+// Consulta el saldo de cashback del cliente (por teléfono o correo) al cobrar.
+// Input: { email?, phone? } → { exists, saldoDinero, saldoUsable, valorPorPeso }.
 exports.consultarSaldoPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
@@ -2062,8 +2063,8 @@ exports.consultarSaldoPuntos = onCall(
     },
 );
 
-// Canjea (debita) puntos al cobrar. Idempotente por idempotencyKey (= ventaId).
-// Input: { email?|phone?, points, idempotencyKey } → { ok, redeemed, balance, money }.
+// Canjea (debita) cashback ($) al cobrar. Idempotente por idempotencyKey (= ventaId).
+// Input: { email?|phone?, money, idempotencyKey } → { ok, redeemed, balance, money }.
 exports.canjearPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
@@ -2072,19 +2073,19 @@ exports.canjearPuntos = onCall(
       if (t.role && !ROLES_PUNTOS.includes(t.role)) {
         throw new HttpsError("permission-denied", "Sin permiso");
       }
-      const {email, phone, points, idempotencyKey} = request.data || {};
+      const {email, phone, money, idempotencyKey} = request.data || {};
       if (!idempotencyKey || typeof idempotencyKey !== "string") {
         throw new HttpsError("invalid-argument", "idempotencyKey requerido");
       }
-      const pts = Number(points);
-      if (!isFinite(pts) || pts <= 0) {
-        throw new HttpsError("invalid-argument", "points inválido");
+      const m = Number(money);
+      if (!isFinite(m) || m <= 0) {
+        throw new HttpsError("invalid-argument", "money inválido");
       }
       if (!email && !phone) {
         throw new HttpsError("invalid-argument", "email o phone requerido");
       }
       const data = await llamarAmise("/api/loyalty/redeem", {
-        email, phone, points: pts, idempotencyKey,
+        email, phone, money: m, idempotencyKey,
         sucursalId: t.sucursalId || request.data.sucursalId || null,
         nodoId: t.nodoId || request.data.nodoId || null,
       });
