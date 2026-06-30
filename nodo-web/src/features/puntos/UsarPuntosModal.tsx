@@ -32,7 +32,10 @@ const money = (n: number) =>
 export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   const [telefono, setTelefono] = useState("");
   const [consultando, setConsultando] = useState(false);
-  const [saldo, setSaldo] = useState<{ saldoUsable: number } | null>(null);
+  const [saldo, setSaldo] = useState<{
+    saldoUsable: number;
+    saldoDinero: number;
+  } | null>(null);
   const [monto, setMonto] = useState("");
   const [error, setError] = useState<string | null>(null);
   // Recuperación de contraseña (re-emite una nueva; la vieja va hasheada).
@@ -79,7 +82,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
       } else {
         // Existe: se puede ACUMULAR aunque tenga 0 puntos. "Usar" se habilita en
         // el render solo si saldoUsable > 0.
-        setSaldo({ saldoUsable: d.saldoUsable ?? 0 });
+        setSaldo({
+          saldoUsable: d.saldoUsable ?? 0,
+          saldoDinero: d.saldoDinero ?? 0,
+        });
       }
     } catch {
       setError("No se pudo consultar el saldo. Revisa la conexión.");
@@ -219,8 +225,12 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
             {saldo.saldoUsable > 0 ? (
               <>
                 <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
-                  Disponible para usar:{" "}
-                  <strong className="text-base">{money(saldo.saldoUsable)}</strong>
+                  Saldo de cashback:{" "}
+                  <strong className="text-base">{money(saldo.saldoDinero)}</strong>
+                  <span className="block text-[12px] text-text-soft">
+                    Disponible para usar (en múltiplos de $0.50):{" "}
+                    <strong>{money(saldo.saldoUsable)}</strong>
+                  </span>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">¿Cuánto usar en esta venta?</label>
@@ -243,7 +253,9 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
               </>
             ) : (
               <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
-                Aún no tiene saldo para usar. Puedes <strong>acumular</strong> en esta venta.
+                Saldo de cashback: <strong>{money(saldo.saldoDinero)}</strong> — aún no
+                alcanza el mínimo para usar ($0.50). Puedes <strong>acumular</strong> en
+                esta venta.
               </div>
             )}
             <div className="flex gap-2 pt-1">
