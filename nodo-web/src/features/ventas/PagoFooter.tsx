@@ -94,12 +94,13 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   // Total a cobrar = bruto menos los puntos aplicados como descuento.
   const total = Math.max(0, subtotalBruto - descuentoPuntos);
 
-  // Si el carrito cambia (se edita), invalidar el canje de puntos: el descuento
-  // se calculó sobre el total anterior y podría exceder el nuevo. El cajero
-  // vuelve a aplicarlo si quiere. Evita descontar más que el total.
+  // Si el carrito cambia (se edita), invalidar SOLO el DESCUENTO de cashback: se
+  // calculó sobre el total anterior y podría exceder el nuevo (el cajero lo
+  // vuelve a aplicar). El cliente para ACUMULAR (teléfono) NO depende del total,
+  // así que se CONSERVA — si se borrara, fijar "acumular" antes de agregar
+  // artículos perdería el teléfono y no se acreditaría nada.
   useEffect(() => {
     setDescuentoPuntos(0);
-    setClientePuntos(null);
   }, [subtotalBruto]);
 
   // Reset explícito por señal del padre (al FINALIZAR o CANCELAR una venta) para
