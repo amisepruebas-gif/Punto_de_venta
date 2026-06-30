@@ -140,6 +140,9 @@ export function Ventas() {
   // bridge POS para imprimir directo (fallback PDF).
   const [ultimaVenta, setUltimaVenta] = useState<Venta | null>(null);
   const [overlayShow, setOverlayShow] = useState(false);
+  // Loading que cubre el hueco entre "Confirmar" y "Venta realizada" (incluye la
+  // acreditación de cashback, que es un await a la nube tras crear la venta).
+  const [procesando, setProcesando] = useState(false);
   const [ticketModalOpen, setTicketModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -265,7 +268,18 @@ export function Ventas() {
     setResetPuntosSignal((n) => n + 1);
   }
 
+  // Envoltura: enciende el loading durante TODO el proceso (canje + crearVenta +
+  // acreditación) y lo apaga en cualquier salida (éxito, vinculación o error).
   async function confirmarVenta() {
+    setProcesando(true);
+    try {
+      await ejecutarVenta();
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function ejecutarVenta() {
     if (!preview) throw new Error("Sin preview de venta");
     if (!negocioId || !sucursalId || !nodoId) {
       throw new Error("Sesión del nodo inválida");
@@ -603,6 +617,17 @@ export function Ventas() {
         }}
         onConfirm={confirmarVenta}
       />
+
+      {procesando && (
+        <div
+          className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-3 bg-black/70"
+          role="alert"
+          aria-busy
+        >
+          <div className="size-12 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+          <p className="text-sm font-semibold text-white">Procesando venta…</p>
+        </div>
+      )}
 
       <FloatingNoRegistradoButton onClick={() => setNoRegOpen(true)} />
       <FloatingPreRegistroButton onClick={() => setPreRegOpen(true)} />
