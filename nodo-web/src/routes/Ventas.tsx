@@ -31,6 +31,7 @@ import { RegistrosVentasSheet } from "@/features/ventas/historial/RegistrosVenta
 import { PinPromptModal } from "@/features/ventas/historial/PinPromptModal";
 import { usePinVentas } from "@/features/ventas/historial/usePinVentas";
 import { useCarrito } from "@/features/ventas/carritoStore";
+import { useArticulos } from "@/features/articulos/useArticulos";
 import { crearVenta } from "@/features/ventas/ventaService";
 import { generarID } from "@shared";
 import { formatearTicketEscPos } from "@/features/ventas/ticketEscPos";
@@ -66,6 +67,7 @@ export function Ventas() {
   const { sucursal } = useSucursal();
   const { corte } = useCorteActivo();
   const { limpiar, enTurno, items, agregar } = useCarrito();
+  const { byId: articulosById } = useArticulos();
   const { fondo, fondoOpacidad, cabecera, cabeceraOpacidad, logo } =
     useApariencia();
   const resurtidosPendientes = useResurtidosPendientesCount();
@@ -442,7 +444,24 @@ export function Ventas() {
       setToast(`Registrado sin conexión (se sincroniza). Código: ${code}`);
       window.setTimeout(() => setToast(null), 6000);
     });
-    setToast(`Cliente registrado. Código: ${code}`);
+
+    // F5: si adquirió tarjeta al registrarse, agregar el ARTÍCULO al carrito y dejar
+    // el barcode PENDIENTE de vincular al cobrar (pagó → se vincula, como F4).
+    let msgTarjeta = "";
+    if (data.cardBarcode) {
+      const art = articulosById.get(CARD_ARTICLE_ID);
+      if (art) {
+        agregar(art);
+        useClientePuntos.getState().setTarjetaPendiente({
+          codigo: data.cardBarcode,
+          telefono: data.telefono,
+        });
+        msgTarjeta = " + tarjeta agregada";
+      } else {
+        msgTarjeta = " (no se encontró el artículo de tarjeta)";
+      }
+    }
+    setToast(`Cliente registrado${msgTarjeta}. Código: ${code}`);
     window.setTimeout(() => setToast(null), 5000);
   }
 

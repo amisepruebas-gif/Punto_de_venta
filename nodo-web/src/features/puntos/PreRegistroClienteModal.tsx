@@ -6,6 +6,8 @@ export type PreRegistroData = {
   correo: string;
   telefono: string;
   nombre?: string;
+  /** F5: barcode (EAN-13) si el cliente adquiere tarjeta física al registrarse. */
+  cardBarcode?: string;
 };
 
 type Props = {
@@ -26,6 +28,8 @@ export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
   const [correo, setCorreo] = useState("");
   const [telefono, setTelefono] = useState("");
   const [nombre, setNombre] = useState("");
+  const [quiereTarjeta, setQuiereTarjeta] = useState(false);
+  const [barcode, setBarcode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
@@ -44,10 +48,21 @@ export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
       setError("Teléfono inválido (mínimo 10 dígitos).");
       return;
     }
-    onRegistrar({ correo: mail, telefono: tel, nombre: nombre.trim() || undefined });
+    let cardBarcode: string | undefined;
+    if (quiereTarjeta) {
+      const bc = barcode.replace(/\D/g, "");
+      if (bc.length !== 13) {
+        setError("Escanea una tarjeta válida (13 dígitos) o desmarca la opción.");
+        return;
+      }
+      cardBarcode = bc;
+    }
+    onRegistrar({ correo: mail, telefono: tel, nombre: nombre.trim() || undefined, cardBarcode });
     setCorreo("");
     setTelefono("");
     setNombre("");
+    setQuiereTarjeta(false);
+    setBarcode("");
     onClose();
   }
 
@@ -100,6 +115,27 @@ export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
             onChange={(e) => setNombre(e.target.value)}
             placeholder="Nombre del cliente"
           />
+        </div>
+
+        <div className="space-y-2 rounded-md border border-border p-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={quiereTarjeta}
+              onChange={(e) => setQuiereTarjeta(e.target.checked)}
+            />
+            <span>
+              El cliente quiere <strong>tarjeta física</strong> (se cobra al pagar)
+            </span>
+          </label>
+          {quiereTarjeta && (
+            <Input
+              inputMode="numeric"
+              placeholder="Escanea la tarjeta…"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+            />
+          )}
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
