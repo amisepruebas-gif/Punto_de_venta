@@ -118,7 +118,18 @@ export const fnAcreditarPuntos = callable<AcreditarPuntosInput, AcreditarPuntosO
   "acreditarPuntos",
 );
 
-export type ConsultarSaldoInput = { email?: string; phone?: string };
+/** Estado de la tarjeta física vinculada. */
+export type TarjetaInfo = {
+  codigo: string;
+  estado: "activa" | "bloqueada" | "repuesta";
+};
+
+export type ConsultarSaldoInput = {
+  email?: string;
+  phone?: string;
+  /** Barcode EAN-13 de la tarjeta (consulta por escaneo). */
+  codigo?: string;
+};
 export type ConsultarSaldoOutput = {
   exists: boolean;
   /** Saldo de cashback en $. */
@@ -127,6 +138,8 @@ export type ConsultarSaldoOutput = {
   saldoUsable?: number;
   /** $ de cashback por cada $1 de compra (regla vigente). */
   valorPorPeso?: number;
+  /** Tarjeta física vinculada (o null si no tiene). */
+  tarjeta?: TarjetaInfo | null;
 };
 export const fnConsultarSaldoPuntos = callable<
   ConsultarSaldoInput,
@@ -156,3 +169,37 @@ export const fnRecuperarCodigoPuntos = callable<
   RecuperarCodigoInput,
   RecuperarCodigoOutput
 >("recuperarCodigoPuntos");
+
+// ---- Tarjeta física (barcode EAN-13) ----
+export type ActivarTarjetaInput = {
+  email?: string;
+  phone?: string;
+  /** Barcode EAN-13 de la tarjeta física escaneada. */
+  codigo: string;
+  /** Venta donde se cobra/activa (idempotencia). */
+  ventaId?: string;
+};
+export type ActivarTarjetaOutput = { ok: boolean; already: boolean };
+export const fnActivarTarjeta = callable<ActivarTarjetaInput, ActivarTarjetaOutput>(
+  "activarTarjeta",
+);
+
+export type ReponerTarjetaInput = {
+  email?: string;
+  phone?: string;
+  /** Alternativa a email/phone: identificar por la tarjeta anterior. */
+  codigoAnterior?: string;
+  codigoNuevo: string;
+  ventaId?: string;
+};
+export type ReponerTarjetaOutput = { ok: boolean; already: boolean };
+export const fnReponerTarjeta = callable<ReponerTarjetaInput, ReponerTarjetaOutput>(
+  "reponerTarjeta",
+);
+
+export type DesbloquearTarjetaInput = { email?: string; phone?: string; codigo?: string };
+export type DesbloquearTarjetaOutput = { ok: boolean };
+export const fnDesbloquearTarjeta = callable<
+  DesbloquearTarjetaInput,
+  DesbloquearTarjetaOutput
+>("desbloquearTarjeta");

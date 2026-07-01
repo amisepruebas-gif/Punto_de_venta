@@ -2055,11 +2055,11 @@ exports.consultarSaldoPuntos = onCall(
       if (t.role && !ROLES_PUNTOS.includes(t.role)) {
         throw new HttpsError("permission-denied", "Sin permiso");
       }
-      const {email, phone} = request.data || {};
-      if (!email && !phone) {
-        throw new HttpsError("invalid-argument", "email o phone requerido");
+      const {email, phone, codigo} = request.data || {};
+      if (!email && !phone && !codigo) {
+        throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
       }
-      return await llamarAmise("/api/loyalty/balance", {email, phone});
+      return await llamarAmise("/api/loyalty/balance", {email, phone, codigo});
     },
 );
 
@@ -2115,6 +2115,69 @@ exports.recuperarCodigoPuntos = onCall(
       }
       const data = await llamarAmise("/api/loyalty/recover-code", {phone, email});
       return {ok: true, email: data.email || "", code: data.code || ""};
+    },
+);
+
+// ── Tarjeta física (barcode EAN-13) ──────────────────────────
+// Vincula/repone/desbloquea; consultar por barcode va en consultarSaldoPuntos.
+
+// Activar (vincular) una tarjeta física al cobrar. Input: { email?|phone?, codigo, ventaId? }.
+exports.activarTarjeta = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {email, phone, codigo, ventaId} = request.data || {};
+      if (!email && !phone) {
+        throw new HttpsError("invalid-argument", "email o phone requerido");
+      }
+      if (!codigo || typeof codigo !== "string") {
+        throw new HttpsError("invalid-argument", "codigo requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/card/link", {email, phone, codigo, ventaId});
+      return {ok: true, already: Boolean(data.already)};
+    },
+);
+
+// Reposición (deshabilita la anterior, vincula la nueva). También se cobra.
+// Input: { email?|phone?|codigoAnterior, codigoNuevo, ventaId? }.
+exports.reponerTarjeta = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {email, phone, codigoAnterior, codigoNuevo, ventaId} = request.data || {};
+      if (!email && !phone && !codigoAnterior) {
+        throw new HttpsError("invalid-argument", "email, phone o codigoAnterior requerido");
+      }
+      if (!codigoNuevo || typeof codigoNuevo !== "string") {
+        throw new HttpsError("invalid-argument", "codigoNuevo requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/card/replace", {
+        email, phone, codigoAnterior, codigoNuevo, ventaId,
+      });
+      return {ok: true, already: Boolean(data.already)};
+    },
+);
+
+// Desbloqueo SOLO en sucursal. Input: { email?|phone?|codigo }.
+exports.desbloquearTarjeta = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {email, phone, codigo} = request.data || {};
+      if (!email && !phone && !codigo) {
+        throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
+      }
+      await llamarAmise("/api/loyalty/card/unblock", {email, phone, codigo});
+      return {ok: true};
     },
 );
 
