@@ -53,6 +53,8 @@ import {
   fnRegistrarClientePuntos,
   fnAcreditarPuntos,
   fnCanjearPuntos,
+  fnActivarTarjeta,
+  fnReponerTarjeta,
 } from "@/firebase/callable";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
@@ -321,6 +323,40 @@ export function Ventas() {
         `Venta OFFLINE (${result.venta.numeroDeVenta}). Se reconcilia al reconectar.`,
       );
       window.setTimeout(() => setToast(null), 4000);
+    }
+
+    // F4/F6: si se compró/repuso una tarjeta en esta venta, vincularla AHORA que la
+    // venta se creó → "pagó → se vincula", idempotente por ventaId. Best-effort: la
+    // venta YA existe, un fallo no la revierte. Limpiamos el pendiente antes para que
+    // NUNCA se arrastre a otra venta. Offline: se omite (la vinculación necesita red).
+    const tarjPend = useClientePuntos.getState().tarjetaPendiente;
+    if (tarjPend && tarjPend.telefono && tarjPend.codigo) {
+      useClientePuntos.getState().limpiarTarjetaPendiente();
+      if (result.offline) {
+        setToast("Sin conexión: vuelve a activar la tarjeta cuando reconectes.");
+        window.setTimeout(() => setToast(null), 6000);
+      } else {
+        try {
+          if (tarjPend.codigoAnterior) {
+            await fnReponerTarjeta({
+              phone: tarjPend.telefono,
+              codigoAnterior: tarjPend.codigoAnterior,
+              codigoNuevo: tarjPend.codigo,
+              ventaId: result.venta.ventaId,
+            });
+          } else {
+            await fnActivarTarjeta({
+              phone: tarjPend.telefono,
+              codigo: tarjPend.codigo,
+              ventaId: result.venta.ventaId,
+            });
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "";
+          setToast(`Tarjeta NO vinculada (${msg || "revisa el código"}). La venta sí se cobró.`);
+          window.setTimeout(() => setToast(null), 6000);
+        }
+      }
     }
 
     // PT-10: cliente EXISTENTE. El canje (débito) ya ocurrió en línea arriba; aquí

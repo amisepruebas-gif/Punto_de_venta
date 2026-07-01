@@ -6,9 +6,14 @@ import {
   fnConsultarSaldoPuntos,
   fnRecuperarCodigoPuntos,
   type ConsultarSaldoOutput,
+  type TarjetaInfo,
 } from "@/firebase/callable";
 import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
 import { useSucursal } from "@/features/sucursal/useSucursal";
+import { useArticulos } from "@/features/articulos/useArticulos";
+import { useCarrito } from "@/features/ventas/carritoStore";
+import { useClientePuntos } from "./clientePuntosStore";
+import { CARD_ARTICLE_ID } from "./tarjeta";
 import { formatearTicketRecuperacion } from "./ticketRecuperacion";
 
 export type AplicarPuntos = {
@@ -34,13 +39,20 @@ const money = (n: number) =>
  * el server) y decide cuánto usar en esta venta o solo acumular.
  */
 export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
+  const { byId } = useArticulos();
   const [telefono, setTelefono] = useState("");
   const [codigo, setCodigo] = useState(""); // barcode de tarjeta (escaneo)
   const [consultando, setConsultando] = useState(false);
   const [saldo, setSaldo] = useState<{
     saldoUsable: number;
     saldoDinero: number;
+    tarjeta: TarjetaInfo | null;
   } | null>(null);
+  // Activar/reponer tarjeta física.
+  const [modoTarjeta, setModoTarjeta] = useState(false);
+  const [nuevoBarcode, setNuevoBarcode] = useState("");
+  const [tarjetaMsg, setTarjetaMsg] = useState<string | null>(null);
+  const [procesandoTarjeta, setProcesandoTarjeta] = useState(false);
   const [monto, setMonto] = useState("");
   const [error, setError] = useState<string | null>(null);
   // Recuperación de contraseña (re-emite una nueva; la vieja va hasheada).
@@ -60,6 +72,9 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
       setError(null);
       setRecovered(null);
       setPrintMsg(null);
+      setModoTarjeta(false);
+      setNuevoBarcode("");
+      setTarjetaMsg(null);
     }
   }, [open]);
 
@@ -76,7 +91,11 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     const tel = d.telefono || telFallback;
     if (tel) setTelefono(tel);
     else setError("El cliente no tiene teléfono; usa teléfono o correo para operar.");
-    setSaldo({ saldoUsable: d.saldoUsable ?? 0, saldoDinero: d.saldoDinero ?? 0 });
+    setSaldo({
+      saldoUsable: d.saldoUsable ?? 0,
+      saldoDinero: d.saldoDinero ?? 0,
+      tarjeta: d.tarjeta ?? null,
+    });
   }
 
   async function consultar(e: FormEvent) {
@@ -145,6 +164,51 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     reset();
   }
 
+  // Activar (o reponer) una tarjeta física: valida, verifica que el barcode NO esté
+  // en uso, agrega el ARTÍCULO tarjeta al carrito y deja el barcode PENDIENTE de
+  // vincular al cobrar (pagó → se vincula). Si el cliente ya tiene tarjeta activa,
+  // es reposición (deshabilita la anterior).
+  async function agregarTarjeta() {
+    const nuevo = nuevoBarcode.replace(/\D/g, "");
+    if (nuevo.length !== 13) {
+      setTarjetaMsg("Código inválido (13 dígitos).");
+      return;
+    }
+    const tel = telefono.trim();
+    if (!tel) {
+      setTarjetaMsg("Primero consulta al cliente.");
+      return;
+    }
+    const art = byId.get(CARD_ARTICLE_ID);
+    if (!art) {
+      setTarjetaMsg("No se encontró el artículo de la tarjeta. Avisa al admin.");
+      return;
+    }
+    setTarjetaMsg(null);
+    setProcesandoTarjeta(true);
+    try {
+      // El barcode no debe estar ya en uso (activo en otra cuenta).
+      const chk = await fnConsultarSaldoPuntos({ codigo: nuevo });
+      if (chk.data.exists) {
+        setTarjetaMsg("Esa tarjeta ya está en uso.");
+        return;
+      }
+    } catch {
+      setTarjetaMsg("No se pudo validar la tarjeta (sin conexión).");
+      return;
+    } finally {
+      setProcesandoTarjeta(false);
+    }
+    const esReposicion = !!(saldo?.tarjeta && saldo.tarjeta.estado === "activa");
+    useCarrito.getState().agregar(art);
+    useClientePuntos.getState().setTarjetaPendiente({
+      codigo: nuevo,
+      telefono: tel,
+      ...(esReposicion && saldo?.tarjeta ? { codigoAnterior: saldo.tarjeta.codigo } : {}),
+    });
+    reset(); // cierra el modal; se cobra + vincula al pagar
+  }
+
   async function recuperar() {
     setError(null);
     setRecovered(null);
@@ -191,6 +255,9 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     setError(null);
     setRecovered(null);
     setPrintMsg(null);
+    setModoTarjeta(false);
+    setNuevoBarcode("");
+    setTarjetaMsg(null);
     onClose();
   }
 
@@ -321,6 +388,59 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                 <Button type="button" className="flex-1" onClick={aplicarUsar}>
                   Usar cashback
                 </Button>
+              )}
+            </div>
+
+            {/* Tarjeta física: activar (sin tarjeta) o reponer (con tarjeta activa) */}
+            <div className="rounded-md border border-border px-3 py-2.5 text-sm">
+              {saldo.tarjeta && saldo.tarjeta.estado === "activa" ? (
+                <p className="mb-2">
+                  Tarjeta activa:{" "}
+                  <strong>••••{saldo.tarjeta.codigo.slice(-4)}</strong>
+                </p>
+              ) : (
+                <p className="mb-2 text-text-soft">Sin tarjeta física.</p>
+              )}
+              {!modoTarjeta ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setModoTarjeta(true);
+                    setNuevoBarcode("");
+                    setTarjetaMsg(null);
+                  }}
+                >
+                  {saldo.tarjeta && saldo.tarjeta.estado === "activa"
+                    ? "Reponer tarjeta"
+                    : "Activar tarjeta"}
+                </Button>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    agregarTarjeta();
+                  }}
+                  className="space-y-2"
+                >
+                  <Input
+                    inputMode="numeric"
+                    placeholder="Escanea la tarjeta nueva…"
+                    value={nuevoBarcode}
+                    onChange={(e) => setNuevoBarcode(e.target.value)}
+                    autoFocus
+                  />
+                  <p className="text-[12px] text-text-soft">
+                    Se cobra el artículo de la tarjeta y se vincula al pagar.
+                  </p>
+                  <Button type="submit" className="w-full" disabled={procesandoTarjeta}>
+                    {procesandoTarjeta ? "Validando…" : "Agregar tarjeta a la venta"}
+                  </Button>
+                </form>
+              )}
+              {tarjetaMsg && (
+                <p className="mt-1 text-[13px] text-destructive">{tarjetaMsg}</p>
               )}
             </div>
           </div>
