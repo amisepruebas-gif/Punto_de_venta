@@ -49,6 +49,7 @@ import { VinculacionClienteModal } from "@/features/puntos/VinculacionClienteMod
 import { useClientePuntos } from "@/features/puntos/clientePuntosStore";
 import { usePuntosColaFlush } from "@/features/puntos/usePuntosColaFlush";
 import { generarCodigoPuntos } from "@/features/puntos/codigoPuntos";
+import { CARD_ARTICLE_ID } from "@/features/puntos/tarjeta";
 import {
   fnRegistrarClientePuntos,
   fnAcreditarPuntos,
@@ -330,7 +331,16 @@ export function Ventas() {
     // venta YA existe, un fallo no la revierte. Limpiamos el pendiente antes para que
     // NUNCA se arrastre a otra venta. Offline: se omite (la vinculación necesita red).
     const tarjPend = useClientePuntos.getState().tarjetaPendiente;
-    if (tarjPend && tarjPend.telefono && tarjPend.codigo) {
+    // "Vinculado ⟺ pagado": solo vincular si el ARTÍCULO de la tarjeta realmente se
+    // cobró en ESTA venta. Blinda contra un pendiente arrastrado (carrito cancelado
+    // /vaciado sin cobrar) que vincularía la tarjeta sin haberse pagado.
+    const tarjetaCobrada = (result.venta.articulos ?? []).some(
+      (a) => a.id === CARD_ARTICLE_ID,
+    );
+    if (tarjPend && tarjPend.telefono && tarjPend.codigo && !tarjetaCobrada) {
+      // Había pendiente pero la tarjeta NO se cobró → descartar sin vincular.
+      useClientePuntos.getState().limpiarTarjetaPendiente();
+    } else if (tarjPend && tarjPend.telefono && tarjPend.codigo) {
       useClientePuntos.getState().limpiarTarjetaPendiente();
       if (result.offline) {
         setToast("Sin conexión: vuelve a activar la tarjeta cuando reconectes.");

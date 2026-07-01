@@ -199,7 +199,8 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     } finally {
       setProcesandoTarjeta(false);
     }
-    const esReposicion = !!(saldo?.tarjeta && saldo.tarjeta.estado === "activa");
+    // Tiene tarjeta (activa o bloqueada) → reposición: la anterior se marca 'repuesta'.
+    const esReposicion = !!saldo?.tarjeta;
     useCarrito.getState().agregar(art);
     useClientePuntos.getState().setTarjetaPendiente({
       codigo: nuevo,
@@ -393,9 +394,9 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
             {/* Tarjeta física: activar (sin tarjeta) o reponer (con tarjeta activa) */}
             <div className="rounded-md border border-border px-3 py-2.5 text-sm">
-              {saldo.tarjeta && saldo.tarjeta.estado === "activa" ? (
+              {saldo.tarjeta ? (
                 <p className="mb-2">
-                  Tarjeta activa:{" "}
+                  Tarjeta {saldo.tarjeta.estado}:{" "}
                   <strong>••••{saldo.tarjeta.codigo.slice(-4)}</strong>
                 </p>
               ) : (
@@ -412,9 +413,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                     setTarjetaMsg(null);
                   }}
                 >
-                  {saldo.tarjeta && saldo.tarjeta.estado === "activa"
-                    ? "Reponer tarjeta"
-                    : "Activar tarjeta"}
+                  {saldo.tarjeta ? "Reponer tarjeta" : "Activar tarjeta"}
                 </Button>
               ) : (
                 <form
