@@ -138,6 +138,8 @@ export type ConsultarSaldoOutput = {
   saldoUsable?: number;
   /** $ de cashback por cada $1 de compra (regla vigente). */
   valorPorPeso?: number;
+  /** Teléfono del monedero (E.164). Lo usa el POS al consultar por barcode. */
+  telefono?: string | null;
   /** Tarjeta física vinculada (o null si no tiene). */
   tarjeta?: TarjetaInfo | null;
 };

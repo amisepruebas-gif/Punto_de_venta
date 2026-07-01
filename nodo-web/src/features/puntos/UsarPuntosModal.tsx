@@ -2,7 +2,11 @@ import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fnConsultarSaldoPuntos, fnRecuperarCodigoPuntos } from "@/firebase/callable";
+import {
+  fnConsultarSaldoPuntos,
+  fnRecuperarCodigoPuntos,
+  type ConsultarSaldoOutput,
+} from "@/firebase/callable";
 import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
 import { useSucursal } from "@/features/sucursal/useSucursal";
 import { formatearTicketRecuperacion } from "./ticketRecuperacion";
@@ -31,6 +35,7 @@ const money = (n: number) =>
  */
 export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   const [telefono, setTelefono] = useState("");
+  const [codigo, setCodigo] = useState(""); // barcode de tarjeta (escaneo)
   const [consultando, setConsultando] = useState(false);
   const [saldo, setSaldo] = useState<{
     saldoUsable: number;
@@ -49,6 +54,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   useEffect(() => {
     if (open) {
       setTelefono("");
+      setCodigo("");
       setSaldo(null);
       setMonto("");
       setError(null);
@@ -63,6 +69,16 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   // Cashback 1:1 en $: el descuento es el monto pedido (a centavos), tope incluido.
   const pedido = Math.round(Math.min(Number(monto) || 0, tope) * 100) / 100;
 
+  // Aplica la respuesta de saldo (compartido por teléfono y por barcode). Al
+  // consultar por barcode, toma el teléfono del monedero para operar (earn/canje
+  // en el POS trabajan por teléfono). Existe: se puede ACUMULAR aunque tenga 0.
+  function aplicarSaldoResp(d: ConsultarSaldoOutput, telFallback: string) {
+    const tel = d.telefono || telFallback;
+    if (tel) setTelefono(tel);
+    else setError("El cliente no tiene teléfono; usa teléfono o correo para operar.");
+    setSaldo({ saldoUsable: d.saldoUsable ?? 0, saldoDinero: d.saldoDinero ?? 0 });
+  }
+
   async function consultar(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -75,20 +91,40 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     setConsultando(true);
     try {
       const res = await fnConsultarSaldoPuntos({ phone: tel });
-      const d = res.data;
-      if (!d.exists) {
+      if (!res.data.exists) {
         setError("Este cliente no tiene monedero. Regístralo primero.");
         setSaldo(null);
       } else {
-        // Existe: se puede ACUMULAR aunque tenga 0 puntos. "Usar" se habilita en
-        // el render solo si saldoUsable > 0.
-        setSaldo({
-          saldoUsable: d.saldoUsable ?? 0,
-          saldoDinero: d.saldoDinero ?? 0,
-        });
+        aplicarSaldoResp(res.data, tel);
       }
     } catch {
       setError("No se pudo consultar el saldo. Revisa la conexión.");
+    } finally {
+      setConsultando(false);
+    }
+  }
+
+  // Consulta por barcode de tarjeta (el lector teclea los dígitos + Enter).
+  async function consultarPorCodigo() {
+    const c = codigo.replace(/\D/g, "");
+    if (c.length !== 13) {
+      setError("Código de tarjeta inválido (13 dígitos).");
+      return;
+    }
+    setError(null);
+    setSaldo(null);
+    setConsultando(true);
+    try {
+      const res = await fnConsultarSaldoPuntos({ codigo: c });
+      if (!res.data.exists) {
+        // Una tarjeta bloqueada/repuesta no resuelve (solo 'activa').
+        setError("Tarjeta no encontrada, bloqueada o dada de baja.");
+        setSaldo(null);
+      } else {
+        aplicarSaldoResp(res.data, "");
+      }
+    } catch {
+      setError("No se pudo consultar la tarjeta. Revisa la conexión.");
     } finally {
       setConsultando(false);
     }
@@ -149,6 +185,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
   function reset() {
     setTelefono("");
+    setCodigo("");
     setSaldo(null);
     setMonto("");
     setError(null);
@@ -184,6 +221,24 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
           />
           <Button type="submit" variant="secondary" disabled={consultando}>
             {consultando ? "…" : "Consultar"}
+          </Button>
+        </form>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            consultarPorCodigo();
+          }}
+          className="flex gap-2"
+        >
+          <Input
+            inputMode="numeric"
+            placeholder="o escanea la tarjeta…"
+            value={codigo}
+            onChange={(e) => setCodigo(e.target.value)}
+          />
+          <Button type="submit" variant="secondary" disabled={consultando}>
+            {consultando ? "…" : "Tarjeta"}
           </Button>
         </form>
 
