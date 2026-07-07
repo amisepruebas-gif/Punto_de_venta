@@ -80,10 +80,9 @@ public class articulos {
 
             tamArticulos = articulosCapArray.length();
             for (int i = 0; i < articulosCapArray.length(); i++){
-                FirebaseFirestore db = FirebaseFirestore.getInstance();
                 try {
                     int finalI = i;
-                    db.collection(context.getString(R.string.articulos_n) + "/").document(articulosCapArray.getString(i))
+                    fire.colRef(context.getString(R.string.articulos_n)).document(articulosCapArray.getString(i))
                             .get()
                             .addOnSuccessListener(new OnSuccessListener<DocumentSnapshot>() {
                                 @Override

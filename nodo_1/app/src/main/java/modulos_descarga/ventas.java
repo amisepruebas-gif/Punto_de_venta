@@ -1,17 +1,20 @@
 package modulos_descarga;
 
-
-import static com.example.nodo_1.fire.db;
 import static com.example.nodo_1.generales.actualizarDatosGuardados;
 import static com.example.nodo_1.generales.loadData_sharedPreferences;
-import static com.example.nodo_1.principal.jsonCorteHistorial;
-import static com.example.nodo_1.principal.objectFechasCorte;
+import static com.example.nodo_1.principal.jsonVenta;
+import static com.example.nodo_1.principal.objectFechasVenta;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.nodo_1.R;
@@ -31,8 +34,9 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -43,64 +47,59 @@ import java.util.Objects;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-public class corte {
-    Context context;
-    String nameArray, direccion;
+public class ventas {
 
-    public corte(Context context){
+    Context context;
+
+    public ventas(Context context){
         this.context = context;
     }
 
-
     String huellallegada = "";
     boolean statuHuellaIgual = false;
+    private final String CHANNEL_ID = "mi_canal_notificacion";
 
-    public void escucharMensajeEnDatos(JSONObject object){
+    public void escucharVentaEnDatos(JSONObject object){
 
-        // huella - > millis()
+        // huella -> millis()
         try {
-            direccion = context.getString(R.string.corte_1);
-            nameArray = "registro";
-            String keyName = context.getString(R.string.huella_corte_1);
+            String direccion = context.getString(R.string.ventas_n);
+            String keyName = context.getString(R.string.huella_venta);
 
             String huellaLocal = loadData_sharedPreferences(context, keyName, keyName);
-            huellallegada = object.getString(context.getString(R.string.huella_corte_1));
-
+            huellallegada = object.getString(context.getString(R.string.huella_venta));
 
             String ultimaFechaRegistrada = formatearFechaDesdeID(huellallegada);
             String año_registrado = ultimaFechaRegistrada.split("-")[0];
             String mes_registrado = ultimaFechaRegistrada.split("-")[1];
             String dia_registrado = ultimaFechaRegistrada.split("-")[2];
-            if (dia_registrado.charAt(0) == '0')dia_registrado = dia_registrado.substring(1);
-            if (mes_registrado.charAt(0) == '0')mes_registrado = mes_registrado.substring(1);
+            if (dia_registrado.charAt(0) == '0') dia_registrado = dia_registrado.substring(1);
+            if (mes_registrado.charAt(0) == '0') mes_registrado = mes_registrado.substring(1);
 
-            jsonCorteHistorial = getJsonGuardado("jsonCorteHistorial");
+            jsonVenta = getJsonGuardado("jsonVenta");
 
-            if(huellaLocal.equals("")||jsonCorteHistorial==null){
-                if(jsonCorteHistorial == null){
-                    // Si el equipo es nuevo debería preguntar si hay más de 1 día para descargar
-                    jsonCorteHistorial = new JSONObject();
-                    descargar_fechasMensaje(direccion,  true);
+            if(huellaLocal.equals("") || jsonVenta == null){
+                if(jsonVenta == null){
+                    jsonVenta = new JSONObject();
+                    descargar_fechasVenta(direccion, true);
                 } else {
-                    // Hay un problema
-                    toast("PROBLEMA AL RECIBIR");
+                    toast("PROBLEMA AL RECIBIR VENTA");
                 }
             } else {
                 boolean mismoDia = false;
                 if(!huellaLocal.equals(huellallegada)){
                     statuHuellaIgual = false;
-                    if (jsonCorteHistorial.has(año_registrado)){
-                        if (jsonCorteHistorial.getJSONObject(año_registrado).has(mes_registrado)){
-                            if (jsonCorteHistorial.getJSONObject(año_registrado).getJSONObject(mes_registrado).has(dia_registrado)){}
+                    if (jsonVenta.has(año_registrado)){
+                        if (jsonVenta.getJSONObject(año_registrado).has(mes_registrado)){
+                            if (jsonVenta.getJSONObject(año_registrado).getJSONObject(mes_registrado).has(dia_registrado)){}
                             else mismoDia = true;
                         }else mismoDia = true;
                     }else mismoDia = true;
 
                     if(!mismoDia){
-                        getMensajeDiaEntero(año_registrado, mes_registrado, dia_registrado,  "");
-                    }
-                    else{
-                        descargar_fechasMensaje(direccion,  false);
+                        getVentaDiaEntero(año_registrado, mes_registrado, dia_registrado, "");
+                    } else {
+                        descargar_fechasVenta(direccion, false);
                     }
                 }else {
                     statuHuellaIgual = true;
@@ -111,8 +110,7 @@ public class corte {
         }
     }
 
-
-    public void descargar_fechasMensaje(String direccion,  boolean todosLosMensajes){
+    public void descargar_fechasVenta(String direccion, boolean todasLasVentas){
         JSONObject json = new JSONObject();
         fire.colRef(direccion).get().addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
             @Override
@@ -125,62 +123,62 @@ public class corte {
                         try {
                             JSONObject obj = mapToJSON(document.getData());
                             json.put(document.getId(), obj);
-
                         } catch (JSONException e) {
                             e.printStackTrace();
                         }
                     }
                     try {
-                        objectFechasCorte = new JSONObject(json.toString());
-                        actualizarDatosGuardados("objectFechasCorte", objectFechasCorte.toString(), context);
+                        objectFechasVenta = new JSONObject(json.toString());
+                        actualizarDatosGuardados("objectFechasVenta", objectFechasVenta.toString(), context);
 
                         String fechainicioString;
-                        if(!todosLosMensajes) {
-                            fechainicioString = obtenerFechaMasReciente(jsonCorteHistorial);
+                        if(!todasLasVentas) {
+                            fechainicioString = obtenerFechaMasReciente(jsonVenta);
                         } else {
-                            String fechaAntigua = fecha.encontrarFechaMasAntigua(objectFechasCorte);
+                            // Limitar primera descarga a ultimos 30 dias
+                            String fechaAntigua = fecha.encontrarFechaMasAntigua(objectFechasVenta);
                             String fechaLimite = obtenerFechaHace30Dias();
-                            if (fechaAntigua != null && fechaLimite != null && esFechaAnterior(fechaAntigua, fechaLimite)) {
-                                fechainicioString = fechaLimite;
+                            if (fechaAntigua != null && fechaLimite != null) {
+                                if (esFechaAnterior(fechaAntigua, fechaLimite)) {
+                                    fechainicioString = fechaLimite;
+                                } else {
+                                    fechainicioString = fechaAntigua;
+                                }
                             } else {
                                 fechainicioString = fechaAntigua;
                             }
                         }
 
-                        JSONArray arrayFechasFaltantes = obtenerFechasDesde(objectFechasCorte, fechainicioString);
+                        JSONArray arrayFechasFaltantes = obtenerFechasDesde(objectFechasVenta, fechainicioString);
 
                         if (arrayFechasFaltantes.length() == 1){
                             String hastaDonde = "";
-                            String fechaUltimoMensaje = arrayFechasFaltantes.getString(arrayFechasFaltantes.length()-1);
-                            String año = fechaUltimoMensaje.split("-")[0];
-                            String mes = fechaUltimoMensaje.split("-")[1];
-                            String dia = fechaUltimoMensaje.split("-")[2];
+                            String fechaUltimaVenta = arrayFechasFaltantes.getString(arrayFechasFaltantes.length()-1);
+                            String año = fechaUltimaVenta.split("-")[0];
+                            String mes = fechaUltimaVenta.split("-")[1];
+                            String dia = fechaUltimaVenta.split("-")[2];
 
-                            if (jsonCorteHistorial.has(año)){
-                                if (jsonCorteHistorial.getJSONObject(año).has(mes)){
-                                    if (jsonCorteHistorial.getJSONObject(año).getJSONObject(mes).has(dia)){}
+                            if (jsonVenta.has(año)){
+                                if (jsonVenta.getJSONObject(año).has(mes)){
+                                    if (jsonVenta.getJSONObject(año).getJSONObject(mes).has(dia)){}
                                     else hastaDonde = "dia";
                                 }else hastaDonde = "mes";
                             }else hastaDonde = "año";
 
-                            getMensajeDiaEntero(año, mes, dia,  hastaDonde);
+                            getVentaDiaEntero(año, mes, dia, hastaDonde);
                         }
-
 
                         if(arrayFechasFaltantes.length() > 1){
                             List<Task<DocumentSnapshot>> allTasks = new ArrayList<>();
 
                             for (int x = 0; x < arrayFechasFaltantes.length(); x++) {
+                                String fechaStr = arrayFechasFaltantes.getString(x);
+                                String año = fechaStr.split("-")[0];
+                                String mes = fechaStr.split("-")[1];
+                                String dia = fechaStr.split("-")[2];
 
-                                String fecha = arrayFechasFaltantes.getString(x);
-
-                                String año = fecha.split("-")[0];
-                                String mes = fecha.split("-")[1];
-                                String dia = fecha.split("-")[2];
-
-                                Task<DocumentSnapshot> task = fire.documenRef(direccion +"/" + año + "/" + mes + "/" + dia).get();
+                                Task<DocumentSnapshot> task = fire.documenRef("ventas_n/" + año + "/" + mes + "/" + dia).get();
                                 allTasks.add(task);
-                                // Procesa cada tarea individualmente si es necesario
                                 task.addOnCompleteListener(new OnCompleteListener<DocumentSnapshot>() {
                                     @Override
                                     public void onComplete(@NonNull Task<DocumentSnapshot> task) {
@@ -191,17 +189,25 @@ public class corte {
                                                     JSONObject object = mapToJSON(Objects.requireNonNull(document.getData()));
                                                     JSONObject objMes = new JSONObject();
                                                     JSONObject objDia = new JSONObject();
-                                                    if (jsonCorteHistorial.has(año)) {
-                                                        if (jsonCorteHistorial.getJSONObject(año).has(mes)) {
-                                                            jsonCorteHistorial.getJSONObject(año).getJSONObject(mes).put(dia, object.getJSONArray(nameArray));
-                                                        } else {
-                                                            objDia.put(dia, object.getJSONArray(nameArray));
-                                                            jsonCorteHistorial.getJSONObject(año).put(mes, objDia);
-                                                        }
-                                                    } else {
-                                                        objDia.put(dia, object.getJSONArray(nameArray));
+                                                    JSONObject jsn_array = new JSONObject();
+                                                    jsn_array.put("registro", object.getJSONArray("registro"));
+                                                    if(jsonVenta.length() == 0){
+                                                        objDia.put(dia, jsn_array);
                                                         objMes.put(mes, objDia);
-                                                        jsonCorteHistorial.put(año, objMes);
+                                                        jsonVenta.put(año, objMes);
+                                                    } else {
+                                                        if (jsonVenta.has(año)) {
+                                                            if (jsonVenta.getJSONObject(año).has(mes)) {
+                                                                jsonVenta.getJSONObject(año).getJSONObject(mes).put(dia, jsn_array);
+                                                            } else {
+                                                                objDia.put(dia, jsn_array);
+                                                                jsonVenta.getJSONObject(año).put(mes, objDia);
+                                                            }
+                                                        } else {
+                                                            objDia.put(dia, jsn_array);
+                                                            objMes.put(mes, objDia);
+                                                            jsonVenta.put(año, objMes);
+                                                        }
                                                     }
                                                 } catch (JSONException e) {
                                                     throw new RuntimeException(e);
@@ -215,15 +221,12 @@ public class corte {
                                 @Override
                                 public void onComplete(@NonNull Task<Void> task) {
                                     if (task.isSuccessful()) {
-                                        // Todas las tareas han finalizado correctamente
                                         onAllTasksCompleted();
                                     } else {
-                                        // Maneja errores si alguna tarea falló
-                                        Log.e("Firestore", "Error al completar las tareas", task.getException());
+                                        Log.e("Firestore", "Error al completar las tareas de ventas", task.getException());
                                     }
                                 }
                             });
-
                         }
                     } catch (JSONException e) {
                         throw new RuntimeException(e);
@@ -234,33 +237,40 @@ public class corte {
     }
 
     private void onAllTasksCompleted() {
-        jsonCorteHistorial = ordenarJSONObjectPorFecha(jsonCorteHistorial);
-        actualizarDatosGuardados("jsonCorteHistorial", jsonCorteHistorial.toString(), context);
+        jsonVenta = ordenarJSONObjectPorFecha(jsonVenta);
+        actualizarDatosGuardados("jsonVenta", jsonVenta.toString(), context);
         generales.saveData_sharedPreferences(
                 context,
-                context.getString(R.string.huella_corte_1),
-                context.getString(R.string.huella_corte_1), huellallegada);
+                context.getString(R.string.huella_venta),
+                context.getString(R.string.huella_venta), huellallegada);
 
-        String fechas = obtenerFechaMasReciente(jsonCorteHistorial);
+        String fechas = obtenerFechaMasReciente(jsonVenta);
+        if (fechas == null) return;
 
         String año = fechas.split("-")[0];
         String mes = fechas.split("-")[1];
         String dia = fechas.split("-")[2];
-        Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_mensajes_ac");
-        intent.putExtra("datos", context.getString(R.string.corte_1));
+        Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_venta_ac");
+        intent.putExtra("datos", "ultima_venta");
+        intent.putExtra("fecha", fechas);
         try {
             intent.putExtra("extra_data",
-                    jsonCorteHistorial.getJSONObject(año).getJSONObject(mes).getJSONArray(dia).
-                            getJSONObject( jsonCorteHistorial.getJSONObject(año).getJSONObject(mes).getJSONArray(dia).length()-1).toString());
+                    jsonVenta.getJSONObject(año).getJSONObject(mes).getJSONObject(dia).toString());
         } catch (JSONException e) {
-            throw new RuntimeException(e);
+            // ignore
         }
         LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+        notificacion();
     }
 
+    private void notificacion(){
+        if(!statuHuellaIgual){
+            sendVentaNotification(context, "NUEVA VENTA");
+        }
+    }
 
-    private void getMensajeDiaEntero(String año, String mes, String dia, String hastaDonde){
-        fire.documenRef(direccion + "/" + año + "/" + mes + "/" + dia).get().addOnCompleteListener(new OnCompleteListener<DocumentSnapshot>() {
+    private void getVentaDiaEntero(String año, String mes, String dia, String hastaDonde){
+        fire.documenRef("ventas_n/" + año + "/" + mes + "/" + dia).get().addOnCompleteListener(new OnCompleteListener<DocumentSnapshot>() {
             @Override
             public void onComplete(@NonNull Task<DocumentSnapshot> task) {
                 if (task.isSuccessful()) {
@@ -268,93 +278,101 @@ public class corte {
                     if (document.exists()) {
                         try {
                             JSONObject object = mapToJSON(Objects.requireNonNull(document.getData()));
+                            JSONObject jsn_array = new JSONObject();
+                            jsn_array.put("registro", object.getJSONArray("registro"));
 
                             if(hastaDonde.equals("")) {
-                                jsonCorteHistorial.getJSONObject(año).getJSONObject(mes).put(dia, object.getJSONArray(nameArray));
+                                jsonVenta.getJSONObject(año).getJSONObject(mes).put(dia, jsn_array);
                             } else {
                                 if(hastaDonde.equals("año")){
                                     JSONObject obj_dia = new JSONObject();
-                                    obj_dia.put(dia, object.getJSONArray(direccion));
+                                    obj_dia.put(dia, jsn_array);
                                     JSONObject obj_mes = new JSONObject();
                                     obj_mes.put(mes, obj_dia);
-                                    jsonCorteHistorial.put(año, obj_mes);
+                                    jsonVenta.put(año, obj_mes);
                                 } else if (hastaDonde.equals("mes")) {
                                     JSONObject obj_dia = new JSONObject();
-                                    obj_dia.put(dia, object.getJSONArray(direccion));
-                                    jsonCorteHistorial.getJSONObject(año).put(mes, obj_dia);
+                                    obj_dia.put(dia, jsn_array);
+                                    jsonVenta.getJSONObject(año).put(mes, obj_dia);
                                 } else {
-                                    jsonCorteHistorial.getJSONObject(año).getJSONObject(mes).put(dia, object.getJSONArray(direccion));
+                                    jsonVenta.getJSONObject(año).getJSONObject(mes).put(dia, jsn_array);
                                 }
                             }
-                            actualizarDatosGuardados("jsonCorteHistorial", jsonCorteHistorial.toString(), context);
-                            generales.saveData_sharedPreferences(
-                                    context,
-                                    context.getString(R.string.huella_corte_1),
-                                    context.getString(R.string.huella_corte_1), huellallegada);
-
-                            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_mensajes_ac");
-                            intent.putExtra("datos", "mensaje");
-                            intent.putExtra("extra_data",
-                                    jsonCorteHistorial.getJSONObject(año).getJSONObject(mes).getJSONArray(dia).
-                                            getJSONObject( jsonCorteHistorial.getJSONObject(año).getJSONObject(mes).getJSONArray(dia).length()-1).toString());
-                            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
-
+                            onAllTasksCompleted();
                         } catch (JSONException e) {
                             throw new RuntimeException(e);
                         }
-                    } else {
-                        // Manejar el caso en que el documento no existe
                     }
-                } else {
-                    // Manejar el error en la tarea
                 }
             }
         });
+    }
 
+    // Limitar descarga inicial a 30 dias
+    private String obtenerFechaHace30Dias() {
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_MONTH, -30);
+        int año = cal.get(Calendar.YEAR);
+        int mes = cal.get(Calendar.MONTH) + 1;
+        int dia = cal.get(Calendar.DAY_OF_MONTH);
+        return año + "-" + mes + "-" + dia;
+    }
+
+    private boolean esFechaAnterior(String fecha1, String fecha2) {
+        try {
+            String[] p1 = fecha1.split("-");
+            String[] p2 = fecha2.split("-");
+            Calendar c1 = Calendar.getInstance();
+            c1.set(Integer.parseInt(p1[0]), Integer.parseInt(p1[1]) - 1, Integer.parseInt(p1[2]), 0, 0, 0);
+            Calendar c2 = Calendar.getInstance();
+            c2.set(Integer.parseInt(p2[0]), Integer.parseInt(p2[1]) - 1, Integer.parseInt(p2[2]), 0, 0, 0);
+            return c1.before(c2);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public static String formatearFechaDesdeID(String id) {
-        // Verifica que la cadena tenga al menos 8 caracteres para la fecha
         if (id == null || id.length() < 8) {
-            System.err.println("ID inválido: la cadena es nula o demasiado corta.");
             return null;
         }
-
         try {
-            // Extrae las partes de la fecha
             String anioStr = id.substring(0, 4);
             String mesStr = id.substring(4, 6);
             String diaStr = id.substring(6, 8);
-
-            // Convierte mes y día a enteros para eliminar ceros a la izquierda
             int anio = Integer.parseInt(anioStr);
             int mes = Integer.parseInt(mesStr);
             int dia = Integer.parseInt(diaStr);
-
-            // Formatea la fecha
             return String.format("%d-%d-%d", anio, mes, dia);
         } catch (NumberFormatException | IndexOutOfBoundsException e) {
-            System.err.println("Error al formatear la fecha desde el ID: " + e.getMessage());
             return null;
         }
     }
 
-    private JSONObject getJsonGuardado(String name){
+    private JSONObject getJsonGuardado(String name) {
         File file = new File(context.getFilesDir(), name);
-        try (FileReader fileReader = new FileReader(file);
-             BufferedReader bufferedReader = new BufferedReader(fileReader)) {
+        if (!file.exists()) {
+            return null;
+        }
+        BufferedReader bufferedReader = null;
+        try {
+            FileInputStream fis = context.openFileInput(name);
+            InputStreamReader inputStreamReader = new InputStreamReader(fis);
+            bufferedReader = new BufferedReader(inputStreamReader);
             StringBuilder stringBuilder = new StringBuilder();
-            String line = bufferedReader.readLine();
-            while (line != null){
+            String line;
+            while ((line = bufferedReader.readLine()) != null) {
                 stringBuilder.append(line).append("\n");
-                line = bufferedReader.readLine();
             }
             String response = stringBuilder.toString();
-
             return new JSONObject(response);
         } catch (IOException | JSONException e) {
             e.printStackTrace();
             return null;
+        } finally {
+            if (bufferedReader != null) {
+                try { bufferedReader.close(); } catch (IOException e) { }
+            }
         }
     }
 
@@ -364,12 +382,10 @@ public class corte {
             String key = entry.getKey();
             Object value = entry.getValue();
             if (value instanceof Map) {
-                Map<String, Object> subMap = (Map<String, Object>) value;
-                obj_.put(key, mapToJSON(subMap));
+                obj_.put(key, mapToJSON((Map<String, Object>) value));
             } else if (value instanceof List) {
                 obj_.put(key, listToJSONArray((List<Object>) value));
-            }
-            else {
+            } else {
                 obj_.put(key, value);
             }
         }
@@ -378,44 +394,37 @@ public class corte {
 
     private JSONArray listToJSONArray(List<Object> list) throws JSONException {
         JSONArray arr = new JSONArray();
-
         for(Object obj: list) {
             if (obj instanceof Map) {
                 arr.put(mapToJSON((Map<String, Object>) obj));
-            }
-            else if(obj instanceof List) {
+            } else if(obj instanceof List) {
                 arr.put(listToJSONArray((List<Object>) obj));
-            }
-            else {
+            } else {
                 arr.put(obj);
             }
         }
         return arr;
     }
 
-
     public static JSONArray obtenerFechasDesde(JSONObject jsnx, String fechaInicialStr) {
         JSONArray fechasArray = new JSONArray();
         TreeSet<Date> fechasSet = new TreeSet<>();
 
-        // Parsear la fecha inicial y añadir un día
         Date fechaInicial;
         try {
             String[] fechaParts = fechaInicialStr.split("-");
+            if (fechaParts.length != 3) return fechasArray;
             int añoInicial = Integer.parseInt(fechaParts[0]);
-            int mesInicial = Integer.parseInt(fechaParts[1]) - 1; // Los meses en Calendar van de 0 a 11
+            int mesInicial = Integer.parseInt(fechaParts[1]) - 1;
             int diaInicial = Integer.parseInt(fechaParts[2]);
 
             Calendar calInicial = Calendar.getInstance();
             calInicial.set(añoInicial, mesInicial, diaInicial, 0, 0, 0);
             calInicial.set(Calendar.MILLISECOND, 0);
-
-            // Añadir un día a la fecha inicial
             calInicial.add(Calendar.DAY_OF_MONTH, 1);
             fechaInicial = calInicial.getTime();
         } catch (Exception e) {
-            e.printStackTrace();
-            return fechasArray; // Retorna vacío si la fecha inicial es inválida
+            return fechasArray;
         }
 
         try {
@@ -428,7 +437,7 @@ public class corte {
                 Iterator<String> monthKeys = objMeses.keys();
                 while (monthKeys.hasNext()) {
                     String monthKey = monthKeys.next();
-                    int mes = Integer.parseInt(monthKey) - 1; // Los meses en Calendar van de 0 a 11
+                    int mes = Integer.parseInt(monthKey) - 1;
                     JSONObject objDias = objMeses.getJSONObject(monthKey);
 
                     Iterator<String> dayKeys = objDias.keys();
@@ -441,7 +450,6 @@ public class corte {
                         calActual.set(Calendar.MILLISECOND, 0);
                         Date fechaActual = calActual.getTime();
 
-                        // Si la fecha actual es mayor o igual a la fecha inicial, la añadimos al conjunto
                         if (!fechaActual.before(fechaInicial)) {
                             fechasSet.add(fechaActual);
                         }
@@ -449,34 +457,29 @@ public class corte {
                 }
             }
 
-            // Convertir el conjunto de fechas en un JSONArray de Strings
-            for (Date fecha : fechasSet) {
+            for (Date fechaDate : fechasSet) {
                 Calendar cal = Calendar.getInstance();
-                cal.setTime(fecha);
+                cal.setTime(fechaDate);
                 int año = cal.get(Calendar.YEAR);
-                int mes = cal.get(Calendar.MONTH) + 1; // Ajuste porque los meses van de 0 a 11
+                int mes = cal.get(Calendar.MONTH) + 1;
                 int dia = cal.get(Calendar.DAY_OF_MONTH);
-                String fechaStr = año + "-" + mes + "-" + dia;
-                fechasArray.put(fechaStr);
+                fechasArray.put(año + "-" + mes + "-" + dia);
             }
-
         } catch (JSONException e) {
             e.printStackTrace();
         }
 
         return fechasArray;
     }
+
     public static JSONObject ordenarJSONObjectPorFecha(JSONObject original) {
         return ordenarNivel(original);
     }
 
     private static JSONObject ordenarNivel(JSONObject obj) {
         JSONObject resultado = new JSONObject();
-
         try {
-            // Utilizar TreeMap para ordenar las claves numéricamente
             TreeMap<Integer, Object> mapaOrdenado = new TreeMap<>();
-
             Iterator<String> claves = obj.keys();
             while (claves.hasNext()) {
                 String clave = claves.next();
@@ -484,30 +487,22 @@ public class corte {
                 Object valor = obj.get(clave);
                 mapaOrdenado.put(claveNum, valor);
             }
-
-            // Construir el nuevo JSONObject ordenado
             for (Map.Entry<Integer, Object> entrada : mapaOrdenado.entrySet()) {
                 String clave = String.valueOf(entrada.getKey());
                 Object valor = entrada.getValue();
-
                 if (valor instanceof JSONObject) {
-                    // Recursivamente ordenar el siguiente nivel
                     valor = ordenarNivel((JSONObject) valor);
                 }
                 resultado.put(clave, valor);
             }
-
-        } catch (JSONException e) {
-            e.printStackTrace();
-        } catch (NumberFormatException e) {
+        } catch (JSONException | NumberFormatException e) {
             e.printStackTrace();
         }
-
         return resultado;
     }
+
     public static String obtenerFechaMasReciente(JSONObject obj3) {
         Date fechaMaxima = null;
-
         try {
             Iterator<String> yearKeys = obj3.keys();
             while (yearKeys.hasNext()) {
@@ -518,7 +513,7 @@ public class corte {
                 Iterator<String> monthKeys = objMeses.keys();
                 while (monthKeys.hasNext()) {
                     String monthKey = monthKeys.next();
-                    int mes = Integer.parseInt(monthKey) - 1; // Los meses en Calendar van de 0 a 11
+                    int mes = Integer.parseInt(monthKey) - 1;
                     JSONObject objDias = objMeses.getJSONObject(monthKey);
 
                     Iterator<String> dayKeys = objDias.keys();
@@ -542,45 +537,33 @@ public class corte {
                     }
                 }
             }
-
             if (fechaMaxima != null) {
                 Calendar calMaxima = Calendar.getInstance();
                 calMaxima.setTime(fechaMaxima);
-                int añoMaximo = calMaxima.get(Calendar.YEAR);
-                int mesMaximo = calMaxima.get(Calendar.MONTH) + 1; // Ajuste porque los meses van de 0 a 11
-                int diaMaximo = calMaxima.get(Calendar.DAY_OF_MONTH);
-                return añoMaximo + "-" + mesMaximo + "-" + diaMaximo;
-            } else {
-                return null; // No hay fechas en el JSONObject
+                return calMaxima.get(Calendar.YEAR) + "-" + (calMaxima.get(Calendar.MONTH) + 1) + "-" + calMaxima.get(Calendar.DAY_OF_MONTH);
             }
-
         } catch (JSONException e) {
             e.printStackTrace();
-            return null;
         }
+        return null;
     }
 
-    private String obtenerFechaHace30Dias() {
-        Calendar cal = Calendar.getInstance();
-        cal.add(Calendar.DAY_OF_MONTH, -30);
-        int año = cal.get(Calendar.YEAR);
-        int mes = cal.get(Calendar.MONTH) + 1;
-        int dia = cal.get(Calendar.DAY_OF_MONTH);
-        return año + "-" + mes + "-" + dia;
-    }
+    public void sendVentaNotification(Context context, String mensajeVenta) {
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.icon_persona)
+                .setContentTitle("NUEVA VENTA")
+                .setContentText(mensajeVenta)
+                .setSound(null)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setAutoCancel(true);
 
-    private boolean esFechaAnterior(String fecha1, String fecha2) {
-        try {
-            String[] p1 = fecha1.split("-");
-            String[] p2 = fecha2.split("-");
-            Calendar c1 = Calendar.getInstance();
-            c1.set(Integer.parseInt(p1[0]), Integer.parseInt(p1[1]) - 1, Integer.parseInt(p1[2]), 0, 0, 0);
-            Calendar c2 = Calendar.getInstance();
-            c2.set(Integer.parseInt(p2[0]), Integer.parseInt(p2[1]) - 1, Integer.parseInt(p2[2]), 0, 0, 0);
-            return c1.before(c2);
-        } catch (Exception e) {
-            return false;
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return;
         }
+        int notificationId = (int) System.currentTimeMillis();
+        notificationManager.notify(notificationId, builder.build());
     }
 
     private void toast(String s){

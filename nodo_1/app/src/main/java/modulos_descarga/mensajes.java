@@ -42,12 +42,17 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 import java.util.TreeSet;
+
+import static com.example.nodo_1.principal.jsonStatusUpdate;
+
+import com.google.gson.Gson;
 
 
 public class mensajes {
@@ -110,7 +115,6 @@ public class mensajes {
                         descargar_fechasMensaje(direccion,  false);
                     }
                 }else {
-                    descargar(direccion);
                     statuHuellaIgual = true;
                 }
             }
@@ -122,7 +126,7 @@ public class mensajes {
 
     public void descargar(String direccion){
         JSONObject json = new JSONObject();
-        fire.db().collection(direccion).get().addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+        fire.colRef(direccion).get().addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
                                                                        @Override
                                                                        public void onSuccess(QuerySnapshot documentSnapshots) {
 
@@ -152,7 +156,7 @@ public class mensajes {
     }
     public void descargar_fechasMensaje(String direccion,  boolean todosLosMensajes){
         JSONObject json = new JSONObject();
-        fire.db().collection(direccion).get().addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+        fire.colRef(direccion).get().addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
             @Override
             public void onSuccess(QuerySnapshot documentSnapshots) {
 
@@ -176,7 +180,14 @@ public class mensajes {
                         if(!todosLosMensajes) {
                             fechainicioString = obtenerFechaMasReciente(jsonMensajes_n);
                         } else {
-                            fechainicioString = fecha.encontrarFechaMasAntigua(objectFechasMensaje);
+                            // Limitar primera descarga a ultimos 30 dias
+                            String fechaAntigua = fecha.encontrarFechaMasAntigua(objectFechasMensaje);
+                            String fechaLimite = obtenerFechaHace30Dias();
+                            if (fechaAntigua != null && fechaLimite != null && esFechaAnterior(fechaAntigua, fechaLimite)) {
+                                fechainicioString = fechaLimite;
+                            } else {
+                                fechainicioString = fechaAntigua;
+                            }
                         }
 
                         JSONArray arrayFechasFaltantes = obtenerFechasDesde(objectFechasMensaje, fechainicioString);
@@ -271,6 +282,13 @@ public class mensajes {
     private void onAllTasksCompleted() {
         jsonMensajes_n = ordenarJSONObjectPorFecha(jsonMensajes_n);
         actualizarDatosGuardados("jsonMensajes_n", jsonMensajes_n.toString(), context);
+        try {
+            JSONObject huellaObj = new JSONObject();
+            huellaObj.put(context.getString(R.string.huella_mensaje), huellallegada);
+            escuchar_mensaje(huellaObj, context);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
         generales.saveData_sharedPreferences(
                 context,
                 context.getString(R.string.huella_mensaje),
@@ -342,6 +360,13 @@ public class mensajes {
                                 }
                             }
                             actualizarDatosGuardados("jsonMensajes_n", jsonMensajes_n.toString(), context);
+                            try {
+                                JSONObject huellaObj = new JSONObject();
+                                huellaObj.put(context.getString(R.string.huella_mensaje), huellallegada);
+                                escuchar_mensaje(huellaObj, context);
+                            } catch (JSONException ex) {
+                                ex.printStackTrace();
+                            }
                             generales.saveData_sharedPreferences(
                                     context,
                                     context.getString(R.string.huella_mensaje),
@@ -660,6 +685,84 @@ public class mensajes {
         int notificationId = (int) System.currentTimeMillis();
         notificationManager.notify(notificationId, builder.build());
     }
+    public static void escuchar_mensaje(JSONObject object, Context context){
+        String huella = context.getString(R.string.huella_mensaje);
+        boolean status = true;
+        if (object.length() > 0 ){
+            if (object.has(huella)){
+            }else {
+                status = false;
+            }
+        }else {
+            status = false;
+        }
+        if (status){
+            boolean igual = false;
+            try {
+                String id_device = generales.loadData_sharedPreferences(context, "id_mensaje", "dispositivo");
+                if (jsonStatusUpdate.length() > 0){
+                    if (jsonStatusUpdate.has(id_device)){
+                        if(jsonStatusUpdate.getJSONObject(id_device).has(huella)){
+                            String huella_device = jsonStatusUpdate.getJSONObject(id_device).getString(huella);
+                            String huella_llegada = object.getString(huella);
+                            if (!huella_llegada.equals(huella_device)){
+                                jsonStatusUpdate.getJSONObject(id_device)
+                                        .put(huella, object.getString(huella));
+                            }else {
+                                igual = true;
+                            }
+                        }else {
+                            jsonStatusUpdate.getJSONObject(id_device).put(huella,object.getString(huella));
+                        }
+                    }else {
+                        JSONObject object1 = new JSONObject();
+                        object1.put(huella, object.getString(huella));
+                        jsonStatusUpdate.put(id_device, object1);
+                    }
+                }else {
+                    JSONObject object1 = new JSONObject();
+                    object1.put(huella, object.getString(huella));
+                    jsonStatusUpdate.put(id_device, object1);
+                }
+                if(!igual){
+                    fire.documenRef(context.getString(R.string.notificar_de_reibido)+ "/" + id_device).
+                            set(new Gson().fromJson(jsonStatusUpdate.getJSONObject(id_device).toString(), HashMap.class)).
+                            addOnSuccessListener(new OnSuccessListener<Void>() {
+                                @Override
+                                public void onSuccess(Void unused) {
+                                    actualizarDatosGuardados("jsonStatusUpdate", jsonStatusUpdate.toString(), context);
+                                }
+                            });
+                }
+            } catch (JSONException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+    }
+
+    private String obtenerFechaHace30Dias() {
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_MONTH, -30);
+        int año = cal.get(Calendar.YEAR);
+        int mes = cal.get(Calendar.MONTH) + 1;
+        int dia = cal.get(Calendar.DAY_OF_MONTH);
+        return año + "-" + mes + "-" + dia;
+    }
+
+    private boolean esFechaAnterior(String fecha1, String fecha2) {
+        try {
+            String[] p1 = fecha1.split("-");
+            String[] p2 = fecha2.split("-");
+            Calendar c1 = Calendar.getInstance();
+            c1.set(Integer.parseInt(p1[0]), Integer.parseInt(p1[1]) - 1, Integer.parseInt(p1[2]), 0, 0, 0);
+            Calendar c2 = Calendar.getInstance();
+            c2.set(Integer.parseInt(p2[0]), Integer.parseInt(p2[1]) - 1, Integer.parseInt(p2[2]), 0, 0, 0);
+            return c1.before(c2);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void toast(String s){
         generales.toast(s, context);
     }

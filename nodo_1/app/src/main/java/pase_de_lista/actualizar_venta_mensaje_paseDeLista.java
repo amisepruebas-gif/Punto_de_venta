@@ -13,6 +13,8 @@ import com.example.nodo_1.fire;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.gson.Gson;
 
+import static modulos_descarga.mensajes.escuchar_mensaje;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -45,7 +47,7 @@ public class actualizar_venta_mensaje_paseDeLista {
                             JSONObject object = new JSONObject();
                             try {
                                 object.put(context.getString(R.string.huella_mensaje), huellaMensaje_generada);
-                                //escuchar_mensaje(object, context);
+                                escuchar_mensaje(object, context);
                             } catch (JSONException e) {
                                 throw new RuntimeException(e);
                             }

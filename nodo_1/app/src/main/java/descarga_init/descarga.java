@@ -59,7 +59,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -301,7 +300,7 @@ public class descarga {
         jsonVenta           = getJsonGuardado("jsonVenta");
 
 
-        DocumentReference documentRef = db().document("datos" + "/" + context.getString(R.string.datosTicket));
+        DocumentReference documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.datosTicket));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -330,7 +329,7 @@ public class descarga {
                 }
             }
         });
-        documentRef = db().document("datos" + "/" + context.getString(R.string.transferencia_datos));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.transferencia_datos));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -353,7 +352,7 @@ public class descarga {
             }
         });
 
-        documentRef = db().document("datos" + "/" + context.getString(R.string.mostrarBotonPagoTarjeta));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.mostrarBotonPagoTarjeta));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -382,7 +381,7 @@ public class descarga {
             }
         });
 
-        documentRef = db().document("datos" + "/" + context.getString(R.string.mostrarBotonTransferencia));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.mostrarBotonTransferencia));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -413,7 +412,7 @@ public class descarga {
         });
 
 
-        documentRef = db().document("datos" + "/" + context.getString(R.string.val_2x1_mostrar));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.val_2x1_mostrar));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -440,7 +439,7 @@ public class descarga {
                 }
             }
         });
-        documentRef = db().document("datos" + "/" + context.getString(R.string.cobrar_comision));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.cobrar_comision));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -466,7 +465,7 @@ public class descarga {
                 }
             }
         });
-        documentRef = db().document("datos" + "/" + context.getString(R.string.dar_ticket));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.dar_ticket));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -493,7 +492,7 @@ public class descarga {
                 }
             }
         });
-        documentRef = fire.db().document("datos" + "/" + context.getString(R.string.notificacion_update));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.notificacion_update));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -512,7 +511,7 @@ public class descarga {
                 }
             }
         });
-        documentRef = db().document("datos" + "/" +  context.getString(R.string.statusFacial));
+        documentRef = fire.documenRef("datos" + "/" +  context.getString(R.string.statusFacial));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -540,7 +539,7 @@ public class descarga {
             }
         });
 
-        documentRef = db().document("datos" + "/" + context.getString(R.string.limitarVenta_a_existencia));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.limitarVenta_a_existencia));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -569,7 +568,7 @@ public class descarga {
             }
         });
 
-        documentRef = db().document("datos" + "/" + context.getString(R.string.equipoDeTrabajo));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.equipoDeTrabajo));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -592,7 +591,7 @@ public class descarga {
       /*
 
 
-        documentRef = db().document("datos" + "/" + context.getString(R.string.passAdmin));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.passAdmin));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -625,7 +624,7 @@ public class descarga {
             }
         });
 
-        documentRef = db().document("datos" + "/" + context.getString(R.string.tallas));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.tallas));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -652,7 +651,7 @@ public class descarga {
             }
         });
        */
-        documentRef = db().document("datos" + "/" + context.getString(R.string.articulos_ac));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.articulos_ac));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -675,7 +674,7 @@ public class descarga {
                 }
             }
         });
-        documentRef = db().document("datos" + "/" + context.getString(R.string.mensajes_ac));
+        documentRef = fire.documenRef("datos" + "/" + context.getString(R.string.mensajes_ac));
         documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
             @Override
             public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -689,6 +688,20 @@ public class descarga {
                 }
             }
         });
+        documentRef = fire.documenRef("datos" + "/" + "ventas_ac");
+        documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
+            @Override
+            public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
+                if (!unavezVenta) {
+                    unavezVenta = true;
+                    return;
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    modulos_descarga.ventas moduloVentas = new modulos_descarga.ventas(context);
+                    moduloVentas.escucharVentaEnDatos(new JSONObject(Objects.requireNonNull(snapshot.getData())));
+                }
+            }
+        });
 
     }
 
@@ -697,131 +710,6 @@ public class descarga {
     public static boolean unavezVenta = false;
     static public boolean unavezMensaje = true;
 
-    private void escucharMensajeEnDatos(JSONObject object){
-
-        // huella - > millis()
-        try {
-            String keyName = context.getString(R.string.huella_mensaje);
-            String huellaLocal = loadData_sharedPreferences(context, keyName, keyName);
-            String huellallegada = "";
-            if(object.has(context.getString(R.string.huella_mensaje))){
-                huellallegada = object.getString(context.getString(R.string.huella_mensaje));
-            }
-            generales.saveData_sharedPreferences(
-                    context,
-                    context.getString(R.string.huella_mensaje),
-                    context.getString(R.string.huella_mensaje), huellallegada);
-
-            String año = "20" + getAnñoMesDiaHora("año");
-            String mes = getAnñoMesDiaHora("mes");
-            String dia = getAnñoMesDiaHora("dia");
-
-            jsonMensajes_n = getJsonGuardado("jsonMensajes_n");
-            if(huellaLocal.equals("")){
-                if(jsonMensajes_n == null){
-                    getMensajeDiaEntero(año, mes, dia, true, "");
-                }else {
-                    // hay un problema
-                    toast("PROBLEMA AL RECIBIR MENSAJE FUN ESC.MENJASE EN DATOS");
-                }
-            }else {
-                if(!huellaLocal.equals(huellallegada)){
-                    String fecha = formatearFechaDesdeID(huellaLocal);
-
-                    String año_get = fecha.split("-")[0];
-                    String mes_get = fecha.split("-")[1];
-                    String dia_get = fecha.split("-")[2];
-                    String hastaDonde = "";
-                    if(año_get.equals(año)){
-                        if(mes_get.equals(mes)){
-                            if(dia_get.equals(dia)){
-
-                            } else hastaDonde = "dia";
-                        } else hastaDonde = "mes";
-                    }else hastaDonde = "año";
-
-                    if(hastaDonde.equals("")){
-                        getMensajeDiaEntero(año, mes, dia, false, hastaDonde);
-                    } else  {
-                        descargar_fechasMensaje("mensajes_n", fecha, hastaDonde);
-                    }
-                } else toast("huellas iguales");
-            }
-        } catch (JSONException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
-    public void descargar_fechasMensaje(String direccion, String fechaComparacion, String hastaDonde){
-
-        JSONObject json = new JSONObject();
-        refCollection(direccion).get().addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
-            @Override
-            public void onSuccess(QuerySnapshot documentSnapshots) {
-
-                if (documentSnapshots.isEmpty()) {
-                    return;
-                } else {
-                    for (DocumentSnapshot document : documentSnapshots) {
-                        try {
-                            JSONObject obj = mapToJSON(document.getData());
-                            json.put(document.getId(), obj);
-
-                        } catch (JSONException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                    try {
-                        objectFechasMensaje = new JSONObject(json.toString());
-                        actualizarDatosGuardados("objectFechasMensaje", objectFechasMensaje.toString(), context);
-
-                        LocalDate fechaInicio = parsearFecha(fechaComparacion);
-                        // Obtener la fecha actual
-                        LocalDate fechaActual = obtenerFechaActual();
-
-                        // Generar las fechas faltantes
-                        List<fecha> fechasFaltantes = generarFechasFaltantes(objectFechasMensaje, fechaInicio, fechaActual);
-
-                        // Convertir las fechas faltantes a JSONObject
-                        JSONObject jsonFaltantes = convertirFaltantesAJSONObject(fechasFaltantes);
-
-                        if (fechasFaltantes.size() == 1) {
-                            fecha unicaFechaFaltante = fechasFaltantes.get(0);
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                if (unicaFechaFaltante.getAño() == fechaActual.getYear() &&
-                                        unicaFechaFaltante.getMes() == fechaActual.getMonthValue() &&
-                                        unicaFechaFaltante.getDia() == fechaActual.getDayOfMonth()) {
-                                    // La única fecha faltante es la fecha actual, retornar JSONObject vacío
-                                    jsonFaltantes = new JSONObject();  // JSONObject vacío
-                                } else {
-                                    // Hay otras fechas faltantes además de la fecha actual
-                                    jsonFaltantes = convertirFaltantesAJSONObject(fechasFaltantes);
-                                }
-                            }
-                        } else {
-                            // Hay más de una fecha faltante, o ninguna
-                            if (fechasFaltantes.isEmpty()) {
-                                // No hay fechas faltantes, retornar JSONObject vacío
-                                jsonFaltantes = new JSONObject();
-                            } else {
-                                // Hay múltiples fechas faltantes, convertir a JSONObject
-                                jsonFaltantes = convertirFaltantesAJSONObject(fechasFaltantes);
-                            }
-                        }
-
-                        if(jsonFaltantes.length() == 0){
-                            String año = getAnñoMesDiaHora("año");
-                            String mes = getAnñoMesDiaHora("mes");
-                            String dia = getAnñoMesDiaHora("dia");
-                            getMensajeDiaEntero(año, mes, dia, false, hastaDonde);
-                        }
-                    } catch (JSONException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            }
-        });
-    }
     public void mesventa(){
 
 
@@ -872,156 +760,6 @@ public class descarga {
             }
         });
     }
-    public static LocalDate parsearFecha(String fechaStr) {
-        String[] partes = fechaStr.split("-");
-        if (partes.length != 3) {
-            throw new IllegalArgumentException("Formato de fecha inválido. Debe ser 'yyyy-M-d'.");
-        }
-        int año = Integer.parseInt(partes[0]);
-        int mes = Integer.parseInt(partes[1]);
-        int dia = Integer.parseInt(partes[2]);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            return LocalDate.of(año, mes, dia);
-        } else return null;
-    }
-
-    public static LocalDate obtenerFechaActual() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            return LocalDate.now();
-        } else return null;
-    }
-
-    public static List<fecha> generarFechasFaltantes(JSONObject datos, LocalDate fechaInicio, LocalDate fechaActual) throws JSONException {
-        List<fecha> faltantes = new ArrayList<>();
-
-        // Iterar desde la fecha de inicio hasta la fecha actual
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            for (LocalDate fecha = fechaInicio; !fecha.isAfter(fechaActual); fecha = fecha.plusDays(1)) {
-                int año = fecha.getYear();
-                int mes = fecha.getMonthValue();
-                int dia = fecha.getDayOfMonth();
-
-                // Verificar si el año existe en 'datos'
-                if (datos.has(String.valueOf(año))) {
-                    JSONObject meses = datos.getJSONObject(String.valueOf(año));
-
-                    // Verificar si el mes existe
-                    if (meses.has(String.valueOf(mes))) {
-                        JSONObject dias = meses.getJSONObject(String.valueOf(mes));
-
-                        // Verificar si el día existe
-                        if (dias.has(String.valueOf(dia))) {
-                            continue; // La fecha existe, omitir
-                        }
-                    }
-                }
-
-                // Si llegamos aquí, la fecha no existe en 'datos'
-                faltantes.add(new fecha(año, mes, dia));
-            }
-        }
-
-        return faltantes;
-    }
-
-    public static JSONObject convertirFaltantesAJSONObject(List<fecha> faltantes) throws JSONException {
-        JSONObject jsonFaltantes = new JSONObject();
-        JSONArray fechasArray = new JSONArray();
-
-        for (fecha fecha : faltantes) {
-            JSONObject fechaObj = new JSONObject();
-            fechaObj.put("año", fecha.getAño());
-            fechaObj.put("mes", fecha.getMes());
-            fechaObj.put("dia", fecha.getDia());
-            fechasArray.put(fechaObj);
-        }
-
-        jsonFaltantes.put("fechasFaltantes", fechasArray);
-        return jsonFaltantes;
-    }
-    private void getMensajeDiaEntero(String año, String mes, String dia, boolean primeraVez_nuevoUsusario, String hastaDonde){
-        fire.documenRef("mensajes_n/" + año + "/" + mes + "/" + dia).get().addOnCompleteListener(new OnCompleteListener<DocumentSnapshot>() {
-            @Override
-            public void onComplete(@NonNull Task<DocumentSnapshot> task) {
-                if (task.isSuccessful()) {
-                    DocumentSnapshot document = task.getResult();
-                    if (document.exists()) {
-                        try {
-                            JSONObject object = mapToJSON(Objects.requireNonNull(document.getData()));
-
-                            if(primeraVez_nuevoUsusario){
-                                JSONObject obj_dia = new JSONObject();
-                                obj_dia.put(dia, object);
-                                JSONObject obj_mes = new JSONObject();
-                                obj_mes.put(mes, obj_dia);
-                                jsonMensajes_n.put(año, obj_mes);
-                            }else {
-                                if(!hastaDonde.equals("")) jsonMensajes_n.getJSONObject(año).getJSONObject(mes).getJSONObject(dia).put("mensajes", object.getJSONArray("mensajes"));
-                                else {
-                                    if(hastaDonde.equals("año")){
-                                        JSONObject obj_dia = new JSONObject();
-                                        obj_dia.put(dia, object);
-                                        JSONObject obj_mes = new JSONObject();
-                                        obj_mes.put(mes, obj_dia);
-                                        jsonMensajes_n.put(año, obj_mes);
-                                    } else if (hastaDonde.equals("mes")) {
-                                        JSONObject obj_dia = new JSONObject();
-                                        obj_dia.put(dia, object);
-                                        jsonMensajes_n.getJSONObject(año).put(mes, obj_dia);
-                                    } else if (hastaDonde.equals("dia")) {
-                                        jsonMensajes_n.getJSONObject(año).getJSONObject(mes).put(dia, object);
-                                    }else {
-                                        jsonMensajes_n.getJSONObject(año).getJSONObject(mes).put(dia, object.getJSONArray("mensajes"));
-                                    }
-                                }
-                            }
-                            actualizarDatosGuardados("jsonMensajes_n", jsonMensajes_n.toString(), context);
-
-                            Intent intent = new Intent("FIRESTORE_UPDATE_ACTION_mensajes_ac");
-                            intent.putExtra("datos", "mensaje");  // 'data' es el dato actualizado de Firestore
-                            intent.putExtra("extra_data",
-                                    jsonMensajes_n.getJSONObject(año).getJSONObject(mes).getJSONArray(dia).
-                                            getJSONObject( jsonMensajes_n.getJSONObject(año).getJSONObject(mes).getJSONArray(dia).length()-1).toString());  // 'data' es el dato actualizado de Firestore
-                            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
-                        } catch (JSONException e) {
-                            throw new RuntimeException(e);
-                        }
-                    } else {
-
-                    }
-                } else {
-
-                }
-            }
-        });
-    }
-
-    public static String formatearFechaDesdeID(String id) {
-        // Verifica que la cadena tenga al menos 8 caracteres para la fecha
-        if (id == null || id.length() < 8) {
-            System.err.println("ID inválido: la cadena es nula o demasiado corta.");
-            return null;
-        }
-
-        try {
-            // Extrae las partes de la fecha
-            String anioStr = id.substring(0, 4);
-            String mesStr = id.substring(4, 6);
-            String diaStr = id.substring(6, 8);
-
-            // Convierte mes y día a enteros para eliminar ceros a la izquierda
-            int anio = Integer.parseInt(anioStr);
-            int mes = Integer.parseInt(mesStr);
-            int dia = Integer.parseInt(diaStr);
-
-            // Formatea la fecha
-            return String.format("%d-%d-%d", anio, mes, dia);
-        } catch (NumberFormatException | IndexOutOfBoundsException e) {
-            System.err.println("Error al formatear la fecha desde el ID: " + e.getMessage());
-            return null;
-        }
-    }
-
     static private String huellaArticulos = "";
     static int tamArticulos = 0;
     JSONObject provicional_DescArt = new JSONObject();
@@ -1141,7 +879,7 @@ public class descarga {
         try {
             String idDispositivo = generales.loadData_sharedPreferences(context, "id_mensaje", "dispositivo");
             object.put(idDispositivo, huella + " " + "nodo");
-            fire.db().collection("datos").document("datos_desc").
+            fire.colRef("datos").document("datos_desc").
                     set(new Gson().fromJson(object.toString(), HashMap.class));
         } catch (JSONException e) {
             throw new RuntimeException(e);
@@ -1422,7 +1160,10 @@ public class descarga {
                                 jsonMensajes_n = getJsonGuardado("jsonMensajes_n");
                                 if(mensajeUnVezSolo_inicio){
                                     mensajeUnVezSolo_inicio = false;
-                                    if(objectMensajesAc.length() > 0) escucharMensajeEnDatos(objectMensajesAc);
+                                    if(objectMensajesAc.length() > 0) {
+                                        modulos_descarga.mensajes modulo = new modulos_descarga.mensajes(context);
+                                        modulo.escucharMensajeEnDatos(objectMensajesAc);
+                                    }
                                 }
                             }else {
                                 getVentaMensajesCompletos(json, direccion, descJSON_porFechasCompleto);
@@ -1558,7 +1299,7 @@ public class descarga {
                                                         unavezVenta = false;
                                                         descargaTodo_venta = true;
                                                     }
-                                                    documentRef = db().document("datos" + "/" + "ventas_ac");
+                                                    documentRef = fire.documenRef("datos" + "/" + "ventas_ac");
                                                     documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
                                                         @Override
                                                         public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -1591,7 +1332,7 @@ public class descarga {
                                                         unavezMensaje = false;
                                                         descargaTodo_mensaje = true;
                                                     }
-                                                    documentRef = db().document("datos" + "/" + "mensajes_ac");
+                                                    documentRef = fire.documenRef("datos" + "/" + "mensajes_ac");
                                                     documentRef.addSnapshotListener(new EventListener<DocumentSnapshot>() {
                                                         @Override
                                                         public void onEvent(@Nullable DocumentSnapshot snapshot, @Nullable FirebaseFirestoreException e) {
@@ -1602,7 +1343,8 @@ public class descarga {
                                                             if (snapshot != null && snapshot.exists()) {
                                                                 if (getJsonGuardado("jsonMensajes_n") != null){
                                                                     descargar_solo_Fechas("mensajes_n");
-                                                                    escucharMensajeEnDatos(new JSONObject(Objects.requireNonNull(snapshot.getData())));
+                                                                    modulos_descarga.mensajes modulo = new modulos_descarga.mensajes(context);
+                                                                    modulo.escucharMensajeEnDatos(new JSONObject(Objects.requireNonNull(snapshot.getData())));
                                                                 }else {
                                                                     descargarJSON_hechoporfechas("mensajes_n");
                                                                 }
@@ -1690,8 +1432,7 @@ public class descarga {
         }
     }
     public CollectionReference refCollection(String refCollection){
-        CollectionReference reference = db().collection(refCollection);
-        return reference;
+        return fire.colRef(refCollection);
     }
     private void toast(String s){
         generales.toast(s, context);
