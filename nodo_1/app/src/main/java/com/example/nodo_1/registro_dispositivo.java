@@ -92,6 +92,8 @@ public class registro_dispositivo extends AppCompatActivity {
                     }
                     object.put("id"                             , uuid);
                     object.put("nodo"                           , uuid);
+                    object.put("androidId"                      , DeviceIdentifier.getAndroidId(getApplicationContext()));
+                    object.put("tipoApp"                        , "nodo");
                     subir_1(jsn, uuid);
                 } catch (JSONException e) {
                     throw new RuntimeException(e);
@@ -120,7 +122,7 @@ public class registro_dispositivo extends AppCompatActivity {
                         } catch (JSONException e) {
                             throw new RuntimeException(e);
                         }
-                        generales.saveData_sharedPreferences(getApplicationContext(), "dispositivo", "id_mensaje", finalUuid);
+                        DeviceIdentifier.saveLocally(getApplicationContext(), finalUuid);
                         // La escritura en Firestore fue exitosa
                         ejecutar_2segundos();
                     }
