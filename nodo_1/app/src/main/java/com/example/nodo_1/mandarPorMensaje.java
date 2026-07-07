@@ -221,32 +221,11 @@ public class mandarPorMensaje {
             actualizarDatosGuardados("objectFechasMensaje"    , objectFechasMensaje.toString()  , context);
 
 
-            unavezMensaje = false;
-            long tiempoActual = System.currentTimeMillis();
-            String huella = Long.toString(tiempoActual, 36);
+            principal.huellaMensaje_generada = editar_articulos.generarID();
 
-            String idVenta =  año + "-" + mes + "-" + dia;
-            JSONArray array_id_dispositivo = new JSONArray();
-            for(int i = 0; i < jsonDatos.getJSONObject("dispositivos_mensaje").names().length(); i++){
-                String idDispositivo =  jsonDatos.getJSONObject("dispositivos_mensaje").names().getString(i);
-                JSONObject obj = new JSONObject();
-                if(generales.loadData_sharedPreferences(context, "id_mensaje", "dispositivo").equals(idDispositivo)){
-                    obj.put(idDispositivo, true);
-                }else obj.put(idDispositivo, false);
-                array_id_dispositivo.put(obj);
-            }
-            if (jsonDatos.has("mensajes_ac")){
-                jsonDatos.getJSONObject("mensajes_ac").put(idVenta, array_id_dispositivo);
-                jsonDatos.getJSONObject("mensajes_ac").put("huella", huella);
-            }else {
-                JSONObject obj = new JSONObject();
-                obj.put(idVenta, array_id_dispositivo);
-                obj.put("huella", huella);
-                jsonDatos.put("mensajes_ac", obj);
-            }
-            fire.documenRef("datos/" + "mensajes_ac").
-                    set(new Gson().fromJson(
-                            jsonDatos.getJSONObject("mensajes_ac").toString(), HashMap.class));
+            unavezMensaje = false;
+
+            actualizar_venta_mensaje_paseDeLista.mensaje(context);
 
 
         }catch (JSONException e){

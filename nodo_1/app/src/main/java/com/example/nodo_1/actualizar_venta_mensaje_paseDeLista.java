@@ -2,9 +2,11 @@ package com.example.nodo_1;
 
 import static com.example.nodo_1.principal.jsonDatos;
 import static descarga_init.descarga.unavezMensaje;
+import static modulos_descarga.mensajes.escuchar_mensaje;
 
 import android.content.Context;
 
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.gson.Gson;
 
 import org.json.JSONException;
@@ -28,7 +30,19 @@ public class actualizar_venta_mensaje_paseDeLista {
 
             fire.documenRef("datos/" + "mensajes_ac").
                     set(new Gson().fromJson(
-                            jsonDatos.getJSONObject("mensajes_ac").toString(), HashMap.class));
+                            jsonDatos.getJSONObject("mensajes_ac").toString(), HashMap.class)).
+                    addOnSuccessListener(new OnSuccessListener<Void>() {
+                        @Override
+                        public void onSuccess(Void unused) {
+                            JSONObject object = new JSONObject();
+                            try {
+                                object.put(context.getString(R.string.huella_mensaje), principal.huellaMensaje_generada);
+                                escuchar_mensaje(object, context);
+                            } catch (JSONException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    });
         }catch (JSONException e){
 
         }

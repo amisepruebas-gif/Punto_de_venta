@@ -13,6 +13,7 @@ import androidx.annotation.NonNull;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.example.nodo_1.R;
 import com.example.nodo_1.generales;
 
@@ -56,6 +57,10 @@ public class adap_mensajes extends RecyclerView.Adapter<adap_mensajes.ViewHolder
         but_verMensajesAnteriores   .setVisibility(View.GONE);
 
 
+        ImageView imgMedia_1 = holder.imgMedia_user_1, imgMedia_2 = holder.imgMedia_user_2;
+        imgMedia_1.setVisibility(View.GONE);
+        imgMedia_2.setVisibility(View.GONE);
+
         try {
             if(array.getJSONObject(position).getString("id").equals(idDispositivo)){
                 cons_1.setVisibility(View.VISIBLE);
@@ -67,6 +72,24 @@ public class adap_mensajes extends RecyclerView.Adapter<adap_mensajes.ViewHolder
                 user_1.setText(         array.getJSONObject(position).getString("usuario"));
                 textView_user_1.setText(array.getJSONObject(position).getString("texto"));
                 hora_user_1.setText(    array.getJSONObject(position).getString("hora").split(" ")[1]);
+
+                if(array.getJSONObject(position).has("tipo") && !array.getJSONObject(position).getString("tipo").equals("texto")){
+                    imgMedia_1.setVisibility(View.VISIBLE);
+                    String url = array.getJSONObject(position).getString("mediaUrl");
+                    if(array.getJSONObject(position).getString("tipo").equals("gif")){
+                        Glide.with(context).asGif().load(url).into(imgMedia_1);
+                    } else {
+                        Glide.with(context).load(url).into(imgMedia_1);
+                    }
+                    if(array.getJSONObject(position).getString("texto").isEmpty()){
+                        textView_user_1.setVisibility(View.GONE);
+                    } else {
+                        textView_user_1.setVisibility(View.VISIBLE);
+                    }
+                } else {
+                    imgMedia_1.setVisibility(View.GONE);
+                    textView_user_1.setVisibility(View.VISIBLE);
+                }
 
                 if (array.getJSONObject(position).getString("usuario").equals("Jesús")){
                     imageView_User_1.setImageResource(R.drawable.avatar_1);
@@ -131,6 +154,24 @@ public class adap_mensajes extends RecyclerView.Adapter<adap_mensajes.ViewHolder
                 user_2.setText(         array.getJSONObject(position).getString("usuario"));
                 textView_user_2.setText(array.getJSONObject(position).getString("texto"));
                 hora_user_2.setText(    array.getJSONObject(position).getString("hora").split(" ")[1]);
+
+                if(array.getJSONObject(position).has("tipo") && !array.getJSONObject(position).getString("tipo").equals("texto")){
+                    imgMedia_2.setVisibility(View.VISIBLE);
+                    String url = array.getJSONObject(position).getString("mediaUrl");
+                    if(array.getJSONObject(position).getString("tipo").equals("gif")){
+                        Glide.with(context).asGif().load(url).into(imgMedia_2);
+                    } else {
+                        Glide.with(context).load(url).into(imgMedia_2);
+                    }
+                    if(array.getJSONObject(position).getString("texto").isEmpty()){
+                        textView_user_2.setVisibility(View.GONE);
+                    } else {
+                        textView_user_2.setVisibility(View.VISIBLE);
+                    }
+                } else {
+                    imgMedia_2.setVisibility(View.GONE);
+                    textView_user_2.setVisibility(View.VISIBLE);
+                }
             }
 
             if(array.getJSONObject(position).has("nuevoDia")){
@@ -192,6 +233,7 @@ public class adap_mensajes extends RecyclerView.Adapter<adap_mensajes.ViewHolder
         ConstraintLayout replyConsUser_1, replyConsUser_2;
         TextView replyEncabezado_user_1, replyTexto_User_1;
         TextView replyEncabezado_user_2, replyTexto_User_2;
+        ImageView imgMedia_user_1, imgMedia_user_2;
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             cons_1                  = (ConstraintLayout)  itemView.findViewById(R.id.cons_usuario_1);
@@ -209,7 +251,8 @@ public class adap_mensajes extends RecyclerView.Adapter<adap_mensajes.ViewHolder
             imageView_User_1 = (ImageView)itemView.findViewById(R.id.imageView32);
             imageView_User_2 = (ImageView)itemView.findViewById(R.id.imageView34);
 
-
+            imgMedia_user_1 = (ImageView)itemView.findViewById(R.id.imgMedia_user_1);
+            imgMedia_user_2 = (ImageView)itemView.findViewById(R.id.imgMedia_user_2);
 
             nuevoDia = (TextView) itemView.findViewById(R.id.textView616);
 

@@ -8,7 +8,12 @@ import static com.example.nodo_1.principal.jsonMensajes_n;
 import static com.example.nodo_1.principal.objectFechasMensaje;
 import static descarga_init.descarga.unavezMensaje;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.MediaStore;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -19,6 +24,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.constraintlayout.widget.ConstraintLayout;
@@ -39,6 +45,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,9 +58,12 @@ import java.util.List;
 import java.util.TimeZone;
 
 import adapter.adap_mensajes;
+import media.ImageCompressor;
+import media.MediaHelper;
 
 
 public class pop_mensajes {
+    public static final int REQUEST_PICK_IMAGE = 1001;
     String idDispositivo;
     PopupWindow popupWindow_ = null;
     RecyclerView recyclerView;
@@ -62,6 +74,7 @@ public class pop_mensajes {
     EditText edit_mensaje;
     Button but_BajarRecycler;
     int cantidad = 70; //mensajes Leer
+    String enTurnoGuardado;
 
 
     public void showPopupWindow(final View view, String enTurno, String idDispositivo) {
@@ -135,6 +148,19 @@ public class pop_mensajes {
         });
 
         edit_mensaje = (EditText)popupView.findViewById(R.id.editTextText5);
+        enTurnoGuardado = enTurno;
+        Button but_Adjuntar = (Button) popupView.findViewById(R.id.butAdjuntar);
+        but_Adjuntar.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("image/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/gif", "image/webp"});
+                if (context instanceof Activity) {
+                    ((Activity) context).startActivityForResult(intent, REQUEST_PICK_IMAGE);
+                }
+            }
+        });
         Button but_Enviar = (Button) popupView.findViewById(R.id.button196);
         but_Enviar.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -394,9 +420,12 @@ public class pop_mensajes {
                 throw new RuntimeException();
             }
 
+            generales.actualizarDatosGuardados("objectFechasMensaje", objectFechasMensaje.toString(),context);
             generales.actualizarDatosGuardados("jsonMensajes_n", jsonMensajes_n.toString(),context);
             generales.actualizarDatosGuardados("jsonDatos",      jsonDatos.toString(),context);
             addJSON_adapter(objDatosMensaje);
+            push.NotificacionHelper.getInstance(context)
+                    .enviar("Nuevo mensaje", edit_mensaje.getText().toString(), "mensaje");
             edit_mensaje.setText("");
         }
     }
@@ -511,6 +540,234 @@ public class pop_mensajes {
             recyclerView.scrollToPosition(adap_mensajes.getItemCount() - 1);
         }
 
+    }
+    public void onMediaResult(Uri uri) {
+        if (uri == null || context == null) return;
+        String mimeType = context.getContentResolver().getType(uri);
+        boolean isGif = mimeType != null && mimeType.equals("image/gif");
+
+        principal.huellaMensaje_generada = editar_articulos.generarID();
+        String huella = principal.huellaMensaje_generada;
+
+        if (isGif) {
+            MediaHelper.uploadGif(uri, huella, new MediaHelper.OnUploadListener() {
+                @Override
+                public void onSuccess(String downloadUrl) {
+                    mandarMensajeMedia(enTurnoGuardado, "gif", downloadUrl);
+                }
+                @Override
+                public void onFailure(String error) {
+                    Toast.makeText(context, "Error al subir GIF", Toast.LENGTH_SHORT).show();
+                }
+            });
+        } else {
+            new Thread(() -> {
+                String filePath = getFilePathFromUri(uri);
+                if (filePath == null) {
+                    filePath = copyUriToTempFile(uri);
+                }
+                if (filePath == null) return;
+                byte[] compressed = ImageCompressor.compress(filePath);
+                if (compressed == null) return;
+                String ext = ImageCompressor.getExtension();
+                ((Activity) context).runOnUiThread(() -> {
+                    MediaHelper.uploadImage(compressed, huella, ext, new MediaHelper.OnUploadListener() {
+                        @Override
+                        public void onSuccess(String downloadUrl) {
+                            mandarMensajeMedia(enTurnoGuardado, "imagen", downloadUrl);
+                        }
+                        @Override
+                        public void onFailure(String error) {
+                            Toast.makeText(context, "Error al subir imagen", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                });
+            }).start();
+        }
+    }
+
+    private void mandarMensajeMedia(String enTurno, String tipo, String mediaUrl) {
+        Calendar c = Calendar.getInstance();
+        String año = "20" + getAnñoMesDiaHora("año");
+        String mes = generales.quitarCero(getAnñoMesDiaHora("mes"));
+        String dia = generales.quitarCero(getAnñoMesDiaHora("dia"));
+
+        JSONObject objDatosMensaje = new JSONObject();
+        try {
+            objDatosMensaje.put("hora", getTiempo());
+            objDatosMensaje.put("id", idDispositivo);
+            objDatosMensaje.put("usuario", enTurno);
+            objDatosMensaje.put("texto", edit_mensaje.getText().toString());
+            objDatosMensaje.put("huella", principal.huellaMensaje_generada);
+            objDatosMensaje.put("tipo", tipo);
+            objDatosMensaje.put("mediaUrl", mediaUrl);
+        } catch (JSONException e) {
+            throw new RuntimeException(e);
+        }
+
+        String fechaNoExiste = "";
+        JSONObject objectDia = new JSONObject();
+        JSONObject objectMes = new JSONObject();
+
+        if (jsonMensajes_n.length() > 0) {
+            if (jsonMensajes_n.has(String.valueOf(c.get(Calendar.YEAR)))) {
+                try {
+                    if (jsonMensajes_n.getJSONObject(String.valueOf(c.get(Calendar.YEAR))).has(String.valueOf(c.get(Calendar.MONTH) + 1))) {
+                        if (jsonMensajes_n.getJSONObject(String.valueOf(c.get(Calendar.YEAR))).
+                                getJSONObject(String.valueOf(c.get(Calendar.MONTH) + 1)).has(String.valueOf(c.get(Calendar.DAY_OF_MONTH)))) {
+                        } else fechaNoExiste = "dia";
+                    } else fechaNoExiste = "mes";
+                } catch (JSONException e_) {
+                    throw new RuntimeException(e_);
+                }
+            } else fechaNoExiste = "año";
+
+            if (!fechaNoExiste.equals("")) {
+                switch (fechaNoExiste) {
+                    case "año":
+                        try {
+                            objDatosMensaje.put("inicioAño", año);
+                            objDatosMensaje.put("inicioDeMes", mes);
+                            objDatosMensaje.put("nuevoDia", dia);
+                            JSONArray array = new JSONArray();
+                            array.put(objDatosMensaje);
+                            objectDia.put(dia, array);
+                            objectMes.put(mes, objectDia);
+                            jsonMensajes_n.put(año, objectMes);
+                            JSONObject object = new JSONObject();
+                            object.put("mensajes", array);
+                            fire.documenRef("mensajes_n/" + año + "/" + mes + "/" + dia).
+                                    set(new Gson().fromJson(object.toString(), HashMap.class));
+                        } catch (JSONException e) { throw new RuntimeException(e); }
+                        break;
+                    case "mes":
+                        try {
+                            objDatosMensaje.put("inicioDeMes", mes);
+                            objDatosMensaje.put("nuevoDia", dia);
+                            JSONArray array = new JSONArray();
+                            array.put(objDatosMensaje);
+                            objectDia.put(dia, array);
+                            jsonMensajes_n.getJSONObject(año).put(mes, objectDia);
+                            JSONObject object = new JSONObject();
+                            object.put("mensajes", array);
+                            fire.documenRef("mensajes_n/" + año + "/" + mes + "/" + dia).
+                                    set(new Gson().fromJson(object.toString(), HashMap.class));
+                        } catch (JSONException e) { throw new RuntimeException(e); }
+                        break;
+                    case "dia":
+                        try {
+                            objDatosMensaje.put("nuevoDia", dia);
+                            JSONArray array = new JSONArray();
+                            array.put(objDatosMensaje);
+                            jsonMensajes_n.getJSONObject(año).getJSONObject(mes).put(dia, array);
+                            JSONObject object = new JSONObject();
+                            object.put("mensajes", array);
+                            fire.documenRef("mensajes_n/" + año + "/" + mes + "/" + dia).
+                                    set(new Gson().fromJson(object.toString(), HashMap.class));
+                        } catch (JSONException e) { throw new RuntimeException(e); }
+                        break;
+                }
+            } else {
+                try {
+                    jsonMensajes_n.getJSONObject(año).getJSONObject(mes).getJSONArray(dia).put(objDatosMensaje);
+                    JSONObject object = new JSONObject();
+                    object.put("mensajes", jsonMensajes_n.getJSONObject(año).getJSONObject(mes).getJSONArray(dia));
+                    fire.documenRef("mensajes_n/" + año + "/" + mes + "/" + dia).
+                            set(new Gson().fromJson(object.toString(), HashMap.class));
+                } catch (JSONException e) { throw new RuntimeException(e); }
+            }
+        } else {
+            try {
+                objDatosMensaje.put("nuevoDia", dia);
+                JSONArray array = new JSONArray();
+                array.put(objDatosMensaje);
+                objectDia.put(dia, array);
+                objectMes.put(mes, objectDia);
+                jsonMensajes_n.put(año, objectMes);
+                JSONObject object = new JSONObject();
+                object.put("mensajes", array);
+                fire.documenRef("mensajes_n/" + año + "/" + mes + "/" + dia).
+                        set(new Gson().fromJson(object.toString(), HashMap.class));
+            } catch (JSONException e) { e.printStackTrace(); }
+        }
+
+        try {
+            if (objectFechasMensaje.length() > 0) {
+                if (objectFechasMensaje.has(año)) {
+                    if (objectFechasMensaje.getJSONObject(año).has(mes)) {
+                        if (objectFechasMensaje.getJSONObject(año).getJSONObject(mes).has(dia)) {
+                            objectFechasMensaje.getJSONObject(año).getJSONObject(mes).put(dia,
+                                    String.valueOf(Integer.parseInt(
+                                            objectFechasMensaje.getJSONObject(año).getJSONObject(mes).getString(dia)) + 1));
+                        } else {
+                            objectFechasMensaje.getJSONObject(año).getJSONObject(mes).put(dia, "1");
+                        }
+                    } else {
+                        JSONObject object = new JSONObject();
+                        object.put(dia, "1");
+                        objectFechasMensaje.getJSONObject(año).put(mes, object);
+                    }
+                } else {
+                    JSONObject object = new JSONObject();
+                    object.put(dia, "1");
+                    JSONObject objMes = new JSONObject();
+                    objMes.put(mes, object);
+                    objectFechasMensaje.put(año, objMes);
+                }
+            } else {
+                JSONObject object = new JSONObject();
+                object.put(dia, "1");
+                JSONObject objMes = new JSONObject();
+                objMes.put(mes, object);
+                objectFechasMensaje.put(año, objMes);
+            }
+
+            fire.documenRef("mensajes_n/" + año).
+                    set(new Gson().fromJson(objectFechasMensaje.getJSONObject(año).toString(), HashMap.class));
+            actualizarDatosGuardados("objectFechasMensaje", objectFechasMensaje.toString(), context);
+            unavezMensaje = false;
+            actualizar_venta_mensaje_paseDeLista.mensaje(context);
+        } catch (JSONException e) { throw new RuntimeException(); }
+
+        generales.actualizarDatosGuardados("objectFechasMensaje", objectFechasMensaje.toString(), context);
+        generales.actualizarDatosGuardados("jsonMensajes_n", jsonMensajes_n.toString(), context);
+        generales.actualizarDatosGuardados("jsonDatos", jsonDatos.toString(), context);
+        addJSON_adapter(objDatosMensaje);
+        edit_mensaje.setText("");
+    }
+
+    private String getFilePathFromUri(Uri uri) {
+        try {
+            String[] projection = {MediaStore.Images.Media.DATA};
+            Cursor cursor = context.getContentResolver().query(uri, projection, null, null, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                int index = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+                String path = cursor.getString(index);
+                cursor.close();
+                return path;
+            }
+            if (cursor != null) cursor.close();
+        } catch (Exception e) { /* fallback to copy */ }
+        return null;
+    }
+
+    private String copyUriToTempFile(Uri uri) {
+        try {
+            InputStream is = context.getContentResolver().openInputStream(uri);
+            if (is == null) return null;
+            File tempFile = new File(context.getCacheDir(), "temp_img_" + System.currentTimeMillis());
+            FileOutputStream fos = new FileOutputStream(tempFile);
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, read);
+            }
+            fos.close();
+            is.close();
+            return tempFile.getAbsolutePath();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
 /*
