@@ -10,7 +10,7 @@ Orden por valor/seguridad:
 |---|---|---|---|
 | 1 | **A** · Cashback regalado sin teléfono | MEDIUM | ✅ Sí (POS-only, contenido) |
 | 2 | **C** · Tarjeta cobrada-sin-vincular (sin reintento) | MEDIUM | ✅ Sí (reusa cola offline) |
-| 3 | **E** · Pendiente rancio se vincula a otra venta | LOW | ⏸️ Diferido (riesgo: ver §Auditoría) |
+| 3 | **E** · Pendiente rancio se vincula a otra venta | LOW | ✅ Sí (useEffect seguro, [items.length]) |
 | 4 | **D** · Pre-chequeo "tarjeta en uso" solo ve activas | LOW | ⏸️ Diferido (necesita API/CF amise) |
 | 5 | **B** · Débito de canje huérfano (crash entre débito y venta) | MEDIUM | ⏸️ Diferido (necesita decisión de reconciliación) |
 
@@ -208,13 +208,13 @@ Ninguna se implementa sin tu visto bueno (mueve/observa dinero).
   - **C.0 (nuevo):** validar el **checksum EAN-13** en `agregarTarjeta` antes de vender/encolar. El POS hoy solo valida longitud 13; amise **sí** valida el dígito verificador → una tarjeta con checksum malo se cobraría y luego fallaría al vincular (400 → `internal`).
   - **C.2:** la rama `card` va **entre** `canje` y el `else` terminal (que es `earn`), no después.
   - **C.3:** encolar **solo** en `unavailable` (fallo de red que lanza el proxy). El proxy colapsa 400/404/500 en `internal`, así que reintentar `internal` sería 60 reintentos vacíos + descarte silencioso (regresión). Para todo lo no-`unavailable` se conserva el mensaje accionable actual, sin encolar.
-- **Fase 3 (E): DIFERIDA.** `carritoStore.limpiar()` es compartida y se llama en el post-venta (`Ventas.tsx:322`) **antes** de leer `tarjetaPendiente` para vincular (`:335`). Enganchar ahí borraría el pendiente legítimo → cobro sin vínculo. El enfoque seguro (para el lote siguiente): un `useEffect(…, [items.length])` a nivel de `Ventas` que limpie SOLO cuando el carrito quede vacío (corre async tras el render, nunca entre `:322` y `:335`), o limpiar en los vaciados MANUALES. Se implementa aparte, verificado.
+- **Fase 3 (E): IMPLEMENTADA (enfoque seguro).** NO se enganchó a `carritoStore.limpiar()` (compartida, se llama en el post-venta antes de vincular). Se usó un `useEffect(…, [items.length])` a nivel de `Ventas` que limpia `tarjetaPendiente` SOLO cuando el carrito queda vacío. Verificado que corre **async tras el render**: entre el `limpiar()` post-venta y la lectura de `tarjetaPendiente` (para vincular) NO hay `await`, así que la vinculación consume el pendiente síncronamente ANTES de que el effect pueda correr → no rompe el flujo legítimo.
 - Precisión: la vinculación es **idempotente por (código, monedero)** en `linkCard`/`replaceCard`; `ventaId` es metadato. El no-re-cobro viene de que vincular es una operación **separada** de la venta (ya persistida).
 
-**Se implementan las Fases 1 y 2 (corregidas). Fase 3, 4 y 5 diferidas.**
+**Implementadas: Fases 1, 2 (corregidas) y 3. Fases 4 y 5 diferidas (cross-repo / decisión).**
 
 ## §Verificación (2026-07-06)
 - `npm run typecheck` (nodo-web): **limpio** tras aplicar Fases 1 y 2.
 - `ean13Ok` (checksum nuevo de C.0): verificado contra vectores — acepta 6 válidos (incl. códigos generados por amise) y rechaza 5 inválidos (checksum/longitud/no-dígitos).
-- **Aplicado:** `UsarPuntosModal.tsx` (A.1/A.2/C.0), `Ventas.tsx` (A.3/C.3), `clientePuntosStore.ts` (C.1), `usePuntosColaFlush.ts` (C.2). Fases 3/4/5 diferidas.
+- **Aplicado:** `UsarPuntosModal.tsx` (A.1/A.2/C.0), `Ventas.tsx` (A.3/C.3 + Fase 3 useEffect), `clientePuntosStore.ts` (C.1), `usePuntosColaFlush.ts` (C.2). Typecheck limpio tras Fase 3 también. Fases 4/5 diferidas.
 - **Sin `git commit`** — espera tu OK (repo del POS, aparte de amise).

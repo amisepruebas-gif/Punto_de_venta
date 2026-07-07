@@ -75,6 +75,16 @@ export function Ventas() {
   const pendientePuntos = useClientePuntos((s) => s.pendiente);
   const sinVendedor = !enTurno;
   const carritoVacio = items.length === 0;
+
+  // Higiene (money-safety): al quedar VACÍO el carrito (venta finalizada o
+  // vaciado manual) no arrastrar una `tarjetaPendiente` rancia a otra venta.
+  // Corre async tras el render → NUNCA borra el pendiente entre el `limpiar()`
+  // post-venta y la vinculación, que ya lo consumió (y limpió) para entonces.
+  useEffect(() => {
+    if (items.length === 0) {
+      useClientePuntos.getState().limpiarTarjetaPendiente();
+    }
+  }, [items.length]);
   const banner =
     sinVendedor && !carritoVacio
       ? "Selecciona un vendedor para cobrar"
