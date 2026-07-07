@@ -39,3 +39,11 @@ dispositivo_1/.gradle/
 
 # archivos temporales de trabajo (se eliminan al cerrar migración)
 _NOTAS_*.md
+
+# proyectos que se protegen como repos aparte (no versionar dentro de este repo)
+pos-saas/
+nodoposandroid/
+
+# config/junk suelto en la raíz (el google-services real vive en nodo_1/app/)
+/google-services.json
+/captura.jpg
