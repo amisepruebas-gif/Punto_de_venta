@@ -22,6 +22,38 @@
             android:elevation="12dp">
 
             <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/constraintDescargaManual"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginEnd="16dp"
+                android:background="@drawable/blanco_medio_red"
+                android:elevation="3dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/constraintLayout67">
+
+                <Button
+                    android:id="@+id/butDescargaManual"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="24dp"
+                    android:layout_marginEnd="8dp"
+                    android:layout_marginBottom="24dp"
+                    android:background="@color/colortransparente"
+                    android:gravity="left"
+                    android:onClick="onClick"
+                    android:text="Descarga manual de datos"
+                    android:textColor="@color/gris_oscuro"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
@@ -33,7 +65,7 @@
                 app:layout_constraintBottom_toTopOf="@+id/constraintLayout33"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@+id/constraintLayout67">
+                app:layout_constraintTop_toBottomOf="@+id/constraintDescargaManual">
 
                 <TextView
                     android:id="@+id/textView142"

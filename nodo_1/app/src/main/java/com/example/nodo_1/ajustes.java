@@ -125,6 +125,9 @@ public class ajustes extends AppCompatActivity implements View.OnClickListener, 
             }  else if (R.id.butEditar_ticket == view.getId()) {
                 Intent askIntent = new Intent(this, editarTicket.class);
                 someActivityResultLauncher.launch(askIntent);
+            } else if (R.id.butDescargaManual == view.getId()) {
+                Intent askIntent = new Intent(this, DescargaManualActivity.class);
+                someActivityResultLauncher.launch(askIntent);
             } else if (R.id.but_informacionTransferencia == view.getId()) {
                /*
                 pop_informacionDeposito pop_informacionDeposito = new pop_informacionDeposito();

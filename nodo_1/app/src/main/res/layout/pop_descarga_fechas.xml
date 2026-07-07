@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#99000000">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="320dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/blanco_medio_red"
+        android:elevation="6dp"
+        android:padding="24dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/txtTitulo"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Descargar Ventas"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <Button
+            android:id="@+id/butDescargarTodo"
+            android:layout_width="0dp"
+            android:layout_height="45dp"
+            android:layout_marginTop="24dp"
+            android:background="@color/azulDatosSegmento"
+            android:text="DESCARGAR TODO"
+            android:textColor="@color/blanco"
+            android:textSize="14sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/txtTitulo" />
+
+        <View
+            android:id="@+id/divider"
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_marginTop="20dp"
+            android:background="@color/grey_100"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/butDescargarTodo" />
+
+        <TextView
+            android:id="@+id/txtSeleccionar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:text="O seleccionar rango de fechas"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="14sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/divider" />
+
+        <Button
+            android:id="@+id/butFechaDesde"
+            android:layout_width="0dp"
+            android:layout_height="45dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="4dp"
+            android:background="@drawable/blanco_medio_red"
+            android:text="Desde"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="13sp"
+            app:layout_constraintEnd_toStartOf="@+id/butFechaHasta"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/txtSeleccionar" />
+
+        <Button
+            android:id="@+id/butFechaHasta"
+            android:layout_width="0dp"
+            android:layout_height="45dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/blanco_medio_red"
+            android:text="Hasta"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="13sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/butFechaDesde"
+            app:layout_constraintTop_toBottomOf="@+id/txtSeleccionar" />
+
+        <Button
+            android:id="@+id/butDescargarRango"
+            android:layout_width="0dp"
+            android:layout_height="45dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/naranjaDatosSegmento"
+            android:text="DESCARGAR RANGO"
+            android:textColor="@color/blanco"
+            android:textSize="14sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/butFechaDesde" />
+
+        <Button
+            android:id="@+id/butCancelar"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="16dp"
+            android:background="@color/colortransparente"
+            android:text="CANCELAR"
+            android:textColor="@color/gris_oscuro"
+            android:textSize="14sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/butDescargarRango" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
