@@ -299,6 +299,11 @@ export function Ventas() {
     // NO se crea la venta (el modal muestra el error; el cajero lo quita o reintenta).
     // Idempotente por la idempotencyKey del preview (estable en retry).
     // (Acumular cashback SÍ funciona offline — es seguro porque solo suma.)
+    // Blindaje money-safety: un descuento de cashback SIN teléfono no puede
+    // debitarse → se estaría regalando saldo. Aborta el cobro (no crea la venta).
+    if (cashbackUsar > 0 && !puntosTel) {
+      throw new Error("No se puede aplicar cashback sin teléfono del cliente. Quítalo y reintenta.");
+    }
     if (puntosTel && cashbackUsar > 0) {
       try {
         await fnCanjearPuntos({
@@ -344,8 +349,18 @@ export function Ventas() {
       useClientePuntos.getState().limpiarTarjetaPendiente();
     } else if (tarjPend && tarjPend.telefono && tarjPend.codigo) {
       useClientePuntos.getState().limpiarTarjetaPendiente();
+      const cardPayload = {
+        modo: (tarjPend.codigoAnterior ? "reponer" : "activar") as "activar" | "reponer",
+        phone: tarjPend.telefono,
+        codigo: tarjPend.codigo,
+        ...(tarjPend.codigoAnterior ? { codigoAnterior: tarjPend.codigoAnterior } : {}),
+        ventaId: result.venta.ventaId,
+      };
       if (result.offline) {
-        setToast("Sin conexión: vuelve a activar la tarjeta cuando reconectes.");
+        // Sin conexión: encolar el vínculo → se reintenta solo al reconectar
+        // (idempotente por código+monedero; NO re-cobra: la venta ya existe).
+        useClientePuntos.getState().encolar("card", cardPayload);
+        setToast("Sin conexión: la tarjeta se vinculará automáticamente al reconectar.");
         window.setTimeout(() => setToast(null), 6000);
       } else {
         try {
@@ -364,8 +379,17 @@ export function Ventas() {
             });
           }
         } catch (e) {
-          const msg = e instanceof Error ? e.message : "";
-          setToast(`Tarjeta NO vinculada (${msg || "revisa el código"}). La venta sí se cobró.`);
+          const err = e as { code?: string; message?: string };
+          // Solo se reintenta un fallo de RED (el proxy lanza 'unavailable' al no
+          // contactar amise). Otro error (rechazo definitivo o del server) conserva
+          // el mensaje accionable y NO se encola (evita reintentos vacíos que se
+          // descartarían en silencio).
+          if (String(err?.code || "").includes("unavailable")) {
+            useClientePuntos.getState().encolar("card", cardPayload);
+            setToast("La tarjeta se vinculará automáticamente al reconectar. La venta sí se cobró.");
+          } else {
+            setToast(`Tarjeta NO vinculada (${err?.message || "revisa el código"}). La venta sí se cobró.`);
+          }
           window.setTimeout(() => setToast(null), 6000);
         }
       }

@@ -4,6 +4,8 @@ import {
   fnRegistrarClientePuntos,
   fnAcreditarPuntos,
   fnCanjearPuntos,
+  fnActivarTarjeta,
+  fnReponerTarjeta,
   type RegistrarClientePuntosInput,
   type AcreditarPuntosInput,
   type CanjearPuntosInput,
@@ -32,6 +34,30 @@ export function usePuntosColaFlush() {
             );
           } else if (item.tipo === "canje") {
             await fnCanjearPuntos(item.payload as unknown as CanjearPuntosInput);
+          } else if (item.tipo === "card") {
+            // Reintento de vinculación de tarjeta (idempotente por código+monedero;
+            // NO re-cobra: la venta ya existe, el vínculo es una operación aparte).
+            const p = item.payload as unknown as {
+              modo: "activar" | "reponer";
+              phone: string;
+              codigo: string;
+              codigoAnterior?: string;
+              ventaId: string;
+            };
+            if (p.modo === "reponer") {
+              await fnReponerTarjeta({
+                phone: p.phone,
+                codigoAnterior: p.codigoAnterior,
+                codigoNuevo: p.codigo,
+                ventaId: p.ventaId,
+              });
+            } else {
+              await fnActivarTarjeta({
+                phone: p.phone,
+                codigo: p.codigo,
+                ventaId: p.ventaId,
+              });
+            }
           } else {
             await fnAcreditarPuntos(item.payload as unknown as AcreditarPuntosInput);
           }

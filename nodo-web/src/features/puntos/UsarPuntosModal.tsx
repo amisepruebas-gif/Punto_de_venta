@@ -33,6 +33,14 @@ type Props = {
 const money = (n: number) =>
   "$" + n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** Valida el dígito verificador EAN-13 (mismo criterio que amise `validarEAN13`). */
+function ean13Ok(c: string): boolean {
+  if (!/^\d{13}$/.test(c)) return false;
+  const n = c.split("").map(Number);
+  const sum = n.slice(0, 12).reduce((a, d, i) => a + d * (i % 2 === 0 ? 1 : 3), 0);
+  return (10 - (sum % 10)) % 10 === n[12];
+}
+
 /**
  * Modal de canje en el POS. El cajero ingresa el teléfono del cliente, consulta
  * su saldo (siempre se muestra el EQUIVALENTE EN DINERO, redondeado a $0.50 desde
@@ -151,6 +159,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
   function aplicarUsar() {
     if (!saldo) return;
+    if (!telefono.trim()) {
+      setError("Sin teléfono no se puede debitar el cashback. Consulta por teléfono o correo.");
+      return;
+    }
     if (pedido <= 0) {
       setError("Indica cuánto usar (mayor a 0).");
       return;
@@ -160,6 +172,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   }
 
   function soloAcumular() {
+    if (!telefono.trim()) {
+      setError("Sin teléfono no se puede acumular cashback. Consulta por teléfono o correo.");
+      return;
+    }
     onAplicar({ telefono: telefono.trim(), descuento: 0 });
     reset();
   }
@@ -172,6 +188,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     const nuevo = nuevoBarcode.replace(/\D/g, "");
     if (nuevo.length !== 13) {
       setTarjetaMsg("Código inválido (13 dígitos).");
+      return;
+    }
+    if (!ean13Ok(nuevo)) {
+      setTarjetaMsg("Código inválido (dígito verificador). Revisa el barcode.");
       return;
     }
     const tel = telefono.trim();
