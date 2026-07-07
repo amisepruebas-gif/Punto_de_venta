@@ -255,6 +255,7 @@ function ArticuloRow({ a }: { a: VentaArticulo }) {
       {a.imagenUrl ? (
         <img
           src={a.imagenUrl}
+          crossOrigin="anonymous"
           alt=""
           className="h-10 w-10 shrink-0 rounded object-cover"
           loading="lazy"

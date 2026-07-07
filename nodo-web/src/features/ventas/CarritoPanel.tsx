@@ -256,6 +256,7 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
         {it.imagenUrl ? (
           <img
             src={it.imagenUrl}
+            crossOrigin="anonymous"
             alt=""
             className="h-9 w-9 shrink-0 rounded object-cover"
             loading="lazy"

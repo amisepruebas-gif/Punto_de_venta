@@ -77,7 +77,7 @@ export default defineConfig({
                         },
                         handler: "CacheFirst",
                         options: {
-                            cacheName: "firebase-storage-img",
+                            cacheName: "firebase-storage-img-v2",
                             expiration: {
                                 // 1000 entradas cubre catálogos grandes (500 padres × ~3
                                 // variaciones promedio = ~1500-2000 imágenes activas) sin
@@ -87,7 +87,12 @@ export default defineConfig({
                                 maxEntries: 1000,
                                 maxAgeSeconds: 60 * 60 * 24 * 30,
                             },
-                            cacheableResponse: { statuses: [0, 200] },
+                            // Solo respuestas CORS 200. Antes incluíamos `0` (opacas), pero
+                            // las opacas inflan la cuota (padding del navegador) y se purgan
+                            // bajo presión → re-descarga → egress. Ahora los <img> piden con
+                            // `crossorigin` y el bucket tiene CORS, así que las respuestas
+                            // son 200 normales: se cachean sin ese sobrecosto y persisten.
+                            cacheableResponse: { statuses: [200] },
                         },
                     },
                 ],

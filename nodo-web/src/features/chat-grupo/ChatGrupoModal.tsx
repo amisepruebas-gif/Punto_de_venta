@@ -561,6 +561,7 @@ function Burbuja({
           >
             <img
               src={mensaje.mediaUrl}
+              crossOrigin="anonymous"
               alt={mensaje.mediaFileName ?? "imagen"}
               className="max-h-64 w-full object-cover"
               decoding="async"

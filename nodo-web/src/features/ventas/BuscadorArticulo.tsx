@@ -217,6 +217,7 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
                         {imagen ? (
                           <img
                             src={imagen}
+                            crossOrigin="anonymous"
                             alt=""
                             className="h-9 w-9 rounded object-cover"
                           />

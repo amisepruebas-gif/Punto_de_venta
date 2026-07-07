@@ -205,6 +205,7 @@ export function VariacionPickerModal({
                         {sv.imagenUrl ? (
                           <img
                             src={sv.imagenUrl}
+                            crossOrigin="anonymous"
                             alt=""
                             className="h-full w-full object-cover"
                             draggable={false}

@@ -197,6 +197,7 @@ export function ImageLightbox({ src, onClose }: Props) {
       >
         <img
           src={src}
+          crossOrigin="anonymous"
           alt=""
           draggable={false}
           className="select-none"
