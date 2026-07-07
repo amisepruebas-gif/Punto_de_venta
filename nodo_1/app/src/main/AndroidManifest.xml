@@ -16,9 +16,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+        android:required="false" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <application
         android:allowBackup="true"
@@ -31,6 +35,14 @@
         android:theme="@style/Theme.Nodo_1"
         tools:targetApi="31">
 
+
+        <service
+            android:name="push.MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <activity
             android:name=".initLog"
@@ -69,6 +81,9 @@
         <activity
             android:screenOrientation="landscape"
             android:name="com.example.nodo_1.editarTicket" />
+        <activity
+            android:screenOrientation="landscape"
+            android:name="com.example.nodo_1.DescargaManualActivity" />
         <activity
             android:screenOrientation="landscape"
             android:name="propiedades_articulos.tallas" />

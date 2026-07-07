@@ -45,6 +45,7 @@
         android:text="ACTUALIZAR"
         android:textColor="@color/blanco"
         android:textSize="18sp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="@+id/button25"
         app:layout_constraintStart_toStartOf="@+id/button25"
