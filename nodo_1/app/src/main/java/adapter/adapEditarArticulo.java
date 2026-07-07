@@ -1,12 +1,18 @@
 package adapter;
 
+
 import static com.example.nodo_1.generales.toast;
 import static com.example.nodo_1.principal.jsonDatos;
 import static com.example.nodo_1.principal.jsonSiglas;
+import static com.example.nodo_1.principal.jsonArticulos;
 import static adapter.adapIngresoMercancia.generarCadenaUnica;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.KeyEvent;
@@ -17,6 +23,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.PopupWindow;
 import android.widget.TextView;
 
@@ -24,6 +31,7 @@ import androidx.annotation.NonNull;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.example.nodo_1.R;
 import com.google.android.material.textfield.TextInputEditText;
 
@@ -32,6 +40,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 import helper.SwipeHelper;
 import pop.pop_selec_talla;
@@ -80,7 +90,10 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
                 utilidad        = holder.utilidad,
                 utilidadTotal   = holder.utilidadTotal,
                 mayoreo         = holder.mayoreo,
-                cantMayoreo     = holder.cantMayoreo;
+                cantMayoreo     = holder.cantMayoreo,
+                genero          = holder.genero,
+                subgenero       = holder.subgenero,
+                hashtags        = holder.hashtags;
         CheckBox
                 checkBoxIndicarTalla = holder.checkBoxIndicarTalla, checkBoxIndicarSeña = holder.checkBoxIndicarSeña, check_2x1 = holder.check_2x1;
         CheckBox checkBox_descuento = holder.checkBox_descuento;
@@ -114,6 +127,8 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
                 check_2x1.setEnabled(false); checkBoxIndicarSeña.setEnabled(false);
                 checkBoxIndicarTalla.setEnabled(false);
                 mayoreo.setEnabled(false);   cantMayoreo.setEnabled(false);
+                genero.setEnabled(false);    subgenero.setEnabled(false);
+                hashtags.setEnabled(false);
                 descuentoEdittext.setEnabled(false); checkBox_descuento.setEnabled(false);
                 consModificar.setVisibility(View.VISIBLE);
             }else {
@@ -123,6 +138,8 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
                 check_2x1.setEnabled(true); checkBoxIndicarSeña.setEnabled(true);
                 checkBoxIndicarTalla.setEnabled(true);
                 mayoreo.setEnabled(true);   cantMayoreo.setEnabled(true);
+                genero.setEnabled(true);    subgenero.setEnabled(true);
+                hashtags.setEnabled(true);
                 descuentoEdittext.setEnabled(true); checkBox_descuento.setEnabled(true);
                 consModificar.setVisibility(View.GONE);
             }
@@ -141,6 +158,8 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
                     venta.setEnabled(true);     sigla.setEnabled(true);
                     check_2x1.setEnabled(true); checkBoxIndicarSeña.setEnabled(true);
                     mayoreo.setEnabled(true);   cantMayoreo.setEnabled(true);
+                    genero.setEnabled(true);    subgenero.setEnabled(true);
+                    hashtags.setEnabled(true);
                     descuentoEdittext.setEnabled(true); checkBox_descuento.setEnabled(true);
                     checkBoxIndicarTalla.setEnabled(true);
 
@@ -281,11 +300,20 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
                                     array.getJSONObject(pos).put("cantMayoreo", cantMayoreo.getText().toString());
                                 }else   array.getJSONObject(pos).remove("cantMayoreo");
 
+                                if(genero.length() > 0) array.getJSONObject(pos).put("genero", genero.getText().toString());
+                                else array.getJSONObject(pos).remove("genero");
+                                if(subgenero.length() > 0) array.getJSONObject(pos).put("subgenero", subgenero.getText().toString());
+                                else array.getJSONObject(pos).remove("subgenero");
+                                if(hashtags.length() > 0) array.getJSONObject(pos).put("hashtags", hashtags.getText().toString());
+                                else array.getJSONObject(pos).remove("hashtags");
+
                                 nombre.setEnabled(false);    referencia.setEnabled(false);
                                 cantidad.setEnabled(false);  compra.setEnabled(false);
                                 venta.setEnabled(false);     sigla.setEnabled(false);
                                 check_2x1.setEnabled(false); checkBoxIndicarSeña.setEnabled(false);
                                 mayoreo.setEnabled(false);   cantMayoreo.setEnabled(false);
+                                genero.setEnabled(false);    subgenero.setEnabled(false);
+                                hashtags.setEnabled(false);
                                 checkBox_descuento.setEnabled(false); descuentoEdittext.setEnabled(false);
                                 checkBoxIndicarTalla.setEnabled(false);
 
@@ -381,6 +409,45 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
             else mayoreo.setText("");
             if(obj.has("cantMayoreo"))  cantMayoreo.setText(obj.getString("cantMayoreo"));
             else cantMayoreo.setText("");
+            if(obj.has("genero"))       genero.setText(obj.getString("genero"));
+            else genero.setText("");
+            if(obj.has("subgenero"))    subgenero.setText(obj.getString("subgenero"));
+            else subgenero.setText("");
+            if(obj.has("hashtags"))     hashtags.setText(obj.getString("hashtags"));
+            else hashtags.setText("");
+
+            // Image display
+            ImageView imgArticulo = holder.imgArticulo;
+            Button butAgregarImagen = holder.butAgregarImagen;
+            Button butQuitarImagen = holder.butQuitarImagen;
+            if (imagenBytesPorPosicion.containsKey(position)) {
+                byte[] bytes = imagenBytesPorPosicion.get(position);
+                Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                imgArticulo.setImageBitmap(bmp);
+                imgArticulo.setVisibility(View.VISIBLE);
+                butQuitarImagen.setVisibility(View.VISIBLE);
+            } else if (obj.has("imagenUrl")) {
+                Glide.with(context).load(obj.getString("imagenUrl")).into(imgArticulo);
+                imgArticulo.setVisibility(View.VISIBLE);
+                butQuitarImagen.setVisibility(View.VISIBLE);
+            } else {
+                imgArticulo.setVisibility(View.GONE);
+                butQuitarImagen.setVisibility(View.GONE);
+            }
+            butAgregarImagen.setOnClickListener(v -> {
+                pickImageForPosition = holder.getAdapterPosition();
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("image/*");
+                activity.startActivityForResult(intent, REQUEST_PICK_IMAGE_EDIT);
+            });
+            butQuitarImagen.setOnClickListener(v -> {
+                int pos = holder.getAdapterPosition();
+                imagenBytesPorPosicion.remove(pos);
+                try { array.getJSONObject(pos).remove("imagenUrl"); } catch (JSONException ex) {}
+                imgArticulo.setVisibility(View.GONE);
+                butQuitarImagen.setVisibility(View.GONE);
+            });
+
             if(obj.has("descuento"))    {
                 descuentoEdittext.setText(obj.getString("descuento"));
                 checkBox_descuento.setChecked(true);
@@ -393,7 +460,7 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
                 public void onClick(View view) {
                     if (checkBoxIndicarTalla.isChecked()){
                         if(!jsonDatos.has("tallas")){
-                            toast("AGREGUE 1 TALLA EN LA SECCIÓN, GESTOR DE OFERTAS", context);
+                            toast("AGREGUE 1 TALLA EN LA SECCION, GESTOR DE OFERTAS", context);
                             checkBoxIndicarTalla.setChecked(false);
                         }else {
                             checkBoxTalla = checkBoxIndicarTalla;
@@ -464,10 +531,10 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
                 if (actionId == EditorInfo.IME_ACTION_NEXT) {
 
-                    // Simular un clic en el botón
+                    // Simular un clic en el boton
                     holder.but.performClick();
 
-                    return true; // Manejar el evento aquí
+                    return true; // Manejar el evento aqui
                 }
                 return false;
             }
@@ -479,10 +546,10 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
                 if (actionId == EditorInfo.IME_ACTION_NEXT) {
 
-                    // Simular un clic en el botón
+                    // Simular un clic en el boton
                     holder.but.performClick();
 
-                    return true; // Manejar el evento aquí
+                    return true; // Manejar el evento aqui
                 }
                 return false;
             }
@@ -527,26 +594,48 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
     public JSONObject getNuevaSigla(){return nuevaSigla;}
     public JSONObject getCambiSigla(){return cambiSigla;}
 
-    public class ViewHolder extends RecyclerView.ViewHolder {
+    public static final int REQUEST_PICK_IMAGE_EDIT = 2002;
+    private int pickImageForPosition = -1;
+    private Map<Integer, byte[]> imagenBytesPorPosicion = new HashMap<>();
 
+    public void onImageResult(Uri uri) {
+        if (pickImageForPosition >= 0 && uri != null) {
+            final int pos = pickImageForPosition;
+            pickImageForPosition = -1;
+            new Thread(() -> {
+                byte[] compressed = media.ImageCompressor.compress(context, uri, 800 * 1024);
+                if (compressed != null) {
+                    imagenBytesPorPosicion.put(pos, compressed);
+                }
+                ((Activity) activity).runOnUiThread(() -> notifyItemChanged(pos));
+            }).start();
+        }
+    }
+
+    public byte[] getImageBytes(int position) {
+        return imagenBytesPorPosicion.get(position);
+    }
+
+    public class ViewHolder extends RecyclerView.ViewHolder {
 
         Button but, butMod, butSiglaExistente, but_generarsigla, but_photoBarCode;
         TextInputEditText nombre, codigo, referencia, sigla, cantidad, compra, venta, utilidad, utilidadTotal,
-
-        mayoreo, cantMayoreo;
+        mayoreo, cantMayoreo, genero, subgenero, hashtags;
 
         CheckBox checkBox_descuento;
         EditText descuentoEdittext;
 
         ConstraintLayout consMod;
 
-        CheckBox checkBoxIndicarTalla, checkBoxIndicarSeña,check_2x1;
+        CheckBox checkBoxIndicarTalla, checkBoxIndicarSeña, check_2x1;
+
+        ImageView imgArticulo;
+        Button butAgregarImagen, butQuitarImagen;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             but = (Button) itemView.findViewById(R.id.butConfirmarRegIngMerc);
-            butSiglaExistente = (Button)itemView.findViewById(R.id.butSiglaExistente);
-
+            butSiglaExistente = (Button) itemView.findViewById(R.id.butSiglaExistente);
 
             nombre          = (TextInputEditText) itemView.findViewById(R.id.inputEditText_NotaIndividual_Eqp_trabajo);
             codigo          = (TextInputEditText) itemView.findViewById(R.id.inputEditText_10);
@@ -561,7 +650,9 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
             consMod         = (ConstraintLayout) itemView.findViewById(R.id.consModificarRegIngMerc);
             mayoreo         = (TextInputEditText) itemView.findViewById(R.id.textImputLayoutMayoreo);
             cantMayoreo     = (TextInputEditText) itemView.findViewById(R.id.inmputEditText_canMayoreo);
-
+            genero          = (TextInputEditText) itemView.findViewById(R.id.inputEditText_genero);
+            subgenero       = (TextInputEditText) itemView.findViewById(R.id.inputEditText_subgenero);
+            hashtags        = (TextInputEditText) itemView.findViewById(R.id.inputEditText_hashtags);
 
             checkBox_descuento   = (CheckBox) itemView.findViewById(R.id.checkBoxDescuento);
             checkBoxIndicarTalla = (CheckBox) itemView.findViewById(R.id.checkBoxIndicarTalla);
@@ -571,8 +662,11 @@ public class adapEditarArticulo extends RecyclerView.Adapter<adapEditarArticulo.
             but_generarsigla = (Button) itemView.findViewById(R.id.butgenerarSiglaRegAdapter);
             but_photoBarCode = (Button) itemView.findViewById(R.id.but_photoBarCode);
 
-            descuentoEdittext= (EditText) itemView.findViewById(R.id.editTextTextDescuento);
+            descuentoEdittext = (EditText) itemView.findViewById(R.id.editTextTextDescuento);
 
+            imgArticulo      = (ImageView) itemView.findViewById(R.id.imgArticulo);
+            butAgregarImagen = (Button) itemView.findViewById(R.id.butAgregarImagen);
+            butQuitarImagen  = (Button) itemView.findViewById(R.id.butQuitarImagen);
         }
     }
 }

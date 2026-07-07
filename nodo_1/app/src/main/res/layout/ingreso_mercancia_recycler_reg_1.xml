@@ -446,6 +446,122 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/consImagenArticulo"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            app:layout_constraintEnd_toEndOf="@+id/textInputLay_9"
+            app:layout_constraintStart_toStartOf="@+id/textInputLay_9"
+            app:layout_constraintTop_toBottomOf="@+id/textInputLay_15">
+
+            <ImageView
+                android:id="@+id/imgArticulo"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="4dp"
+                android:adjustViewBounds="true"
+                android:scaleType="centerCrop"
+                android:background="@drawable/blanco_medio_red"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <Button
+                android:id="@+id/butAgregarImagen"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/red_naranja"
+                android:text="AGREGAR IMAGEN"
+                android:textColor="@color/blanco"
+                android:textSize="12sp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@+id/imgArticulo"
+                app:layout_constraintTop_toTopOf="@+id/imgArticulo" />
+
+            <Button
+                android:id="@+id/butQuitarImagen"
+                android:layout_width="0dp"
+                android:layout_height="35dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginTop="4dp"
+                android:background="@color/colortransparente"
+                android:text="Quitar imagen"
+                android:textColor="@color/gris_oscuro"
+                android:textSize="11sp"
+                android:visibility="gone"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@+id/imgArticulo"
+                app:layout_constraintTop_toBottomOf="@+id/butAgregarImagen" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/textInputLay_genero"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="4dp"
+            android:textColorHint="@color/morado"
+            app:layout_constraintEnd_toStartOf="@+id/textView5"
+            app:layout_constraintStart_toStartOf="@+id/textInputLay_9"
+            app:layout_constraintTop_toBottomOf="@+id/consImagenArticulo">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/inputEditText_genero"
+                android:layout_width="match_parent"
+                android:layout_height="57dp"
+                android:backgroundTint="@color/morado"
+                android:gravity="center"
+                android:hint="Género (opcional)"
+                android:inputType="text"
+                android:textColor="@color/gris_oscuro" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/textInputLay_subgenero"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textColorHint="@color/morado"
+            app:layout_constraintEnd_toEndOf="@+id/textInputLay_9"
+            app:layout_constraintStart_toEndOf="@+id/textView5"
+            app:layout_constraintTop_toBottomOf="@+id/consImagenArticulo">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/inputEditText_subgenero"
+                android:layout_width="match_parent"
+                android:layout_height="57dp"
+                android:backgroundTint="@color/morado"
+                android:gravity="center"
+                android:hint="Subgénero (opcional)"
+                android:inputType="text"
+                android:textColor="@color/gris_oscuro" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/textInputLay_hashtags"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textColorHint="@color/morado"
+            app:layout_constraintEnd_toEndOf="@+id/textInputLay_9"
+            app:layout_constraintStart_toStartOf="@+id/textInputLay_9"
+            app:layout_constraintTop_toBottomOf="@+id/textInputLay_genero">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/inputEditText_hashtags"
+                android:layout_width="match_parent"
+                android:layout_height="57dp"
+                android:backgroundTint="@color/morado"
+                android:gravity="center"
+                android:hint="Etiquetas ej: #ropa #mujer #verano"
+                android:inputType="text"
+                android:textColor="@color/gris_oscuro" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/constraintLayout9"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -453,7 +569,7 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="@+id/textInputLay_16"
             app:layout_constraintStart_toStartOf="@+id/textInputLay_12"
-            app:layout_constraintTop_toBottomOf="@+id/textInputLay_15">
+            app:layout_constraintTop_toBottomOf="@+id/textInputLay_hashtags">
 
             <CheckBox
                 android:id="@+id/checkBoxIndicarTalla"

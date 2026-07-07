@@ -2,6 +2,7 @@ package com.example.nodo_1;
 
 
 import static com.example.nodo_1.fire.documenRef;
+import com.example.nodo_1.fire;
 import static com.example.nodo_1.generales.toast;
 import static com.example.nodo_1.principal.jsonArticulos;
 import static com.example.nodo_1.principal.jsonDatos;
@@ -32,6 +33,8 @@ import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
@@ -65,7 +68,7 @@ public class editar_articulos extends AppCompatActivity implements View.OnClickL
         Window window = getWindow();
         window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        window.setStatusBarColor(getResources().getColor(R.color.blanco)); // Asegúrate de que el color esté definido en tus recursos.
+        window.setStatusBarColor(getResources().getColor(R.color.blanco)); // Asegurate de que el color este definido en tus recursos.
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController insetsController = window.getInsetsController();
@@ -136,7 +139,7 @@ public class editar_articulos extends AppCompatActivity implements View.OnClickL
     @Override
     public void onClick(View view) {
         if(R.id.butGuardarEditarArticulos == view.getId()){
-            guardarCambios();
+          guardarCambios();
         }
     }
     int indexPhotoBarcode = 0;
@@ -146,16 +149,21 @@ public class editar_articulos extends AppCompatActivity implements View.OnClickL
         indexPhotoBarcode = index;
         IntentIntegrator integrator = new IntentIntegrator(this);
         integrator.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
-        integrator.setPrompt("Escanea un código de barras");
-        integrator.setCameraId(0);  // Usa la cámara trasera
+        integrator.setPrompt("Escanea un codigo de barras");
+        integrator.setCameraId(0);  // Usa la camara trasera
         integrator.setBeepEnabled(true);
         integrator.setCaptureActivity(MyCaptureActivity.class); // Usa tu actividad personalizada
-        integrator.setOrientationLocked(true); // Bloquea la orientación
+        integrator.setOrientationLocked(true); // Bloquea la orientacion
         integrator.initiateScan();
     }
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == adapter.adapEditarArticulo.REQUEST_PICK_IMAGE_EDIT && resultCode == RESULT_OK && data != null) {
+            editarArticulo.onImageResult(data.getData());
+            return;
+        }
 
         // Procesa el resultado del escaneo
         IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
@@ -163,16 +171,16 @@ public class editar_articulos extends AppCompatActivity implements View.OnClickL
             if (result.getContents() == null) {
                 toast("CANCELADO", getApplicationContext());
             } else {
-                if( photoBarcode_proviene.equals("adapter")){
-                    // Código escaneado
+               if( photoBarcode_proviene.equals("adapter")){
+                    // Codigo escaneado
                     String codigoEscaneado = result.getContents();
                     editarArticulo.actualizarLiga_photoScanner(indexPhotoBarcode, codigoEscaneado);
-                    // Aquí puedes manejar el código escaneado, por ejemplo, almacenarlo o procesarlo
+                    // Aqui puedes manejar el codigo escaneado, por ejemplo, almacenarlo o procesarlo
                 } else if (photoBarcode_proviene.equals("class")) {
-                    String codigoEscaneado = result.getContents();
-                    autoCompleteTextView.setText(codigoEscaneado);
-                    clic_autocomplete(autoCompleteTextView);
-                }
+                   String codigoEscaneado = result.getContents();
+                   autoCompleteTextView.setText(codigoEscaneado);
+                   clic_autocomplete(autoCompleteTextView);
+               }
             }
         }
     }
@@ -197,10 +205,10 @@ public class editar_articulos extends AppCompatActivity implements View.OnClickL
 
             if(array.length() > 0){
                 if (estadoEnEdicion){
-                    toast("HAY UN ARTICULO EN EDICIÓN", getApplicationContext());
+                    toast("HAY UN ARTICULO EN EDICION", getApplicationContext());
                 }else {
 
-                    int intTam = array.length(); // Asumiendo que 'intTam' representa el tamaño del array
+                    int intTam = array.length(); // Asumiendo que 'intTam' representa el tamano del array
 
                     // Utilizar AtomicInteger para manejar el conteo de actualizaciones completadas
                     AtomicInteger remainingUpdates = new AtomicInteger(intTam);
@@ -210,62 +218,52 @@ public class editar_articulos extends AppCompatActivity implements View.OnClickL
                             JSONObject articuloObj = array.getJSONObject(i);
                             String id = articuloObj.getString("id");
 
-                            // Convertir JSONObject a HashMap
-
-                            FirebaseFirestore firestore;
-                            // Referencia al documento
-                            DocumentReference docRef = FirebaseFirestore.getInstance().collection("articulos_n").document(id);
-
-                            // Actualizar el documento
-                            docRef.set(new Gson().fromJson(articuloObj.toString(), HashMap.class))
-                                    .addOnSuccessListener(new OnSuccessListener<Void>() {
-                                        @Override
-                                        public void onSuccess(Void aVoid) {
-                                            try {
-                                                // Actualizar jsonArticulos
-                                                jsonArticulos.put(id, articuloObj);
-
-
-                                                if(articuloObj.has("sigla")){
-                                                    JSONObject object = new JSONObject();
-                                                    object.put("id",  id);
-                                                    jsonSiglas.put(articuloObj.getString("sigla"), object);
-                                                }
-                                                generales.actualizarDatosGuardados("jsonArticulos", jsonArticulos.toString(), getApplicationContext());
-                                                generales.actualizarDatosGuardados("jsonSiglas"   , jsonSiglas.toString(), getApplicationContext());
-
-
-                                                // Llamar a actualizaArticulos
-                                                actualizaArticulos(id);
-
-                                                // Verificar si todas las actualizaciones se han completado
-                                                if (remainingUpdates.decrementAndGet() == 0) {
-                                                    editarArticulo.reset();
-                                                    llenarAutocomplete();
-//                                                actualizarSiglas(getApplicationContext());
-                                                }
-                                            } catch (JSONException e) {
-                                                e.printStackTrace();
-                                                // Opcional: Notificar al usuario sobre el error
-                                            }
-                                        }
+                            byte[] imgBytes = editarArticulo.getImageBytes(i);
+                            if (imgBytes != null) {
+                                String path = "media/articulos/" + id + ".webp";
+                                StorageReference ref = FirebaseStorage.getInstance().getReference(path);
+                                ref.putBytes(imgBytes).addOnSuccessListener(taskSnapshot ->
+                                    ref.getDownloadUrl().addOnSuccessListener(uri -> {
+                                        try { articuloObj.put("imagenUrl", uri.toString()); } catch (JSONException ex) {}
+                                        guardarArticuloEnFirestore(articuloObj, id, remainingUpdates);
                                     })
-                                    .addOnFailureListener(new OnFailureListener() {
-                                        @Override
-                                        public void onFailure(Exception e) {
-                                            e.printStackTrace();
-                                            // Opcional: Manejar el fallo de la actualización, como mostrar un mensaje al usuario
-                                        }
-                                    });
+                                ).addOnFailureListener(e -> guardarArticuloEnFirestore(articuloObj, id, remainingUpdates));
+                            } else {
+                                guardarArticuloEnFirestore(articuloObj, id, remainingUpdates);
+                            }
 
                         } catch (JSONException e) {
                             e.printStackTrace();
-                            // Opcional: Manejar el error al obtener el objeto JSON, como continuar con el siguiente elemento o notificar al usuario
                         }
                     }
                 }
             }else toast("elemtos iguales", getApplicationContext());
         }
+    }
+
+    private void guardarArticuloEnFirestore(JSONObject articuloObj, String id, AtomicInteger remainingUpdates) {
+        DocumentReference docRef = fire.colRef("articulos_n").document(id);
+        docRef.set(new Gson().fromJson(articuloObj.toString(), HashMap.class))
+                .addOnSuccessListener(aVoid -> {
+                    try {
+                        jsonArticulos.put(id, articuloObj);
+                        if(articuloObj.has("sigla")){
+                            JSONObject object = new JSONObject();
+                            object.put("id", id);
+                            jsonSiglas.put(articuloObj.getString("sigla"), object);
+                        }
+                        generales.actualizarDatosGuardados("jsonArticulos", jsonArticulos.toString(), getApplicationContext());
+                        generales.actualizarDatosGuardados("jsonSiglas", jsonSiglas.toString(), getApplicationContext());
+                        actualizaArticulos(id);
+                        if (remainingUpdates.decrementAndGet() == 0) {
+                            editarArticulo.reset();
+                            llenarAutocomplete();
+                        }
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                })
+                .addOnFailureListener(e -> e.printStackTrace());
     }
 
     int intTam;

@@ -19,6 +19,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
 import com.google.gson.Gson;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
@@ -31,6 +33,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import adapter.adapIngresoMercancia;
 import barcodeCamara.MyCaptureActivity;
@@ -49,7 +52,7 @@ public class ingresoMercancia extends AppCompatActivity  implements View.OnClick
         Window window = getWindow();
         window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        window.setStatusBarColor(getResources().getColor(R.color.blanco)); // Asegúrate de que el color esté definido en tus recursos.
+        window.setStatusBarColor(getResources().getColor(R.color.blanco)); // Asegurate de que el color este definido en tus recursos.
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController insetsController = window.getInsetsController();
@@ -108,26 +111,19 @@ public class ingresoMercancia extends AppCompatActivity  implements View.OnClick
                         obj.put("fecha", getTiempo());
                         obj.remove("completo");
 
-                        documenRef("articulos_n/" + id).
-                                set(new Gson().fromJson(obj.toString(), HashMap.class)).addOnSuccessListener(new OnSuccessListener() {
-                                    @Override
-                                    public void onSuccess(Object o) {
-                                        cantTotalRegIng--;
-                                        try {
-                                            jsonArticulos.put(id, obj);
-                                            generales.actualizarDatosGuardados("jsonArticulos", jsonArticulos.toString(), getApplicationContext());
-
-                                            actualizarArticulo_paseDeLista.actualizaArticulos(id, getApplicationContext(), cantTotalRegIng);
-                                            if(cantTotalRegIng==0){
-                                                toast("CARGANDO");
-                                                actualizarSiglas(getApplicationContext());
-                                                adapIngresoMercancia.reset();
-                                            }
-                                        } catch (JSONException e) {
-                                            throw new RuntimeException(e);
-                                        }
-                                    }
-                                });
+                        byte[] imgBytes = adapIngresoMercancia.getImageBytes(i);
+                        if (imgBytes != null) {
+                            String path = "media/articulos/" + id + ".webp";
+                            StorageReference ref = FirebaseStorage.getInstance().getReference(path);
+                            ref.putBytes(imgBytes).addOnSuccessListener(taskSnapshot ->
+                                ref.getDownloadUrl().addOnSuccessListener(uri -> {
+                                    try { obj.put("imagenUrl", uri.toString()); } catch (JSONException ex) {}
+                                    subirArticulo(obj, id);
+                                })
+                            ).addOnFailureListener(e -> subirArticulo(obj, id));
+                        } else {
+                            subirArticulo(obj, id);
+                        }
                     } catch (JSONException e) {
                         throw new RuntimeException(e);
                     }
@@ -142,11 +138,11 @@ public class ingresoMercancia extends AppCompatActivity  implements View.OnClick
         indexPhotoBarcode = index;
         IntentIntegrator integrator = new IntentIntegrator(this);
         integrator.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
-        integrator.setPrompt("Escanea un código de barras");
-        integrator.setCameraId(0);  // Usa la cámara trasera
+        integrator.setPrompt("Escanea un codigo de barras");
+        integrator.setCameraId(0);  // Usa la camara trasera
         integrator.setBeepEnabled(true);
         integrator.setCaptureActivity(MyCaptureActivity.class); // Usa tu actividad personalizada
-        integrator.setOrientationLocked(true); // Bloquea la orientación
+        integrator.setOrientationLocked(true); // Bloquea la orientacion
         integrator.initiateScan();
 
     }
@@ -154,19 +150,45 @@ public class ingresoMercancia extends AppCompatActivity  implements View.OnClick
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
+        if (requestCode == adapter.adapIngresoMercancia.REQUEST_PICK_IMAGE_ARTICULO && resultCode == RESULT_OK && data != null) {
+            adapIngresoMercancia.onImageResult(data.getData());
+            return;
+        }
+
         // Procesa el resultado del escaneo
         IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
         if (result != null) {
             if (result.getContents() == null) {
                 toast("CANCELADO");
             } else {
-                // Código escaneado
+                // Codigo escaneado
                 String codigoEscaneado = result.getContents();
                 adapIngresoMercancia.actualizarLiga_photoScanner(indexPhotoBarcode, codigoEscaneado);
-                // Aquí puedes manejar el código escaneado, por ejemplo, almacenarlo o procesarlo
             }
         }
     }
+    private void subirArticulo(JSONObject obj, String id) {
+        documenRef("articulos_n/" + id).
+                set(new Gson().fromJson(obj.toString(), HashMap.class)).addOnSuccessListener(new OnSuccessListener() {
+                    @Override
+                    public void onSuccess(Object o) {
+                        cantTotalRegIng--;
+                        try {
+                            jsonArticulos.put(id, obj);
+                            generales.actualizarDatosGuardados("jsonArticulos", jsonArticulos.toString(), getApplicationContext());
+
+                            actualizarArticulo_paseDeLista.actualizaArticulos(id, getApplicationContext(), cantTotalRegIng);
+                            if(cantTotalRegIng==0){
+                                actualizarSiglas(getApplicationContext());
+                                adapIngresoMercancia.reset();
+                            }
+                        } catch (JSONException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                });
+    }
+
     boolean banderaAtualizarAutocompleteID = false;
 
     private void toast (String s){

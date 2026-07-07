@@ -6,6 +6,10 @@ import static com.example.nodo_1.principal.jsonSiglas;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.KeyEvent;
@@ -16,6 +20,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.PopupWindow;
 import android.widget.TextView;
 
@@ -23,6 +28,7 @@ import androidx.annotation.NonNull;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.example.nodo_1.R;
 import com.example.nodo_1.generales;
 import com.google.android.material.textfield.TextInputEditText;
@@ -32,7 +38,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import pop.pop_selec_talla;
 
@@ -91,7 +99,10 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
                 utilidad        = holder.utilidad,
                 utilidadTotal   = holder.utilidadTotal,
                 mayoreo         = holder.mayoreo,
-                cantMayoreo     = holder.cantMayoreo;
+                cantMayoreo     = holder.cantMayoreo,
+                genero          = holder.genero,
+                subgenero       = holder.subgenero,
+                hashtags        = holder.hashtags;
 
         Button but_photoBarCode = holder.but_photoBarCode;
         CheckBox checkBox_descuento = holder.checkBox_descuento;
@@ -113,7 +124,7 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
 
 
         CheckBox
-                checkBoxIndicarTalla = holder.checkBoxIndicarTalla, checkBoxIndicarSeña = holder.checkBoxIndicarSeña, check_2x1 = holder.check_2x1;
+        checkBoxIndicarTalla = holder.checkBoxIndicarTalla, checkBoxIndicarSeña = holder.checkBoxIndicarSeña, check_2x1 = holder.check_2x1;
 
         try {
             codigo      .setText( array.getJSONObject(position).getString("id"));
@@ -143,6 +154,12 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
                     else mayoreo.setText("");
                     if (object.has("cantMayoreo"))cantMayoreo.setText(object.getString("cantMayoreo"));
                     else cantMayoreo.setText("");
+                    if (object.has("genero"))genero.setText(object.getString("genero"));
+                    else genero.setText("");
+                    if (object.has("subgenero"))subgenero.setText(object.getString("subgenero"));
+                    else subgenero.setText("");
+                    if (object.has("hashtags"))hashtags.setText(object.getString("hashtags"));
+                    else hashtags.setText("");
                     if (object.has("tallas")){
                         checkBoxIndicarTalla.setChecked(true);
                     }else checkBoxIndicarTalla.setChecked(false);
@@ -172,6 +189,9 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
                 utilidadTotal.setText("");
                 mayoreo      .setText("");
                 cantMayoreo  .setText("");
+                genero       .setText("");
+                subgenero    .setText("");
+                hashtags     .setText("");
                 descuentoEdittext.setText("");
             }
             but_photoBarCode.setOnClickListener(new View.OnClickListener() {
@@ -207,6 +227,45 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
                     sigla.setText(generarCadenaUnica(arrayList));
                 }
             });
+
+            // Image handling
+            ImageView imgArticulo = holder.imgArticulo;
+            Button butAgregarImagen = holder.butAgregarImagen;
+            Button butQuitarImagen = holder.butQuitarImagen;
+
+            if (imagenBytesPorPosicion.containsKey(position)) {
+                byte[] bytes = imagenBytesPorPosicion.get(position);
+                Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                imgArticulo.setImageBitmap(bmp);
+                imgArticulo.setVisibility(View.VISIBLE);
+                butQuitarImagen.setVisibility(View.VISIBLE);
+            } else if (array.getJSONObject(position).has("imagenUrl")) {
+                Glide.with(context).load(array.getJSONObject(position).getString("imagenUrl")).into(imgArticulo);
+                imgArticulo.setVisibility(View.VISIBLE);
+                butQuitarImagen.setVisibility(View.VISIBLE);
+            } else {
+                imgArticulo.setVisibility(View.GONE);
+                butQuitarImagen.setVisibility(View.GONE);
+            }
+
+            butAgregarImagen.setOnClickListener(v -> {
+                pickImageForPosition = holder.getAdapterPosition();
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("image/*");
+                activity.startActivityForResult(intent, REQUEST_PICK_IMAGE_ARTICULO);
+            });
+
+            butQuitarImagen.setOnClickListener(v -> {
+                int pos = holder.getAdapterPosition();
+                imagenUriPorPosicion.remove(pos);
+                imagenBytesPorPosicion.remove(pos);
+                try {
+                    array.getJSONObject(pos).remove("imagenUrl");
+                } catch (JSONException ex) {}
+                imgArticulo.setVisibility(View.GONE);
+                butQuitarImagen.setVisibility(View.GONE);
+            });
+
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
@@ -296,8 +355,8 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
                 JSONObject object = new JSONObject();
                 try {
                     if(codigo.length() > 0
-                            && cantidad.length() > 0 && compra.length() > 0
-                            && venta.length() > 0 && utilidadTotal.length() > 0){
+                    && cantidad.length() > 0 && compra.length() > 0
+                    && venta.length() > 0 && utilidadTotal.length() > 0){
                         boolean estadoMayoreo = false;
                         if(mayoreo.length() > 0 || cantMayoreo.length() > 0){
                             if(mayoreo.length() > 0 && cantMayoreo.length() > 0){
@@ -317,6 +376,15 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
                             }
                             if(cantMayoreo.length() > 0){
                                 object.put("cantMayoreo", cantMayoreo.getText().toString());
+                            }
+                            if(genero.length() > 0){
+                                object.put("genero", genero.getText().toString());
+                            }
+                            if(subgenero.length() > 0){
+                                object.put("subgenero", subgenero.getText().toString());
+                            }
+                            if(hashtags.length() > 0){
+                                object.put("hashtags", hashtags.getText().toString());
                             }
                             object.put("cantidad", cantidad.getText().toString());
                             object.put("preciCompra", compra.getText().toString());
@@ -387,7 +455,7 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
             public void onClick(View view) {
                 if (checkBoxIndicarTalla.isChecked()){
                     if(!jsonDatos.has("tallas")){
-                        toast("AGREGUE 1 TALLA EN LA SECCIÓN, GESTOR DE OFERTAS");
+                        toast("AGREGUE 1 TALLA EN LA SECCION, GESTOR DE OFERTAS");
                         checkBoxIndicarTalla.setChecked(false);
                     }else {
                         checkBoxTalla = checkBoxIndicarTalla;
@@ -454,10 +522,10 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
                 if (actionId == EditorInfo.IME_ACTION_NEXT) {
 
-                    // Simular un clic en el botón
+                    // Simular un clic en el boton
                     holder.but.performClick();
 
-                    return true; // Manejar el evento aquí
+                    return true; // Manejar el evento aqui
                 }
                 return false;
             }
@@ -469,10 +537,10 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
                 if (actionId == EditorInfo.IME_ACTION_NEXT) {
 
-                    // Simular un clic en el botón
+                    // Simular un clic en el boton
                     holder.but.performClick();
 
-                    return true; // Manejar el evento aquí
+                    return true; // Manejar el evento aqui
                 }
                 return false;
             }
@@ -484,10 +552,10 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
     private static final String LETRAS = "abcdefghijklmnopqrstuvwxyz";
 
     /**
-     * Genera una cadena única que no existe en la lista proporcionada.
+     * Genera una cadena unica que no existe en la lista proporcionada.
      *
      * @param listaExistente Lista de cadenas existentes.
-     * @return Una cadena única que no está en la lista.
+     * @return Una cadena unica que no esta en la lista.
      */
     public static String generarCadenaUnica(List<String> listaExistente) {
         int longitud = 1;
@@ -504,7 +572,7 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
     }
 
     /**
-     * Genera todas las combinaciones posibles de letras minúsculas para una longitud dada.
+     * Genera todas las combinaciones posibles de letras minusculas para una longitud dada.
      *
      * @param longitud Longitud de las cadenas a generar.
      * @return Lista de cadenas generadas.
@@ -516,7 +584,7 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
     }
 
     /**
-     * Método recursivo para generar combinaciones de letras.
+     * Metodo recursivo para generar combinaciones de letras.
      *
      * @param prefijo       Prefijo actual de la cadena.
      * @param longitud      Longitud restante por generar.
@@ -591,24 +659,53 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
 
     }
 
+    public static final int REQUEST_PICK_IMAGE_ARTICULO = 2001;
+    private int pickImageForPosition = -1;
+    private Map<Integer, Uri> imagenUriPorPosicion = new HashMap<>();
+    private Map<Integer, byte[]> imagenBytesPorPosicion = new HashMap<>();
+
+    public void onImageResult(Uri uri) {
+        if (pickImageForPosition >= 0 && uri != null) {
+            imagenUriPorPosicion.put(pickImageForPosition, uri);
+            // Compress in background
+            final int pos = pickImageForPosition;
+            new Thread(() -> {
+                byte[] compressed = media.ImageCompressor.compress(context, uri, 800 * 1024);
+                if (compressed != null) {
+                    imagenBytesPorPosicion.put(pos, compressed);
+                }
+                ((Activity) activity).runOnUiThread(() -> notifyItemChanged(pos));
+            }).start();
+            pickImageForPosition = -1;
+        }
+    }
+
+    public int getPickImageForPosition() { return pickImageForPosition; }
+
+    public byte[] getImageBytes(int position) {
+        return imagenBytesPorPosicion.get(position);
+    }
+
     public class ViewHolder extends RecyclerView.ViewHolder {
 
         Button but, butMod, butSiglaExistente, but_generarsigla, but_photoBarCode;
         TextInputEditText nombre, codigo, referencia, sigla, cantidad, compra, venta, utilidad, utilidadTotal,
-
-        mayoreo, cantMayoreo;
+        mayoreo, cantMayoreo, genero, subgenero, hashtags;
 
         CheckBox checkBox_descuento;
         EditText descuentoEdittext;
 
         ConstraintLayout consMod;
 
-        CheckBox checkBoxIndicarTalla, checkBoxIndicarSeña,check_2x1;
+        CheckBox checkBoxIndicarTalla, checkBoxIndicarSeña, check_2x1;
+
+        ImageView imgArticulo;
+        Button butAgregarImagen, butQuitarImagen;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             but = (Button) itemView.findViewById(R.id.butConfirmarRegIngMerc);
-            butSiglaExistente = (Button)itemView.findViewById(R.id.butSiglaExistente);
+            butSiglaExistente = (Button) itemView.findViewById(R.id.butSiglaExistente);
 
             nombre          = (TextInputEditText) itemView.findViewById(R.id.inputEditText_NotaIndividual_Eqp_trabajo);
             codigo          = (TextInputEditText) itemView.findViewById(R.id.inputEditText_10);
@@ -623,18 +720,23 @@ public class adapIngresoMercancia extends RecyclerView.Adapter<adapIngresoMercan
             consMod         = (ConstraintLayout) itemView.findViewById(R.id.consModificarRegIngMerc);
             mayoreo         = (TextInputEditText) itemView.findViewById(R.id.textImputLayoutMayoreo);
             cantMayoreo     = (TextInputEditText) itemView.findViewById(R.id.inmputEditText_canMayoreo);
-
+            genero          = (TextInputEditText) itemView.findViewById(R.id.inputEditText_genero);
+            subgenero       = (TextInputEditText) itemView.findViewById(R.id.inputEditText_subgenero);
+            hashtags        = (TextInputEditText) itemView.findViewById(R.id.inputEditText_hashtags);
 
             checkBox_descuento   = (CheckBox) itemView.findViewById(R.id.checkBoxDescuento);
             checkBoxIndicarTalla = (CheckBox) itemView.findViewById(R.id.checkBoxIndicarTalla);
             checkBoxIndicarSeña  = (CheckBox) itemView.findViewById(R.id.checkBoxIndicarSeña);
             check_2x1            = (CheckBox) itemView.findViewById(R.id.checkBoxIndicarcheck_2x1);
 
-
             but_generarsigla = (Button) itemView.findViewById(R.id.butgenerarSiglaRegAdapter);
             but_photoBarCode = (Button) itemView.findViewById(R.id.but_photoBarCode);
 
-            descuentoEdittext= (EditText) itemView.findViewById(R.id.editTextTextDescuento);
+            descuentoEdittext = (EditText) itemView.findViewById(R.id.editTextTextDescuento);
+
+            imgArticulo      = (ImageView) itemView.findViewById(R.id.imgArticulo);
+            butAgregarImagen = (Button) itemView.findViewById(R.id.butAgregarImagen);
+            butQuitarImagen  = (Button) itemView.findViewById(R.id.butQuitarImagen);
         }
     }
     private void toast (String s){
