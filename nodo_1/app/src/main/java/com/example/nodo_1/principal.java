@@ -180,6 +180,7 @@ public class principal extends AppCompatActivity implements View.OnClickListener
     TextView cambioPago_trans, cambioPAgo_Titulo;
 
     TextView txtBotonPagoTarjeta;
+    TextView txtIngresoDia;
     //----------------------------------------
     //----------------------------------------EditText
     EditText montoPago;
@@ -217,14 +218,35 @@ public class principal extends AppCompatActivity implements View.OnClickListener
         super.onCreate(savedInstanceState);
         setContentView(R.layout.principal);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        descarga descarga = new descarga(getApplicationContext(), this, internet.NetworkUtil.isNetworkAvailable(getApplicationContext()));
-        //saveData_sharedPreferences(getApplicationContext(),"dispositivo" , "id_mensaje","69d468564");
-        String idDispositivo = loadData_sharedPreferences(getApplicationContext(), "id_mensaje","dispositivo");
-        if(!idDispositivo.equals("")){
-            init(descarga);
-        }else {
-            descarga.descargarDatosInit();
+
+        // Restore negocioId for multi-tenant isolation
+        String savedNegocioId = fire.restoreNegocioId(getApplicationContext());
+        if (savedNegocioId == null || savedNegocioId.isEmpty()) {
+            // No negocioId - redirect to login
+            Intent loginIntent = new Intent(this, initLog.class);
+            startActivity(loginIntent);
+            finish();
+            return;
         }
+
+        descarga descarga = new descarga(getApplicationContext(), this, internet.NetworkUtil.isNetworkAvailable(getApplicationContext()));
+
+        DeviceIdentifier.getOrRecover(getApplicationContext(), new DeviceIdentifier.OnDeviceIdReady() {
+            @Override
+            public void onReady(String deviceId) {
+                init(descarga);
+            }
+
+            @Override
+            public void onNeedsRegistration(String androidId) {
+                descarga.descargarDatosInit();
+            }
+
+            @Override
+            public void onError(String error) {
+                descarga.descargarDatosInit();
+            }
+        });
     }
     public void initUser(){
         Intent askIntent = new Intent(principal.this, registro_dispositivo.class);
@@ -262,6 +284,7 @@ public class principal extends AppCompatActivity implements View.OnClickListener
         cambioPago_trans            = (TextView) findViewById(R.id.textView55);
         cambioPAgo_Titulo           = (TextView) findViewById(R.id.textView53);
         txtBotonPagoTarjeta         = (TextView) findViewById(R.id.textView397);
+        txtIngresoDia               = (TextView) findViewById(R.id.txtIngresoDia);
 
         montoPago                   = (EditText) findViewById(R.id.textviewMontoPago);
 
@@ -297,6 +320,8 @@ public class principal extends AppCompatActivity implements View.OnClickListener
 
         networkMonitor = new NetworkMonitor(this, this);
         descarga.descargaInit();
+        verificarPermisoNotificaciones();
+        push.FcmTokenManager.inicializar(getApplicationContext());
         activarBluetooth();
         infoPago_trans();
         //restoreSelectedDeviceIfExists();
@@ -1197,10 +1222,6 @@ public class principal extends AppCompatActivity implements View.OnClickListener
             reset();
         } else if (R.id.button118 == id) {
             if(total_principal.length() > 0)montoPago.setText(total_principal.getText().toString());
-        }  else if (R.id.butActualizar == id){
-            descarga descarga = new descarga(getApplicationContext(), principal.this, internet.NetworkUtil.isNetworkAvailable(getApplicationContext()));
-            descarga.descargarTodo();
-            ((ConstraintLayout)findViewById(R.id.consProgresBar_var_mod)).setVisibility(View.VISIBLE);
         } else if (R.id.producto_noRegistrado == id) {
             popArtNoRegistrado popArtNoRegistrado = new popArtNoRegistrado();
             popArtNoRegistrado.showPopupWindow(v, adapRegVenta,  (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE));
@@ -1515,8 +1536,7 @@ public class principal extends AppCompatActivity implements View.OnClickListener
     }
 
     public CollectionReference refCollection(String refCollection){
-        CollectionReference reference = db().collection(refCollection);
-        return reference;
+        return fire.colRef(refCollection);
     }
     boolean escucharventabol = false;
     boolean escucharTokenArticulo_n = false;
@@ -1832,6 +1852,13 @@ public class principal extends AppCompatActivity implements View.OnClickListener
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
 
+        if (requestCode == pop.pop_mensajes.REQUEST_PICK_IMAGE && resultCode == RESULT_OK && data != null) {
+            if (pop_mensajes != null && pop_mensajes.estadoPop()) {
+                pop_mensajes.onMediaResult(data.getData());
+            }
+            return;
+        }
+
         switch (requestCode) {
 
             case REQUEST_PAY_Dividido_trans_tar:
@@ -2036,12 +2063,12 @@ public class principal extends AppCompatActivity implements View.OnClickListener
             public boolean onKey(View v, int keyCode, KeyEvent event) {
                 if ((event.getAction() == KeyEvent.ACTION_DOWN) && (keyCode == KeyEvent.KEYCODE_ENTER)) {
                     if(autoComplete_codigoArt.length() > 0){
-                        String cadena = autoComplete_codigoArt.getText().toString();
+                        String cadena = autoComplete_codigoArt.getText().toString().trim();
                         if(cadena.contains(" ")){
                             cadena = cadena.split(" ")[0];
                         }
-                        if(jsonArticulos.has(cadena)){
-                            pressEnterAutoCompleteID(cadena); autoComplete_codigoArt.setText("");
+                        if(resolverCodigo(cadena)){
+                            autoComplete_codigoArt.setText("");
                         }
                     }
                 }
@@ -2052,16 +2079,46 @@ public class principal extends AppCompatActivity implements View.OnClickListener
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int i, long l) {
                 if(autoComplete_codigoArt.length() > 0){
-                    String cadena = autoComplete_codigoArt.getText().toString();
+                    String cadena = autoComplete_codigoArt.getText().toString().trim();
                     if(cadena.contains(" ")){
                         cadena = cadena.split(" ")[0];
                     }
-                    if(jsonArticulos.has(cadena)){
-                        pressEnterAutoCompleteID(cadena); autoComplete_codigoArt.setText("");
+                    if(resolverCodigo(cadena)){
+                        autoComplete_codigoArt.setText("");
                     }
                 }
             }
         });
+    }
+    private boolean resolverCodigo(String cadena) {
+        // 1. Código tradicional (ej: 12300001)
+        if (jsonArticulos.has(cadena)) {
+            pressEnterAutoCompleteID(cadena);
+            return true;
+        }
+        // 2. Código de subvariación (ej: v-1-1)
+        if (cadena.startsWith("v-")) {
+            String[] partes = cadena.split("-");
+            if (partes.length == 3) {
+                try {
+                    int artNum = Integer.parseInt(partes[1]);
+                    int subvarIndex = Integer.parseInt(partes[2]);
+                    String artId = String.valueOf(12300000 + artNum);
+                    if (jsonArticulos.has(artId)) {
+                        JSONObject art = jsonArticulos.getJSONObject(artId);
+                        if (art.has("subvariaciones")) {
+                            JSONArray subvars = art.getJSONArray("subvariaciones");
+                            if (subvarIndex >= 1 && subvarIndex <= subvars.length()) {
+                                JSONObject subvar = subvars.getJSONObject(subvarIndex - 1);
+                                venta_seleccion_subvar(artId, subvar);
+                                return true;
+                            }
+                        }
+                    }
+                } catch (Exception e) { e.printStackTrace(); }
+            }
+        }
+        return false;
     }
     private void pressEnterAutoCompleteID(String cadena){
         try {
@@ -2099,6 +2156,33 @@ public class principal extends AppCompatActivity implements View.OnClickListener
             object.put("precio"         , jsonArticulos.getJSONObject(id).getString("precioVenta"));
 
             adapRegVenta.add(object, igual);
+        } catch (JSONException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    public void venta_seleccion_subvar(String id, JSONObject subvar) {
+        JSONObject object = new JSONObject();
+        try {
+            object.put("id", id);
+            object.put("subvariacion", subvar.getString("nombre"));
+            object.put("cantidad", "1");
+            if (jsonArticulos.getJSONObject(id).has("descuento")) {
+                object.put("descuento", jsonArticulos.getJSONObject(id).getString("descuento"));
+            } else {
+                object.put("precio", jsonArticulos.getJSONObject(id).getString("precioVenta"));
+            }
+            if (jsonArticulos.getJSONObject(id).has("3x2")) {
+                object.put("3x2", "");
+            }
+            if (jsonArticulos.getJSONObject(id).has("mayoreo")) {
+                object.put("mayoreo", jsonArticulos.getJSONObject(id).getString("mayoreo"));
+                object.put("cantMayoreo", jsonArticulos.getJSONObject(id).getString("cantMayoreo"));
+            }
+            object.put("nombrePublico", jsonArticulos.getJSONObject(id).getString("nombre") + " - " + subvar.getString("nombre"));
+            object.put("descripcion", jsonArticulos.getJSONObject(id).getString("referencia"));
+            object.put("precio", jsonArticulos.getJSONObject(id).getString("precioVenta"));
+
+            adapRegVenta.add(object, false);
         } catch (JSONException e) {
             throw new RuntimeException(e);
         }
@@ -2152,6 +2236,16 @@ public class principal extends AppCompatActivity implements View.OnClickListener
 
         autoComplete_codigoArt.setAdapter(new ArrayAdapter<String>(getApplicationContext(), android.R.layout.simple_list_item_1, arrayList));
     }
+    private void verificarPermisoNotificaciones() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
+            }
+        }
+    }
+
     private void activarBluetooth() {
 
         //activar bluetooth
@@ -2322,6 +2416,8 @@ public class principal extends AppCompatActivity implements View.OnClickListener
                     }else {
                         consPAgoTarjetaBoton.setVisibility(View.GONE);
                     }
+                } else if (llave.equals("ultima_venta")) {
+                    calcularIngresoDia();
                 }else if (llave.equals("transferencia_datos")) {
                     /** transferencia_datos **/
                     try {
@@ -2348,9 +2444,38 @@ public class principal extends AppCompatActivity implements View.OnClickListener
         }
     };
 
+    public void calcularIngresoDia() {
+        try {
+            if (jsonVenta == null || jsonVenta.length() == 0) {
+                txtIngresoDia.setText("$ 0");
+                return;
+            }
+            String hoyAño = generales.quitarCero(generales.getAnñoMesDiaHora("año"));
+            String hoyMes = generales.quitarCero(generales.getAnñoMesDiaHora("mes"));
+            String hoyDia = generales.quitarCero(generales.getAnñoMesDiaHora("dia"));
+
+            if (jsonVenta.has(hoyAño)
+                    && jsonVenta.getJSONObject(hoyAño).has(hoyMes)
+                    && jsonVenta.getJSONObject(hoyAño).getJSONObject(hoyMes).has(hoyDia)) {
+                JSONObject diaObj = jsonVenta.getJSONObject(hoyAño).getJSONObject(hoyMes).getJSONObject(hoyDia);
+                JSONArray arrayVenta = diaObj.getJSONArray("registro");
+                int totalIngreso = 0;
+                for (int i = 0; i < arrayVenta.length(); i++) {
+                    totalIngreso += Integer.parseInt(arrayVenta.getJSONObject(i).getString("montoCobro"));
+                }
+                txtIngresoDia.setText("$ " + totalIngreso);
+            } else {
+                txtIngresoDia.setText("$ 0");
+            }
+        } catch (Exception e) {
+            txtIngresoDia.setText("$ 0");
+        }
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
+        calcularIngresoDia();
         ((Button)findViewById(R.id.button201)).setVisibility(View.GONE);
         if(mostrarBotonTransferencia()){
             ((Button)findViewById(R.id.button199)).setVisibility(View.VISIBLE);
@@ -2393,6 +2518,7 @@ public class principal extends AppCompatActivity implements View.OnClickListener
         else unaVezMensajesIniciar = true;
 
         IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction("FIRESTORE_UPDATE_ACTION_venta_ac");
         intentFilter.addAction("FIRESTORE_UPDATE_ACTION_mensajes_ac");
         intentFilter.addAction("FIRESTORE_UPDATE_ACTION_mostrarBotonTransferencia");
         intentFilter.addAction("FIRESTORE_UPDATE_ACTION_mostrarBotonPagoTarjeta");

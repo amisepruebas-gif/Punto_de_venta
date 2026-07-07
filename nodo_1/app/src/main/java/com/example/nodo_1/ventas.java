@@ -221,12 +221,28 @@ public class ventas extends AppCompatActivity implements View.OnClickListener {
 
         models = new ArrayList<>();
         int cantidadMeses = 0;
+
+        // Ordenar años numéricamente
+        ArrayList<String> añosOrdenados = new ArrayList<>();
         for(int i = 0; i < jsonVenta.names().length(); i++){
+            try { añosOrdenados.add(jsonVenta.names().getString(i)); } catch (JSONException e) { e.printStackTrace(); }
+        }
+        java.util.Collections.sort(añosOrdenados, (a, b) -> Integer.parseInt(a) - Integer.parseInt(b));
+
+        for(String yearKey : añosOrdenados){
             try {
-                JSONObject objectMes = jsonVenta.getJSONObject(jsonVenta.names().getString(i));
+                JSONObject objectMes = jsonVenta.getJSONObject(yearKey);
+
+                // Ordenar meses numéricamente
+                ArrayList<String> mesesOrdenados = new ArrayList<>();
                 for (int x = 0; x < objectMes.names().length(); x++){
+                    mesesOrdenados.add(objectMes.names().getString(x));
+                }
+                java.util.Collections.sort(mesesOrdenados, (a, b) -> Integer.parseInt(a) - Integer.parseInt(b));
+
+                for(String mesKey : mesesOrdenados){
                     cantidadMeses++;
-                    JSONObject objectDias = objectMes.getJSONObject(objectMes.names().getString(x));
+                    JSONObject objectDias = objectMes.getJSONObject(mesKey);
                     ArrayList<String> cadenaIdBt = new ArrayList<>();
                     ArrayList<String> list = new ArrayList<>();
                     for (int y = 0; y < objectDias.names().length(); y++){
@@ -240,13 +256,12 @@ public class ventas extends AppCompatActivity implements View.OnClickListener {
                     models.add(
                             new Model(
                                     R.drawable.brochure,
-                                    objectMes.names().getString(x)+ " " + jsonVenta.names().getString(i),
+                                    mesKey + " " + yearKey,
                                     cadenaIdBt,
                                     null,
-                                    objectMes.names().getString(x),
+                                    mesKey,
                                     list,
                                     new JSONObject()));
-
                 }
 
             } catch (JSONException e) {

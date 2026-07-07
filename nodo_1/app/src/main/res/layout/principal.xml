@@ -1941,6 +1941,22 @@
                 app:srcCompat="@drawable/amise_pant_principal" />
 
             <TextView
+                android:id="@+id/txtIngresoDia"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/abeezee"
+                android:text="$ 0"
+                android:textColor="@color/gris_oscuro"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:elevation="2dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.95"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
                 android:id="@+id/id_status_conexion_texto"
                 android:layout_width="0dp"
                 android:layout_height="15dp"
