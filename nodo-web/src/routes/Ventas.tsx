@@ -386,9 +386,11 @@ export function Ventas() {
     }
 
     // F4/F6: si se compró/repuso una tarjeta en esta venta, vincularla AHORA que la
-    // venta se creó → "pagó → se vincula", idempotente por ventaId. Best-effort: la
-    // venta YA existe, un fallo no la revierte. Limpiamos el pendiente antes para que
-    // NUNCA se arrastre a otra venta. Offline: se omite (la vinculación necesita red).
+    // venta se creó → "pagó → se vincula". La vinculación (linkCard/replaceCard) es
+    // idempotente por (código de barras + monedero), NO por ventaId (el ventaId solo
+    // se guarda como metadato). Best-effort: la venta YA existe, un fallo no la
+    // revierte. Limpiamos el pendiente antes para que NUNCA se arrastre a otra venta.
+    // Offline: se omite (la vinculación necesita red).
     const tarjPend = useClientePuntos.getState().tarjetaPendiente;
     // "Vinculado ⟺ pagado": solo vincular si el ARTÍCULO de la tarjeta realmente se
     // cobró en ESTA venta. Blinda contra un pendiente arrastrado (carrito cancelado
