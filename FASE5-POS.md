@@ -1,44 +1,38 @@
-# Fase 5 — activación del candado de canje en el POS
+# Fase 5 — activación del candado de canje en el POS (versión mínima-segura)
 
-> ⚠️ **CÓDIGO DE DINERO SIN PROBAR EN CAJA.** Escrito con typecheck + auditoría, pero **NO se ha ejercitado en una caja real ni con cortes de red**. **NO desplegar a las cajas hasta probarlo** (idealmente después de confirmar que los fixes 1-3 ya desplegados funcionan). El candado del servidor (amise) ya está desplegado pero **inerte** hasta que el POS mande `pendingLock`.
+> ⚠️ **CÓDIGO DE DINERO SIN PROBAR EN CAJA.** Escrito + typecheck + auditado 2×, pero **NO ejercitado en una caja real ni con cortes de red**. **NO desplegar hasta probarlo.** El candado del servidor (amise) está desplegado pero **inerte** hasta que el POS mande `pendingLock`.
 
-## Qué activa
-El servidor ya tiene el candado (índice `canjesPendientes`, escrito atómico con el débito). Esta parte hace que el POS lo **encienda** y lo use bien:
+## Qué hace (mínima-segura)
+El servidor ya tiene el candado (índice `canjesPendientes/{wallet}`, escrito atómico con el débito). Esta parte lo **enciende** de forma simple y segura:
 
-1. **Write-ahead del `cobroId`** — antes de debitar, el POS persiste el id del cobro en `clientePuntosStore` (localStorage). En un **reload/reintento** reusa **ese mismo** id → el servidor lo reconoce (idempotente) y **no vuelve a debitar** = no doble cobro.
-2. **`pendingLock: true`** — se manda en el canje para activar el candado del servidor.
-3. **Conflicto (409 `canje-en-curso`)** — si el servidor rechaza (ya hay OTRO cobro en curso que este POS no inició), el POS **aborta con mensaje claro** (no adopta a ciegas, no crea venta con descuento sin débito).
-4. **`/cerrar` tras la venta** — libera el pendiente en el servidor (evita bloquear el próximo cobro del cliente). Best-effort + **encolado** para reintento durable.
+1. **`pendingLock: true`** en el canje → activa el candado del servidor.
+2. **Conflicto (409 `canje-en-curso`)** → si el servidor detecta otro canje en curso del mismo cliente (evita el **doble débito**), el POS **aborta con mensaje claro** — NO crea venta con descuento sin débito.
+3. **`/cerrar`** tras crear la venta → libera el pendiente (best-effort + **encolado** durable).
+4. **Drenar `cerrar`** encolado de ese cliente antes de un canje nuevo → evita que un cierre fallido bloquee su siguiente cobro.
 
-## Reglas de seguridad
-- El write-ahead solo se reusa si el **teléfono coincide** y es **reciente (< 15 min, = TTL del servidor)**; si es viejo se ignora (el pendiente del servidor también expiró).
-- Al reusar, el **monto debe coincidir** con el del cobro en curso; si no, aborta (evita debitar un monto distinto bajo la misma clave).
-- La **venta** usa el **mismo `cobroId`** que el débito (linkeados).
-- El canje web (amise) no manda `pendingLock` → sin cambios.
+**La venta usa la misma `idempotencyKey` que el débito.** El canje web no manda `pendingLock` → sin cambios.
+
+## Qué NO hace (y por qué)
+- **No reusa el cobro entre recargas** (no hay "write-ahead"). Se probó y la auditoría demostró que reusar sin verificar si la venta ya existe **abre un hueco de dinero** (doble-descuento) y **bloqueos de 24 h**. Por eso se quitó.
+- **Residual conocido:** si el débito se confirma pero la respuesta se pierde y la venta no se crea (crash/timeout en una ventana estrecha), queda un **débito huérfano** (el cliente pierde ese cashback), **detectable** (el pendiente queda en el servidor) pero sin reconciliación automática. Es el mismo límite raíz de siempre.
+
+## Auditorías (2 rondas adversariales)
+1. **Fase 5 POS inicial:** contrato/despliegue LIMPIO; 5 hallazgos, todos del huérfano. Se intentaron 4 fixes (write-ahead reuse + TTL 24h + mapa + drenar-cerrar).
+2. **De los 4 fixes:** el reuso con TTL de 24h **introdujo huecos NUEVOS** (doble-descuento si la venta ya se creó; bloqueo de 24h al cliente). Conclusión: el parcheo del reuso **no converge** → se **revirtió a mínima-segura** (sin reuso). Drenar-cerrar salió limpio y se conserva.
 
 ## Archivos
 | Archivo | Cambio |
 |---|---|
 | `functions/index.js` | `canjearPuntos` pasa `pendingLock`; nueva CF `cerrarCanje` (proxy a `/api/loyalty/canje/cerrar`) |
 | `nodo-web/src/firebase/callable.ts` | `CanjearPuntosInput += pendingLock`; `fnCerrarCanje` |
-| `nodo-web/src/features/puntos/clientePuntosStore.ts` | `canjeEnCurso` (write-ahead persistido) + tipo de cola `"cerrar"` |
+| `nodo-web/src/features/puntos/clientePuntosStore.ts` | tipo de cola `"cerrar"` (el write-ahead se quitó) |
 | `nodo-web/src/features/puntos/usePuntosColaFlush.ts` | procesar `"cerrar"` en el flush |
-| `nodo-web/src/routes/Ventas.tsx` | write-ahead + `pendingLock` + abortar en conflicto + venta con el mismo `cobroId` + `cerrar` |
+| `nodo-web/src/routes/Ventas.tsx` | `pendingLock` + drenar-cerrar + abortar-en-conflicto + `cerrar` |
 
-## Auditoría adversarial (4 revisores + verificación)
-- **Contrato/despliegue: LIMPIO** — `pendingLock`, el candado del servidor y el canje web están seguros; el orden de despliegue no rompe nada.
-- **5 hallazgos confirmados**, todos de una misma raíz: el **débito huérfano** (débito confirmado pero la venta nunca se crea → el cliente puede perder su cashback, o post-TTL re-debitarse).
-
-### Fixes aplicados (4)
-1. **Mensaje** — el catch ya NO sugiere "quítalo" (perdía el cashback ya debitado); ahora dice *"posible débito ya aplicado, NO lo quites, reintenta el MISMO cobro"*.
-2. **Handoff de TTL** — la ventana de reuso del write-ahead pasa a **24 h** (>> 15 min del servidor); antes ambos se rendían a la vez y el huérfano se re-debitaba.
-3. **Índice por teléfono** — `canjesEnCurso` es un mapa `{telefono → cobro}`; atender a otro cliente ya NO pisa el write-ahead del primero.
-4. **Drenar `cerrar`** — antes de un canje nuevo, se cierra cualquier candado encolado de ese cliente (evita el 409 que bloqueaba su siguiente cobro).
-
-## Hueco que QUEDA (deferido, decisión de diseño)
-Si la **respuesta del canje se pierde justo tras confirmarse el débito** y el cliente **no vuelve con el mismo monto**, el débito queda **huérfano** (cliente pierde cashback) sin reconciliación automática. Cerrarlo del todo es difícil: **amise no sabe si el POS creó la venta**, así que ni un barrido automático ni readoptar el pendiente son 100% seguros. Opciones para v2 (a decidir): (a) el POS consulta `/api/loyalty/canje/pendiente` al reconectar y readopta/reporta; (b) una herramienta de reconciliación manual en admin; (c) un protocolo donde el POS confirme la venta a amise. **Mitigación actual:** el reuso por teléfono+monto (24 h) auto-sana el caso "el cliente vuelve con el mismo monto".
+## Deferido a v2 (decisión de diseño, no urgente)
+Cerrar el huérfano requiere **reconciliación**: (a) el POS consulta `/api/loyalty/canje/pendiente` al reconectar y verifica si la venta con ese `cobroId` ya existe (readopta o reporta), o (b) un job en amise que revierta pendientes vencidos sin venta. Ninguno es trivial (amise no sabe si el POS creó la venta) y no se puede probar sin una caja. Ver `docs/fix-vinculacion/FASE5-canje-huerfano-DISENO.md` en amise.
 
 ## Cómo probar en la caja (antes de desplegar)
-1. Cobro normal con cashback → debita 1 vez, crea venta, saldo baja bien.
-2. Cortar red justo después de "cobrar" y recargar la app → re-cobrar al mismo cliente NO debe volver a debitar (mismo saldo).
-3. Segundo cobro legítimo del mismo cliente tras completar el primero → debita normal.
+1. Cobro normal con cashback → debita 1 vez, crea la venta, saldo baja bien.
+2. Segundo cobro del mismo cliente tras completar el primero → debita normal (el `cerrar` liberó el candado).
+3. Cortar red tras "cobrar" y reintentar rápido → debe salir *"Ya hay un canje en curso… espera y reintenta"* (NO doble débito).
