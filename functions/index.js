@@ -1952,6 +1952,80 @@ async function inicializarChatGrupoNodo(negocioId, nodoId) {
 }
 
 // ============================================================
+// loginMercanciaConPin — login por PIN de mercancia-web (Fase 3B).
+// PREREQUISITO para CERRAR las reglas de Firestore: hoy mercancia-web valida el
+// PIN solo del lado cliente y escribe SIN auth. Esta CF le da una IDENTIDAD real
+// (customToken con claims role:"mercancia") para que las reglas puedan exigirla.
+// Verifica el hash del PIN (= sha256("amise.mercancia.v1:"+pin), IDÉNTICO a
+// shared/src/pinHash.ts) contra usuariosMercancia de la sucursal + habilitado.
+// Rate-limit por sucursal para frenar fuerza bruta (PIN de 5 dígitos).
+// NOTA: cuando se active App Check, añadir enforceAppCheck:true aquí también.
+// ============================================================
+const MERCANCIA_PIN_SALT = "amise.mercancia.v1"; // DEBE coincidir con shared/src/pinHash.ts
+const MERCANCIA_MAX_INTENTOS = 10; // intentos fallidos por ventana (tunable)
+const MERCANCIA_WINDOW_MS = 60 * 1000; // 1 min
+
+exports.loginMercanciaConPin = onCall(
+    {timeoutSeconds: 20, memory: "256MiB"},
+    async (request) => {
+      const {negocioId, sucursalId, pin} = request.data || {};
+      if (!negocioId || !sucursalId) {
+        throw new HttpsError("invalid-argument", "negocioId y sucursalId requeridos");
+      }
+      if (typeof pin !== "string" || !/^\d{5}$/.test(pin)) {
+        throw new HttpsError("invalid-argument", "PIN inválido (5 dígitos)");
+      }
+      const sucDataCol = `sucursales_data${SUFFIX}`;
+
+      // Rate-limit por sucursal (contador con ventana) — frena la fuerza bruta.
+      // Cada intento incrementa; un login OK lo resetea (abajo).
+      const rlRef = db.collection(COL_NEGOCIOS).doc(negocioId)
+          .collection(sucDataCol).doc(sucursalId)
+          .collection("mercanciaRateLimit").doc("login");
+      const now = Date.now();
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(rlRef);
+        const d = snap.exists ? snap.data() : {};
+        const winStart = typeof d.winStart === "number" ? d.winStart : 0;
+        const within = now - winStart < MERCANCIA_WINDOW_MS;
+        const count = within && typeof d.count === "number" ? d.count : 0;
+        if (count >= MERCANCIA_MAX_INTENTOS) {
+          throw new HttpsError("resource-exhausted", "Demasiados intentos. Espera un minuto.");
+        }
+        tx.set(rlRef, within ? {count: count + 1} : {winStart: now, count: 1}, {merge: true});
+      });
+
+      // Buscar el usuario por hash del PIN en la sucursal.
+      const crypto = require("crypto");
+      const pinHash = crypto.createHash("sha256")
+          .update(`${MERCANCIA_PIN_SALT}:${pin}`).digest("hex");
+      const q = await db.collection(COL_NEGOCIOS).doc(negocioId)
+          .collection(sucDataCol).doc(sucursalId)
+          .collection(`usuariosMercancia${SUFFIX}`)
+          .where("pinHash", "==", pinHash).limit(1).get();
+      if (q.empty) {
+        throw new HttpsError("permission-denied", "PIN no reconocido");
+      }
+      const docSnap = q.docs[0];
+      const data = docSnap.data() || {};
+      if (data.habilitado !== true) {
+        throw new HttpsError("permission-denied", "Acceso deshabilitado");
+      }
+
+      // Éxito: reset del rate-limit + customToken con claims role:"mercancia".
+      await rlRef.set({winStart: now, count: 0}, {merge: true});
+      const mercanciaUid = docSnap.id;
+      const token = await admin.auth().createCustomToken(mercanciaUid, {
+        role: "mercancia",
+        negocioId,
+        sucursalId,
+        mercanciaUid,
+      });
+      return {token, usuarioId: mercanciaUid, nombre: data.nombre || ""};
+    },
+);
+
+// ============================================================
 // PUNTOS / MONEDERO — CF intermediarias hacia amise.mx
 // El cliente (nodo-web) NUNCA ve LOYALTY_POS_SECRET; solo lo usa la CF.
 // ============================================================
