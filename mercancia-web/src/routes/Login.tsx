@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { signInWithCustomToken } from "firebase/auth";
 import { Delete, Loader2, Settings } from "lucide-react";
-import { db } from "@/firebase/config";
+import { auth, functions } from "@/firebase/config";
 import { Button } from "@/components/ui/button";
 import {
   getBinding,
@@ -10,12 +11,7 @@ import {
   setBinding,
   useSession,
 } from "@/hooks/useSession";
-import {
-  hashPin,
-  isValidPin,
-  paths,
-  type UsuarioMercancia,
-} from "@shared";
+import { isValidPin } from "@shared";
 
 const PIN_LEN = 5;
 
@@ -64,29 +60,26 @@ export function Login() {
     }
     setVerificando(true);
     try {
-      const hash = await hashPin(intentado);
-      const colRef = collection(
-        db,
-        paths.usuariosMercanciaCol(binding.negocioId, binding.sucursalId),
-      );
-      const q = query(colRef, where("pinHash", "==", hash));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        setError("PIN no reconocido");
-        setPin("");
-        return;
-      }
-      const docSnap = snap.docs[0]!;
-      const data = docSnap.data() as UsuarioMercancia;
-      if (!data.habilitado) {
-        setError("Acceso deshabilitado para este usuario");
-        setPin("");
-        return;
-      }
-      setAuth({ usuarioId: data.id, nombre: data.nombre, ts: Date.now() });
+      // El PIN se valida SERVER-SIDE (Cloud Function loginMercanciaConPin): devuelve
+      // un customToken de Firebase con claims role:"mercancia". Antes se validaba
+      // leyendo Firestore directo (sin seguridad real); ahora la sesión es REAL, que
+      // es lo que las reglas van a exigir. Ver docs/auditoria-cashback/07-login-mercancia.md.
+      const login = httpsCallable<
+        { negocioId: string; sucursalId: string; pin: string },
+        { token: string; usuarioId: string; nombre: string }
+      >(functions, "loginMercanciaConPin");
+      const { data } = await login({
+        negocioId: binding.negocioId,
+        sucursalId: binding.sucursalId,
+        pin: intentado,
+      });
+      await signInWithCustomToken(auth, data.token);
+      setAuth({ usuarioId: data.usuarioId, nombre: data.nombre, ts: Date.now() });
       navigate("/", { replace: true });
     } catch (e) {
-      setError((e as Error).message);
+      // La CF devuelve mensajes claros ("PIN no reconocido", "Acceso deshabilitado",
+      // "Demasiados intentos. Espera un minuto.").
+      setError((e as Error).message || "No se pudo iniciar sesión");
       setPin("");
     } finally {
       setVerificando(false);
