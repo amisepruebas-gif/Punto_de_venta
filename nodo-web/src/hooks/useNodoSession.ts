@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { create } from "zustand";
 import { auth } from "../firebase/config";
+import { fnRebindNodo } from "../firebase/callable";
+import { loginConCustomToken } from "../firebase/auth";
 
 const LS_KEY = "amise_nodo_session";
 
@@ -63,7 +65,29 @@ export function useNodoSession() {
     // Instalar el listener de Firebase Auth solo una vez globalmente.
     if (authListenerInstalled) return;
     authListenerInstalled = true;
-    onAuthStateChanged(auth, () => setLoading(false));
+    // Re-auth silencioso (prerequisito para cerrar las reglas de Firestore, ver
+    // docs/auditoria-cashback/05): si hay sesión LOCAL pero NO sesión de Firebase
+    // (token perdido, p.ej. IndexedDB limpiado), la caja escribiría sin request.auth
+    // → con reglas cerradas, caja caída. Rebind silencioso con el nodoId guardado.
+    onAuthStateChanged(auth, async (user) => {
+      const s = loadSession();
+      if (!user && s) {
+        try {
+          const r = await fnRebindNodo({
+            negocioId: s.negocioId,
+            nodoId: s.nodoId,
+            userAgent: navigator.userAgent,
+            registradoPor: "reauth",
+          });
+          await loginConCustomToken(r.data.customToken);
+          // signIn re-dispara onAuthStateChanged con user != null → no re-rebinda.
+        } catch {
+          // Rebind falló (nodo revocado/borrado) → forzar first-run.
+          useSessionStore.getState().setSession(null);
+        }
+      }
+      setLoading(false);
+    });
   }, [setLoading]);
 
   return {
