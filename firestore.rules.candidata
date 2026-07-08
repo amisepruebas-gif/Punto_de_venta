@@ -1,14 +1,13 @@
 rules_version = '2';
 // ============================================================
 // CANDIDATA (NO DESPLEGADA) — cierre de las reglas del POS.
-// Basada en docs/13-rules-pendientes-produccion.md + correcciones del mapa de
-// acceso real (docs/auditoria-cashback/05). Probada en emulador antes de subir.
+// Basada en docs/13 + correcciones del mapa + BARRIDO DE COMPLETITUD (9 gaps
+// hallados y parchados: categorias, subcategorias, resurtidos-mercancia,
+// chat_directos, negocio/sucursal onboarding, whitelist, colaboradores, system,
+// ingresos_mercancia). Ver docs/auditoria-cashback/05 y 08.
 //
 // ⚠️ SUPUESTO: la app legacy `nodo_1` (colecciones RAÍZ sin sufijo) YA NO se usa.
-//    Esta regla NIEGA por defecto todo lo no mapeado (incluida la raíz) → si
-//    nodo_1 sigue vivo, se rompe. Confirmar antes de desplegar.
-// Claims disponibles: role (nodo|admin|superadmin|mercancia), negocioId,
-//    sucursalId, nodoId.
+// Claims: role (nodo|admin|superadmin|mercancia), negocioId, sucursalId, nodoId.
 // ============================================================
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -23,22 +22,31 @@ service cloud.firestore {
     function esMercancia(nid) { return enNegocio(nid) && rol() == 'mercancia'; }
     function miembro(nid) { return esAdmin(nid) || esNodo(nid) || esMercancia(nid) || esSuperAdmin(); }
 
+    // Kill-switch global de relogin (raíz). Lo lee admin-web al arrancar; lo setea
+    // consola/CF (Admin SDK). G8.
+    match /system/{doc} {
+      allow read: if authed();
+      allow write: if false;
+    }
+
     match /negocios_web_new_version/{nid} {
-      allow read: if miembro(nid);
+      // Onboarding: mercancia-web/FirstRun lista negocios+sucursales ANTES del login
+      // (sin auth). Exponer SOLO el doc negocio + sucursales (info de bajo valor).
+      // G5. Endurecer a futuro portando FirstRun a una CF (como nodo-web).
+      allow read: if true;
       allow write: if esAdmin(nid);
 
       match /sucursales_web_new_version/{sid} {
-        allow read: if miembro(nid);
+        allow read: if true; // G5 onboarding
         allow write: if esAdmin(nid);
       }
 
-      // Los nodos los crea la CF (Admin SDK, ignora reglas).
       match /nodos_web_new_version/{nodoId} {
         allow read: if esAdmin(nid);
-        allow write: if false;
+        allow write: if false; // los crea la CF (Admin SDK)
       }
 
-      // Artículos: el nodo SOLO ajusta stock (venta/resurtido); mercancia CRUD; admin full.
+      // Artículos: el nodo SOLO ajusta stock; mercancia CRUD; admin full.
       match /articulos_n_web_new_version/{artId} {
         allow read: if miembro(nid);
         allow create, delete: if esAdmin(nid) || esMercancia(nid);
@@ -48,29 +56,59 @@ service cloud.firestore {
                  .hasOnly(['cantidad', 'subvariaciones', 'cantidadBodega', 'cantidadPorSucursal']));
       }
 
+      // G1/G2: categorías y subcategorías (mercancia + admin).
+      match /categorias_web_new_version/{cid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esMercancia(nid);
+      }
+      match /subcategorias_web_new_version/{scid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esMercancia(nid);
+      }
+
       // datos: config (admin), huellas *_ac (nodo), tallas (mercancia).
       match /datos_web_new_version/{k} {
         allow read: if miembro(nid);
         allow write: if esAdmin(nid) || esNodo(nid) || esMercancia(nid);
       }
 
+      // G3: resurtidos — mercancia también crea/despacha.
       match /resurtidos_web_new_version/{rid} {
         allow read: if miembro(nid);
-        allow write: if esAdmin(nid) || esNodo(nid);
+        allow write: if esAdmin(nid) || esNodo(nid) || esMercancia(nid);
       }
 
+      // G9: log de auditoría de ingreso de mercancía (best-effort).
+      match /ingresos_mercancia_web_new_version/{id} {
+        allow read: if esAdmin(nid);
+        allow create: if esAdmin(nid) || esMercancia(nid);
+      }
+
+      // G6/G7: whitelist de delegados + colaboradores (lo escribe la CF).
+      match /chat_whitelist_admin_web_new_version/{k} {
+        allow read: if esAdmin(nid);
+        allow write: if false;
+      }
+      match /colaboradores_web_new_version/{cid} {
+        allow read: if esAdmin(nid);
+        allow write: if false;
+      }
+
+      // Chat de grupo (nodo + admin).
       match /chat_grupos_web_new_version/{gid} {
         allow read, write: if esNodo(nid) || esAdmin(nid);
-        match /dias/{ymd} {
-          allow read, write: if esNodo(nid) || esAdmin(nid);
-        }
+        match /dias/{ymd} { allow read, write: if esNodo(nid) || esAdmin(nid); }
       }
       match /chat_typing_web_new_version/{cid} {
         allow read, write: if esNodo(nid) || esAdmin(nid);
       }
+      // G4: chat directo admin↔colaborador.
+      match /chat_directos_web_new_version/{pairId} {
+        allow read, write: if esAdmin(nid);
+        match /dias/{ymd} { allow read, write: if esAdmin(nid); }
+      }
 
       match /sucursales_data_web_new_version/{sid} {
-        // Ventas: escribe SOLO el nodo de ESA sucursal; lee su propia sucursal o admin.
         match /ventas_n_web_new_version/{vpath=**} {
           allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
           allow write: if esNodoSuc(nid, sid);
@@ -87,19 +125,17 @@ service cloud.firestore {
           allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
           allow write: if esNodoSuc(nid, sid);
         }
-        // Usuarios de mercancía: los gestiona el admin; mercancia lee su doc (AuthWatcher).
         match /usuariosMercancia_web_new_version/{uid} {
           allow read: if esAdmin(nid) || esMercancia(nid);
           allow write: if esAdmin(nid);
         }
-        // Rate-limit del login mercancía: SOLO la CF (Admin SDK).
         match /mercanciaRateLimit/{doc} {
-          allow read, write: if false;
+          allow read, write: if false; // solo la CF (Admin SDK)
         }
       }
     }
 
-    // collectionGroup items — reportes admin (useVentasAdmin) + nodo-web (useVentasMes).
+    // collectionGroup items — reportes admin + nodo-web (useVentasMes).
     match /{path=**}/items/{itemId} {
       allow read: if esSuperAdmin()
         || (authed() && resource != null
@@ -108,6 +144,6 @@ service cloud.firestore {
                 || (rol() == 'nodo' && request.auth.token.sucursalId == resource.data.sucursalId)));
     }
 
-    // Todo lo demás (incluida la raíz legacy sin sufijo): NEGADO por defecto (rules_version 2).
+    // Todo lo demás (raíz legacy sin sufijo, etc.): NEGADO por defecto.
   }
 }
