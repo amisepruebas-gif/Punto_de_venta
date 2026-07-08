@@ -1,0 +1,113 @@
+rules_version = '2';
+// ============================================================
+// CANDIDATA (NO DESPLEGADA) — cierre de las reglas del POS.
+// Basada en docs/13-rules-pendientes-produccion.md + correcciones del mapa de
+// acceso real (docs/auditoria-cashback/05). Probada en emulador antes de subir.
+//
+// ⚠️ SUPUESTO: la app legacy `nodo_1` (colecciones RAÍZ sin sufijo) YA NO se usa.
+//    Esta regla NIEGA por defecto todo lo no mapeado (incluida la raíz) → si
+//    nodo_1 sigue vivo, se rompe. Confirmar antes de desplegar.
+// Claims disponibles: role (nodo|admin|superadmin|mercancia), negocioId,
+//    sucursalId, nodoId.
+// ============================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function authed() { return request.auth != null; }
+    function rol() { return request.auth.token.role; }
+    function enNegocio(nid) { return authed() && request.auth.token.negocioId == nid; }
+    function esSuperAdmin() { return authed() && rol() == 'superadmin'; }
+    function esAdmin(nid) { return enNegocio(nid) && (rol() == 'admin' || rol() == 'superadmin'); }
+    function esNodo(nid) { return enNegocio(nid) && rol() == 'nodo'; }
+    function esNodoSuc(nid, sid) { return esNodo(nid) && request.auth.token.sucursalId == sid; }
+    function esMercancia(nid) { return enNegocio(nid) && rol() == 'mercancia'; }
+    function miembro(nid) { return esAdmin(nid) || esNodo(nid) || esMercancia(nid) || esSuperAdmin(); }
+
+    match /negocios_web_new_version/{nid} {
+      allow read: if miembro(nid);
+      allow write: if esAdmin(nid);
+
+      match /sucursales_web_new_version/{sid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid);
+      }
+
+      // Los nodos los crea la CF (Admin SDK, ignora reglas).
+      match /nodos_web_new_version/{nodoId} {
+        allow read: if esAdmin(nid);
+        allow write: if false;
+      }
+
+      // Artículos: el nodo SOLO ajusta stock (venta/resurtido); mercancia CRUD; admin full.
+      match /articulos_n_web_new_version/{artId} {
+        allow read: if miembro(nid);
+        allow create, delete: if esAdmin(nid) || esMercancia(nid);
+        allow update: if esAdmin(nid) || esMercancia(nid)
+          || (esNodo(nid)
+              && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['cantidad', 'subvariaciones', 'cantidadBodega', 'cantidadPorSucursal']));
+      }
+
+      // datos: config (admin), huellas *_ac (nodo), tallas (mercancia).
+      match /datos_web_new_version/{k} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esNodo(nid) || esMercancia(nid);
+      }
+
+      match /resurtidos_web_new_version/{rid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esNodo(nid);
+      }
+
+      match /chat_grupos_web_new_version/{gid} {
+        allow read, write: if esNodo(nid) || esAdmin(nid);
+        match /dias/{ymd} {
+          allow read, write: if esNodo(nid) || esAdmin(nid);
+        }
+      }
+      match /chat_typing_web_new_version/{cid} {
+        allow read, write: if esNodo(nid) || esAdmin(nid);
+      }
+
+      match /sucursales_data_web_new_version/{sid} {
+        // Ventas: escribe SOLO el nodo de ESA sucursal; lee su propia sucursal o admin.
+        match /ventas_n_web_new_version/{vpath=**} {
+          allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
+          allow write: if esNodoSuc(nid, sid);
+        }
+        match /corte_1_web_new_version/{cpath=**} {
+          allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
+          allow write: if esNodoSuc(nid, sid);
+        }
+        match /apartados_web_new_version/{apId} {
+          allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
+          allow write: if esNodoSuc(nid, sid);
+        }
+        match /contadores_web_new_version/{ymd} {
+          allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
+          allow write: if esNodoSuc(nid, sid);
+        }
+        // Usuarios de mercancía: los gestiona el admin; mercancia lee su doc (AuthWatcher).
+        match /usuariosMercancia_web_new_version/{uid} {
+          allow read: if esAdmin(nid) || esMercancia(nid);
+          allow write: if esAdmin(nid);
+        }
+        // Rate-limit del login mercancía: SOLO la CF (Admin SDK).
+        match /mercanciaRateLimit/{doc} {
+          allow read, write: if false;
+        }
+      }
+    }
+
+    // collectionGroup items — reportes admin (useVentasAdmin) + nodo-web (useVentasMes).
+    match /{path=**}/items/{itemId} {
+      allow read: if esSuperAdmin()
+        || (authed() && resource != null
+            && request.auth.token.negocioId == resource.data.negocioId
+            && (rol() == 'admin' || rol() == 'superadmin'
+                || (rol() == 'nodo' && request.auth.token.sucursalId == resource.data.sucursalId)));
+    }
+
+    // Todo lo demás (incluida la raíz legacy sin sufijo): NEGADO por defecto (rules_version 2).
+  }
+}
