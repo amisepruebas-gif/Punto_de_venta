@@ -2086,6 +2086,7 @@ exports.canjearPuntos = onCall(
       }
       const data = await llamarAmise("/api/loyalty/redeem", {
         email, phone, money: m, idempotencyKey,
+        pendingLock: request.data.pendingLock === true,
         sucursalId: t.sucursalId || request.data.sucursalId || null,
         nodoId: t.nodoId || request.data.nodoId || null,
       });
@@ -2095,6 +2096,29 @@ exports.canjearPuntos = onCall(
         balance: Number(data.balance) || 0,
         money: Number(data.money) || 0,
       };
+    },
+);
+
+// Fase 5 — cierra el canje pendiente tras crear la venta (libera el candado en el
+// servidor). Idempotente. Input: { email?|phone?, cobroId } → { ok, closed }.
+exports.cerrarCanje = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {email, phone, cobroId} = request.data || {};
+      if (!cobroId || typeof cobroId !== "string") {
+        throw new HttpsError("invalid-argument", "cobroId requerido");
+      }
+      if (!email && !phone) {
+        throw new HttpsError("invalid-argument", "email o phone requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/canje/cerrar", {
+        email, phone, cobroId,
+      });
+      return {ok: true, closed: !!data.closed};
     },
 );
 

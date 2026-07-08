@@ -55,8 +55,10 @@ import {
   fnRegistrarClientePuntos,
   fnAcreditarPuntos,
   fnCanjearPuntos,
+  fnCerrarCanje,
   fnActivarTarjeta,
   fnReponerTarjeta,
+  type CerrarCanjeInput,
 } from "@/firebase/callable";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
@@ -314,16 +316,69 @@ export function Ventas() {
     if (cashbackUsar > 0 && !puntosTel) {
       throw new Error("No se puede aplicar cashback sin teléfono del cliente. Quítalo y reintenta.");
     }
+    // Fase 5 — candado de canje: la venta usa el MISMO id que el débito (`cobroId`).
+    // Por defecto es la idempotencyKey del preview; con cashback puede reusarse el
+    // cobro en curso (write-ahead) para no doble-cobrar tras un reload.
+    let cobroId = preview.idempotencyKey;
     if (puntosTel && cashbackUsar > 0) {
+      const st = useClientePuntos.getState();
+      // (fix) Drenar un 'cerrar' encolado de ESTE cliente antes del nuevo canje: un
+      // cierre previo que falló dejaría el candado abierto y rechazaría este cobro (409).
+      const cerrarPend = st.cola.find(
+        (x) =>
+          x.tipo === "cerrar" &&
+          (x.payload as { phone?: string }).phone === puntosTel,
+      );
+      if (cerrarPend) {
+        try {
+          await fnCerrarCanje(cerrarPend.payload as unknown as CerrarCanjeInput);
+          useClientePuntos.getState().quitarDeCola(cerrarPend.id);
+        } catch {
+          /* si falla, seguimos; el 409 de abajo lo reporta claro */
+        }
+      }
+      // (fix) write-ahead por teléfono con ventana AMPLIA (>> TTL del servidor) para
+      // que haya handoff real; el servidor es idempotente por cobroId, así que reusar
+      // el mismo id NO re-debita. El monto debe coincidir.
+      const WRITE_AHEAD_TTL_MS = 24 * 60 * 60 * 1000; // 24 h (>> 15 min del servidor)
+      const enCurso = st.canjesEnCurso[puntosTel];
+      const vigente = !!enCurso && Date.now() - enCurso.creadoEn < WRITE_AHEAD_TTL_MS;
+      if (enCurso && vigente) {
+        // Reintento del mismo cobro: reusar el cobroId (idempotente). Mismo monto o
+        // se aborta (evita debitar un importe distinto bajo la misma clave).
+        if (Math.abs(enCurso.monto - cashbackUsar) > 0.001) {
+          throw new Error(
+            `Hay un canje en curso de $${enCurso.monto.toFixed(2)} para este cliente. ` +
+              `Cóbralo con el MISMO monto para completarlo (no lo quites).`,
+          );
+        }
+        cobroId = enCurso.cobroId;
+      } else {
+        // Nuevo canje: write-ahead ANTES de debitar (sobrevive recargas). Indexado
+        // por teléfono → atender a otro cliente NO pisa este cobro.
+        useClientePuntos.getState().setCanjeEnCurso(puntosTel, {
+          cobroId,
+          telefono: puntosTel,
+          monto: cashbackUsar,
+          creadoEn: Date.now(),
+        });
+      }
       try {
         await fnCanjearPuntos({
           phone: puntosTel,
           money: cashbackUsar,
-          idempotencyKey: preview.idempotencyKey
+          idempotencyKey: cobroId,
+          pendingLock: true, // activa el candado del servidor
         });
-      } catch {
+      } catch (e) {
+        // (fix) El débito PUDO aplicarse aunque se pierda la respuesta → NUNCA sugerir
+        // quitar el cashback (se perdería el saldo del cliente). El write-ahead NO se
+        // limpia: reintentar el MISMO cobro (mismo cliente y monto) es idempotente.
+        const msg = e instanceof Error ? e.message : "";
         throw new Error(
-          "No se pudo usar el cashback (sin conexión o saldo). Quítalo o reintenta.",
+          msg.includes("canje en curso")
+            ? "Ya hay un canje en curso para este cliente. Cóbralo de nuevo (mismo cliente y monto) o espera unos minutos."
+            : "No se pudo confirmar el canje (posible débito ya aplicado). NO quites el cashback: reintenta el MISMO cobro (mismo cliente y monto).",
         );
       }
     }
@@ -333,7 +388,20 @@ export function Ventas() {
       sucursalId,
       nodoId,
       ...preview,
+      idempotencyKey: cobroId, // venta ligada al MISMO id del débito
     });
+    // Fase 5: canje debitado y venta creada → cerrar el pendiente (idempotente) y
+    // limpiar el write-ahead de ESTE cliente. Best-effort + encolado durable.
+    if (puntosTel && cashbackUsar > 0) {
+      useClientePuntos.getState().setCanjeEnCurso(puntosTel, null);
+      try {
+        await fnCerrarCanje({ phone: puntosTel, cobroId });
+      } catch {
+        useClientePuntos
+          .getState()
+          .encolar("cerrar", { phone: puntosTel, cobroId });
+      }
+    }
     limpiar();
     setPreview(null);
     if (result.offline) {

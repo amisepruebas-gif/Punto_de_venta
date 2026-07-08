@@ -154,6 +154,8 @@ export type CanjearPuntosInput = {
   /** $ de cashback a canjear. */
   money: number;
   idempotencyKey: string;
+  /** Fase 5: activa el candado de canje en el servidor (anti doble-cobro). */
+  pendingLock?: boolean;
 };
 export type CanjearPuntosOutput = {
   ok: boolean;
@@ -163,6 +165,18 @@ export type CanjearPuntosOutput = {
 };
 export const fnCanjearPuntos = callable<CanjearPuntosInput, CanjearPuntosOutput>(
   "canjearPuntos",
+);
+
+// Fase 5 — cierra el canje pendiente tras crear la venta (libera el candado).
+export type CerrarCanjeInput = {
+  email?: string;
+  phone?: string;
+  /** cobroId (= idempotencyKey del canje) a cerrar. */
+  cobroId: string;
+};
+export type CerrarCanjeOutput = { ok: boolean; closed: boolean };
+export const fnCerrarCanje = callable<CerrarCanjeInput, CerrarCanjeOutput>(
+  "cerrarCanje",
 );
 
 export type RecuperarCodigoInput = { phone?: string; email?: string };

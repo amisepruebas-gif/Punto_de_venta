@@ -6,9 +6,11 @@ import {
   fnCanjearPuntos,
   fnActivarTarjeta,
   fnReponerTarjeta,
+  fnCerrarCanje,
   type RegistrarClientePuntosInput,
   type AcreditarPuntosInput,
   type CanjearPuntosInput,
+  type CerrarCanjeInput,
 } from "@/firebase/callable";
 
 const MAX_INTENTOS = 60; // ~60 min de reintentos (antes 8 = solo 8 min). La cola
@@ -58,6 +60,9 @@ export function usePuntosColaFlush() {
                 ventaId: p.ventaId,
               });
             }
+          } else if (item.tipo === "cerrar") {
+            // Fase 5: cierra el canje pendiente en el servidor (idempotente).
+            await fnCerrarCanje(item.payload as unknown as CerrarCanjeInput);
           } else {
             await fnAcreditarPuntos(item.payload as unknown as AcreditarPuntosInput);
           }
