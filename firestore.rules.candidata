@@ -6,8 +6,15 @@ rules_version = '2';
 // chat_directos, negocio/sucursal onboarding, whitelist, colaboradores, system,
 // ingresos_mercancia). Ver docs/auditoria-cashback/05 y 08.
 //
-// ⚠️ SUPUESTO: la app legacy `nodo_1` (colecciones RAÍZ sin sufijo) YA NO se usa.
-// Claims: role (nodo|admin|superadmin|mercancia), negocioId, sucursalId, nodoId.
+// ALCANCE (corregido tras auditoría exhaustiva, ver docs/auditoria-cashback/10):
+// Se CIERRA el árbol moderno `negocios_web_new_version/**` + `system` (datos VIVOS del POS
+// web: ventas, clientes, stock, chat). La RAÍZ legacy (colecciones sin sufijo) se DEJA
+// ABIERTA como hoy: la usan GOMU chat Electron v1/v2 y apps nativas Android que acceden
+// SIN autenticación (v1 literalmente no usa Firebase Auth). Cerrar la raíz exige migrar
+// esas apps primero — proyecto aparte. El objetivo de AHORA: proteger lo vivo (moderno)
+// sin romper el legacy.
+// Claims: role (nodo|admin|superadmin|mercancia|colaborador), negocioId, sucursalId, nodoId,
+//   colaboradorId. OJO: superadmin NO trae negocioId (por eso esAdmin lo incluye aparte).
 // ============================================================
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -16,16 +23,18 @@ service cloud.firestore {
     function rol() { return request.auth.token.role; }
     function enNegocio(nid) { return authed() && request.auth.token.negocioId == nid; }
     function esSuperAdmin() { return authed() && rol() == 'superadmin'; }
-    function esAdmin(nid) { return enNegocio(nid) && (rol() == 'admin' || rol() == 'superadmin'); }
+    function esAdmin(nid) { return esSuperAdmin() || (enNegocio(nid) && rol() == 'admin'); }
     function esNodo(nid) { return enNegocio(nid) && rol() == 'nodo'; }
     function esNodoSuc(nid, sid) { return esNodo(nid) && request.auth.token.sucursalId == sid; }
     function esMercancia(nid) { return enNegocio(nid) && rol() == 'mercancia'; }
     function miembro(nid) { return esAdmin(nid) || esNodo(nid) || esMercancia(nid) || esSuperAdmin(); }
 
-    // Kill-switch global de relogin (raíz). Lo lee admin-web al arrancar; lo setea
-    // consola/CF (Admin SDK). G8.
+    // Kill-switch global de relogin (raíz). admin-web lo suscribe en el ARRANQUE, ANTES
+    // de autenticar (main.tsx:64, enforceAuthEpoch().finally → onSnapshot). Un kill-switch
+    // debe leerse sin sesión (es cuando fuerzas el logout); su valor es un string no
+    // sensible. Por eso read público; write solo consola/CF (Admin SDK). G8.
     match /system/{doc} {
-      allow read: if authed();
+      allow read: if true;
       allow write: if false;
     }
 
@@ -144,6 +153,15 @@ service cloud.firestore {
                 || (rol() == 'nodo' && request.auth.token.sucursalId == resource.data.sucursalId)));
     }
 
-    // Todo lo demás (raíz legacy sin sufijo, etc.): NEGADO por defecto.
+    // RAÍZ legacy (GOMU chat Electron v1/v2, apps nativas Android): se DEJA ABIERTA
+    // como HOY. Motivo (auditoría, docs/10): esas superficies acceden a la raíz SIN
+    // autenticación — GOMU v1 no usa Firebase Auth SDK; v2 lee permisos_electron anónimo;
+    // las nativas escriben dispositivos/* anónimo por FCM. Exigir authed() las rompería.
+    // Cerrar la raíz de verdad exige migrar/retirar esas apps antes (proyecto aparte).
+    // El catch-all EXCLUYE el árbol moderno para no defraudar sus reglas por rol
+    // (Firestore combina allows con OR; un catch-all abierto sobre el moderno lo abriría).
+    match /{col}/{rest=**} {
+      allow read, write: if col != 'negocios_web_new_version' && col != 'system';
+    }
   }
 }
