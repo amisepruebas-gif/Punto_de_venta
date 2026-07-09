@@ -33,6 +33,16 @@
         { "fieldPath": "estado", "order": "ASCENDING" },
         { "fieldPath": "negocioId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "items",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "negocioId", "order": "ASCENDING" },
+        { "fieldPath": "ventaId", "order": "ASCENDING" },
+        { "fieldPath": "sucursalId", "order": "ASCENDING" },
+        { "fieldPath": "nodoId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
