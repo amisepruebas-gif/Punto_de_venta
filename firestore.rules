@@ -1,28 +1,167 @@
 rules_version = '2';
-
 // ============================================================
-// ⚠️  REGLAS ABIERTAS (DESARROLLO)
+// CANDIDATA (NO DESPLEGADA) — cierre de las reglas del POS.
+// Basada en docs/13 + correcciones del mapa + BARRIDO DE COMPLETITUD (9 gaps
+// hallados y parchados: categorias, subcategorias, resurtidos-mercancia,
+// chat_directos, negocio/sucursal onboarding, whitelist, colaboradores, system,
+// ingresos_mercancia). Ver docs/auditoria-cashback/05 y 08.
+//
+// ALCANCE (corregido tras auditoría exhaustiva, ver docs/auditoria-cashback/10):
+// Se CIERRA el árbol moderno `negocios_web_new_version/**` + `system` (datos VIVOS del POS
+// web: ventas, clientes, stock, chat). La RAÍZ legacy (colecciones sin sufijo) se DEJA
+// ABIERTA como hoy: la usan GOMU chat Electron v1/v2 y apps nativas Android que acceden
+// SIN autenticación (v1 literalmente no usa Firebase Auth). Cerrar la raíz exige migrar
+// esas apps primero — proyecto aparte. El objetivo de AHORA: proteger lo vivo (moderno)
+// sin romper el legacy.
+// Claims: role (nodo|admin|superadmin|mercancia|colaborador), negocioId, sucursalId, nodoId,
+//   colaboradorId. OJO: superadmin NO trae negocioId (por eso esAdmin lo incluye aparte).
 // ============================================================
-// Lectura y escritura sin restricciones a TODA la base de datos.
-//
-// Pendiente de re-aplicar antes de pasar a producción:
-//   docs/13-rules-pendientes-produccion.md
-//
-// Razón temporal: hay apps legacy (Android, web-panel viejo, etc.) que
-// usan colecciones de raíz (ventas_n, mensajes_n, datos, corte_1,
-// articulos_n, apartados, /negocios/{nid}/...) y que no se pueden
-// adaptar todavía. Las reglas duras de Fases 1–3 chocaban con su
-// modelo de auth.
-//
-// Cuando se haga el corte para producción, ver el MD para reinstalar
-// las reglas de Fase 1, 2 y 3 (aislamiento entre sucursales, idempotencia,
-// decremento atómico de stock, restricciones de update por rol, etc.).
-// ============================================================
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+
+    function authed() { return request.auth != null; }
+    function rol() { return request.auth.token.role; }
+    function enNegocio(nid) { return authed() && request.auth.token.negocioId == nid; }
+    function esSuperAdmin() { return authed() && rol() == 'superadmin'; }
+    function esAdmin(nid) { return esSuperAdmin() || (enNegocio(nid) && rol() == 'admin'); }
+    function esNodo(nid) { return enNegocio(nid) && rol() == 'nodo'; }
+    function esNodoSuc(nid, sid) { return esNodo(nid) && request.auth.token.sucursalId == sid; }
+    function esMercancia(nid) { return enNegocio(nid) && rol() == 'mercancia'; }
+    function miembro(nid) { return esAdmin(nid) || esNodo(nid) || esMercancia(nid) || esSuperAdmin(); }
+
+    // Kill-switch global de relogin (raíz). admin-web lo suscribe en el ARRANQUE, ANTES
+    // de autenticar (main.tsx:64, enforceAuthEpoch().finally → onSnapshot). Un kill-switch
+    // debe leerse sin sesión (es cuando fuerzas el logout); su valor es un string no
+    // sensible. Por eso read público; write solo consola/CF (Admin SDK). G8.
+    match /system/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /negocios_web_new_version/{nid} {
+      // Onboarding: mercancia-web/FirstRun lista negocios+sucursales ANTES del login
+      // (sin auth). Exponer SOLO el doc negocio + sucursales (info de bajo valor).
+      // G5. Endurecer a futuro portando FirstRun a una CF (como nodo-web).
+      allow read: if true;
+      allow write: if esAdmin(nid);
+
+      match /sucursales_web_new_version/{sid} {
+        allow read: if true; // G5 onboarding
+        allow write: if esAdmin(nid);
+      }
+
+      match /nodos_web_new_version/{nodoId} {
+        allow read: if esAdmin(nid);
+        allow write: if false; // los crea la CF (Admin SDK)
+      }
+
+      // Artículos: el nodo SOLO ajusta stock; mercancia CRUD; admin full.
+      match /articulos_n_web_new_version/{artId} {
+        allow read: if miembro(nid);
+        allow create, delete: if esAdmin(nid) || esMercancia(nid);
+        allow update: if esAdmin(nid) || esMercancia(nid)
+          || (esNodo(nid)
+              && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['cantidad', 'subvariaciones', 'cantidadBodega', 'cantidadPorSucursal']));
+      }
+
+      // G1/G2: categorías y subcategorías (mercancia + admin).
+      match /categorias_web_new_version/{cid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esMercancia(nid);
+      }
+      match /subcategorias_web_new_version/{scid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esMercancia(nid);
+      }
+
+      // datos: config (admin), huellas *_ac (nodo), tallas (mercancia).
+      match /datos_web_new_version/{k} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esNodo(nid) || esMercancia(nid);
+      }
+
+      // G3: resurtidos — mercancia también crea/despacha.
+      match /resurtidos_web_new_version/{rid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esNodo(nid) || esMercancia(nid);
+      }
+
+      // G9: log de auditoría de ingreso de mercancía (best-effort).
+      match /ingresos_mercancia_web_new_version/{id} {
+        allow read: if esAdmin(nid);
+        allow create: if esAdmin(nid) || esMercancia(nid);
+      }
+
+      // G6/G7: whitelist de delegados + colaboradores (lo escribe la CF).
+      match /chat_whitelist_admin_web_new_version/{k} {
+        allow read: if esAdmin(nid);
+        allow write: if false;
+      }
+      match /colaboradores_web_new_version/{cid} {
+        allow read: if esAdmin(nid);
+        allow write: if false;
+      }
+
+      // Chat de grupo (nodo + admin).
+      match /chat_grupos_web_new_version/{gid} {
+        allow read, write: if esNodo(nid) || esAdmin(nid);
+        match /dias/{ymd} { allow read, write: if esNodo(nid) || esAdmin(nid); }
+      }
+      match /chat_typing_web_new_version/{cid} {
+        allow read, write: if esNodo(nid) || esAdmin(nid);
+      }
+      // G4: chat directo admin↔colaborador.
+      match /chat_directos_web_new_version/{pairId} {
+        allow read, write: if esAdmin(nid);
+        match /dias/{ymd} { allow read, write: if esAdmin(nid); }
+      }
+
+      match /sucursales_data_web_new_version/{sid} {
+        match /ventas_n_web_new_version/{vpath=**} {
+          allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
+          allow write: if esNodoSuc(nid, sid);
+        }
+        match /corte_1_web_new_version/{cpath=**} {
+          allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
+          allow write: if esNodoSuc(nid, sid);
+        }
+        match /apartados_web_new_version/{apId} {
+          allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
+          allow write: if esNodoSuc(nid, sid);
+        }
+        match /contadores_web_new_version/{ymd} {
+          allow read: if esNodoSuc(nid, sid) || esAdmin(nid);
+          allow write: if esNodoSuc(nid, sid);
+        }
+        match /usuariosMercancia_web_new_version/{uid} {
+          allow read: if esAdmin(nid) || esMercancia(nid);
+          allow write: if esAdmin(nid);
+        }
+        match /mercanciaRateLimit/{doc} {
+          allow read, write: if false; // solo la CF (Admin SDK)
+        }
+      }
+    }
+
+    // collectionGroup items — reportes admin + nodo-web (useVentasMes).
+    match /{path=**}/items/{itemId} {
+      allow read: if esSuperAdmin()
+        || (authed() && resource != null
+            && request.auth.token.negocioId == resource.data.negocioId
+            && (rol() == 'admin' || rol() == 'superadmin'
+                || (rol() == 'nodo' && request.auth.token.sucursalId == resource.data.sucursalId)));
+    }
+
+    // RAÍZ legacy (GOMU chat Electron v1/v2, apps nativas Android): se DEJA ABIERTA
+    // como HOY. Motivo (auditoría, docs/10): esas superficies acceden a la raíz SIN
+    // autenticación — GOMU v1 no usa Firebase Auth SDK; v2 lee permisos_electron anónimo;
+    // las nativas escriben dispositivos/* anónimo por FCM. Exigir authed() las rompería.
+    // Cerrar la raíz de verdad exige migrar/retirar esas apps antes (proyecto aparte).
+    // El catch-all EXCLUYE el árbol moderno para no defraudar sus reglas por rol
+    // (Firestore combina allows con OR; un catch-all abierto sobre el moderno lo abriría).
+    match /{col}/{rest=**} {
+      allow read, write: if col != 'negocios_web_new_version' && col != 'system';
     }
   }
 }
