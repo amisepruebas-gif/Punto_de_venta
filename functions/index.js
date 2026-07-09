@@ -1350,9 +1350,12 @@ exports.quitarFondoImagen = onCall(
     },
     async (request) => {
       const t = requireAuth(request.auth);
-      if (t.role !== "superadmin" && t.role !== "admin") {
+      // mercancia tambien: gestiona fotos de producto y usa esta funcion desde
+      // mercancia-web (quitarFondo.ts). Empezo a dar 403 al cerrar el login de mercancia
+      // a rol 'mercancia' (para las reglas). Costo Gemini rastreado en costosNanobanana.
+      if (t.role !== "superadmin" && t.role !== "admin" && t.role !== "mercancia") {
         throw new HttpsError(
-            "permission-denied", "Solo admin/superadmin puede usar Gemini");
+            "permission-denied", "Solo admin/superadmin/mercancia puede usar Gemini");
       }
 
       const {imageBase64, mimeType} = request.data || {};
