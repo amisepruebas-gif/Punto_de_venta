@@ -25,6 +25,7 @@ import {
   planearDecremento,
   type StockEstado,
 } from "@/features/articulos/stockService";
+import { cargarUbicacionStock } from "@/features/sucursal/ubicacionStock";
 
 export type NuevaVentaInput = {
   negocioId: string;
@@ -99,6 +100,13 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
   const desdeApartado = input.apartado === "1" && !!input.idApartado;
 
   try {
+    // Stock de la sucursal del nodo: resolver si es la default (`cantidad`)
+    // o no (`cantidadPorSucursal[sid]`) ANTES de la tx — necesita leer la
+    // colección de sucursales. Dentro del try: si falla (sin red), la venta
+    // cae al modo OFFLINE igual que si fallara la transacción.
+    const ubicacion = desdeApartado
+      ? null
+      : await cargarUbicacionStock(negocioId, sucursalId);
     await runTransaction(db, async (tx) => {
       // ---------- FASE DE LECTURAS ----------
       // Firestore exige que TODAS las reads vayan antes de cualquier write
@@ -118,9 +126,9 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
 
       // FASE 3A: leer stock de los artículos del carrito (excepto si la
       // venta cierra un apartado — en ese caso el stock ya se reservó).
-      const stockEstados = desdeApartado
-        ? new Map<string, StockEstado>()
-        : await leerStockEnTx(tx, negocioId, input.articulos);
+      const stockEstados = ubicacion
+        ? await leerStockEnTx(tx, negocioId, input.articulos, ubicacion)
+        : new Map<string, StockEstado>();
 
       // ---------- FASE DE VALIDACIÓN ----------
       // SOBREVENTA permitida al cobrar (decisión de negocio): si el stock es

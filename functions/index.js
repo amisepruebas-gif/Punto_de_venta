@@ -65,6 +65,44 @@ function requireAdminOrSuper(auth, negocioId) {
 }
 
 // ============================================================
+// Sucursal default — dueña del stock en `Articulo.cantidad`
+// ============================================================
+// Las demás sucursales usan `cantidadPorSucursal[sid]`. Si
+// `Negocio.sucursalDefaultId` está vacío, los clientes caen al primer
+// sucursalId alfabético; con ids aleatorios, crear una sucursal nueva
+// podría volverla default y "robarle" el stock a la existente. Por eso se
+// fija aquí, en la MISMA transacción que crea la sucursal: nadie llega a
+// ver dos sucursales sin default.
+
+/**
+ * Fija `sucursalDefaultId` si está vacío y, opcionalmente, crea una
+ * sucursal en la misma transacción.
+ *   - Hay sucursales existentes → la primera alfabética (la que el
+ *     fallback de los clientes ya trataba como default; con una sola
+ *     sucursal, esa).
+ *   - No hay ninguna → la nueva.
+ * No toca un `sucursalDefaultId` ya seteado ni crea el doc del negocio si
+ * no existe.
+ * @param {FirebaseFirestore.DocumentReference} negocioRef
+ * @param {{ref: FirebaseFirestore.DocumentReference, data: object}} [nueva]
+ * @return {Promise<string|null>} id asignado, o null si no se asignó.
+ */
+async function asegurarSucursalDefault(negocioRef, nueva) {
+  return db.runTransaction(async (tx) => {
+    const negocioSnap = await tx.get(negocioRef);
+    let asignado = null;
+    if (negocioSnap.exists && !negocioSnap.get("sucursalDefaultId")) {
+      const existentes = await tx.get(negocioRef.collection(COL_SUCURSALES));
+      const ids = existentes.docs.map((d) => d.id).sort();
+      asignado = ids[0] || (nueva ? nueva.ref.id : null);
+    }
+    if (nueva) tx.set(nueva.ref, nueva.data);
+    if (asignado) tx.update(negocioRef, {sucursalDefaultId: asignado});
+    return asignado;
+  });
+}
+
+// ============================================================
 // enviar — FCM push notification
 // ============================================================
 const app = express();
@@ -220,18 +258,22 @@ exports.crearSucursal = onCall(async (request) => {
   }
   requireAdminOrSuper(request.auth, negocioId);
 
-  const ref = db.collection(COL_NEGOCIOS).doc(negocioId)
-      .collection(COL_SUCURSALES).doc();
+  const negocioRef = db.collection(COL_NEGOCIOS).doc(negocioId);
+  const ref = negocioRef.collection(COL_SUCURSALES).doc();
   const sucursalId = ref.id;
 
-  await ref.set({
-    sucursalId,
-    nombre,
-    direccion,
-    telefono: telefono || "",
-    fechaCreacion: admin.firestore.FieldValue.serverTimestamp(),
-    createdBy: request.auth.uid,
-    activa: true,
+  // Crea la sucursal y fija `sucursalDefaultId` (si falta) atómicamente.
+  await asegurarSucursalDefault(negocioRef, {
+    ref,
+    data: {
+      sucursalId,
+      nombre,
+      direccion,
+      telefono: telefono || "",
+      fechaCreacion: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: request.auth.uid,
+      activa: true,
+    },
   });
 
   return {success: true, sucursalId};
@@ -277,6 +319,7 @@ exports.registrarNodo = onCall(async (request) => {
   let createdAuthUid = null;
   let createdNodoRef = null;
   let createdChatGrupoRef = null;
+  let defaultAsignado = null;
 
   try {
     // Resolver sucursal
@@ -284,14 +327,19 @@ exports.registrarNodo = onCall(async (request) => {
     if (!sucursalId && nuevaSucursal) {
       const sucRef = negocioRef.collection(COL_SUCURSALES).doc();
       sucursalId = sucRef.id;
-      await sucRef.set({
-        sucursalId,
-        nombre: nuevaSucursal.nombre,
-        direccion: nuevaSucursal.direccion,
-        telefono: nuevaSucursal.telefono || "",
-        fechaCreacion: admin.firestore.FieldValue.serverTimestamp(),
-        createdBy: "first-run",
-        activa: true,
+      // Crea la sucursal y fija `sucursalDefaultId` (si falta)
+      // atómicamente.
+      defaultAsignado = await asegurarSucursalDefault(negocioRef, {
+        ref: sucRef,
+        data: {
+          sucursalId,
+          nombre: nuevaSucursal.nombre,
+          direccion: nuevaSucursal.direccion,
+          telefono: nuevaSucursal.telefono || "",
+          fechaCreacion: admin.firestore.FieldValue.serverTimestamp(),
+          createdBy: "first-run",
+          activa: true,
+        },
       });
       createdSucursalRef = sucRef;
     } else {
@@ -300,6 +348,11 @@ exports.registrarNodo = onCall(async (request) => {
       if (!sucSnap.exists) {
         throw new HttpsError("not-found", "Sucursal no existe");
       }
+      // Negocios legacy sin default: fijarlo ya (a la sucursal que el
+      // fallback alfabético usa hoy) para que una sucursal futura no lo
+      // cambie. No-op si ya está seteado. Best-effort: no tumba el registro.
+      await asegurarSucursalDefault(negocioRef)
+          .catch((e) => console.warn("registrarNodo: default:", e.message));
     }
 
     // Crear usuario Anonymous + claims
@@ -363,6 +416,13 @@ exports.registrarNodo = onCall(async (request) => {
           .catch((e) => console.warn("rollback auth:", e.message));
     }
     if (createdSucursalRef) {
+      if (defaultAsignado === createdSucursalRef.id) {
+        // Era la primera sucursal y quedó como default: no dejar el
+        // negocio apuntando a una sucursal borrada.
+        await negocioRef.update({
+          sucursalDefaultId: admin.firestore.FieldValue.delete(),
+        }).catch((e) => console.warn("rollback default:", e.message));
+      }
       await createdSucursalRef.delete()
           .catch((e) => console.warn("rollback sucursal:", e.message));
     }

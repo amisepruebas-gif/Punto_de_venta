@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { useArticulos, type SearchEntry } from "@/features/articulos/useArticulos";
 import { useCarrito } from "./carritoStore";
 import { useTecladoFisico } from "@/hooks/useTecladoFisico";
-import type { Articulo } from "@shared";
+import { useUbicacionStock } from "@/features/sucursal/useUbicacionStock";
+import { leerStockTienda, type Articulo } from "@shared";
 
 /** Handle imperativo expuesto al padre para re-enfocar el input tras
  *  cerrar modales (VariacionPicker o SenaPicker). Sin esto, el scanner
@@ -53,6 +54,8 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
   function BuscadorArticulo({ onPedirVariacion, onPedirSena }, ref) {
   const { byId, searchIndex, loading } = useArticulos();
   const { agregar, items, limpiar } = useCarrito();
+  // Stock de la sucursal del nodo (null mientras resuelve el default).
+  const ubicacion = useUbicacionStock();
   const hayTecladoFisico = useTecladoFisico();
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);
@@ -198,7 +201,14 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
                 <ul role="listbox">
                   {sugerencias.map((entry, idx) => {
                     const padre = byId.get(entry.idPadre);
-                    const cantidad = Number(padre?.cantidad) || 0;
+                    const cantidad =
+                      padre && ubicacion
+                        ? leerStockTienda(
+                            padre,
+                            ubicacion.sucursalId,
+                            ubicacion.esDefault,
+                          )
+                        : null;
                     const imagen = padre?.imagenUrl;
                     return (
                       <li
@@ -244,7 +254,7 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
                           <p className="text-sm font-semibold">
                             ${padre?.precioVenta ?? "—"}
                           </p>
-                          {!entry.tieneVariaciones && (
+                          {!entry.tieneVariaciones && cantidad !== null && (
                             <p className="text-[10px] text-muted-foreground">
                               {cantidad} pz
                             </p>

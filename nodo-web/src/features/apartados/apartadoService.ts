@@ -30,6 +30,7 @@ import {
   planearIncremento,
   type ItemStock,
 } from "@/features/articulos/stockService";
+import { cargarUbicacionStock } from "@/features/sucursal/ubicacionStock";
 
 export type CrearApartadoInput = {
   negocioId: string;
@@ -100,13 +101,16 @@ export async function crearApartado(input: CrearApartadoInput): Promise<Apartado
   const ref = doc(db, paths.apartado(negocioId, sucursalId, apartadoId));
 
   // FASE 3B: descontar stock dentro de una transacción atómica. Si el
-  // stock es insuficiente, lanza y NO se crea el apartado.
+  // stock es insuficiente, lanza y NO se crea el apartado. El stock es el
+  // de la sucursal del apartado (resuelta fuera de la tx).
+  const ubicacion = await cargarUbicacionStock(negocioId, sucursalId);
   await runTransaction(db, async (tx) => {
     // Reads
     const stockEstados = await leerStockEnTx(
       tx,
       negocioId,
       articulos as ItemStock[],
+      ubicacion,
     );
     // Validate
     planearDecremento(stockEstados, articulos as ItemStock[]);
@@ -183,6 +187,8 @@ export async function cancelarApartado(
   // FASE 3B: si el apartado reservó stock al crearse y aún no fue
   // cancelado, devolver ese stock al catálogo. Apartados creados antes
   // de Fase 3B (sin `stockReservado === true`) no afectan stock.
+  // Se devuelve a la sucursal del apartado (la misma de la que se reservó).
+  const ubicacion = await cargarUbicacionStock(negocioId, sucursalId);
   await runTransaction(db, async (tx) => {
     // Reads
     const apartadoSnap = await tx.get(ref);
@@ -204,7 +210,7 @@ export async function cancelarApartado(
         }))
       : [];
     const stockEstados = debeDevolverStock
-      ? await leerStockEnTx(tx, negocioId, itemsParaStock)
+      ? await leerStockEnTx(tx, negocioId, itemsParaStock, ubicacion)
       : new Map();
 
     // Validate (incremento no valida, solo aplica)
