@@ -1,14 +1,20 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Package, Layers } from "lucide-react";
+import { Plus, Package, Layers, ClipboardList } from "lucide-react";
 import { useArticulos } from "@/features/articulos/useArticulos";
 import { useCategorias } from "@/features/categorias/useCategorias";
 import { useSucursales } from "@/features/sucursales/useSucursales";
 import { useNegocio } from "@/hooks/useNegocio";
 import { Button } from "@/components/ui/button";
-import type { Articulo, ArticuloSubvariacion } from "@shared";
+import {
+  resolverSucursalDefaultId,
+  resolverUbicacionStock,
+  type Articulo,
+  type ArticuloSubvariacion,
+} from "@shared";
 import { resolverTrios, StockTrio } from "@/features/articulos/stockHelpers";
 import { ArticulosSearchBar } from "@/features/articulos/ArticulosSearchBar";
+import { ExistenciasSucursalEditor } from "@/features/articulos/ExistenciasSucursalEditor";
 
 const FILTRO_SIN_CATEGORIA = "__sin__";
 const FILTRO_TODAS = "";
@@ -17,8 +23,8 @@ export function ArticulosPage() {
   const navigate = useNavigate();
   const { articulos, loading } = useArticulos();
   const { categorias, subcategorias } = useCategorias();
-  const { sucursales } = useSucursales();
-  const { negocio } = useNegocio();
+  const { sucursales, loading: loadingSucursales } = useSucursales();
+  const { negocio, negocioId, loading: loadingNegocio } = useNegocio();
   const [q, setQ] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState(FILTRO_TODAS);
   const [filtroSubcategoria, setFiltroSubcategoria] = useState(FILTRO_TODAS);
@@ -27,17 +33,45 @@ export function ArticulosPage() {
     "",
   );
   const [filtroSucursal, setFiltroSucursal] = useState<string>(FILTRO_TODAS);
+  // Modo de edición de existencias de la sucursal del filtro. Mientras está
+  // activo el filtro de sucursal queda fijo.
+  const [editandoExistencias, setEditandoExistencias] = useState(false);
 
   // Default fallback: si el negocio no tiene `sucursalDefaultId`, la primera
   // sucursal alfabéticamente actúa como default (contrato legacy del schema).
   // `useSucursales` ya entrega el array ordenado por nombre — para el
   // fallback queremos orden por `sucursalId` (alfabético), mismo criterio
   // que `resurtidoService.cargarSucursalesIds`.
-  const defaultSucursalId = useMemo(() => {
-    if (negocio?.sucursalDefaultId) return negocio.sucursalDefaultId;
-    const ids = sucursales.map((s) => s.sucursalId).sort();
-    return ids[0];
-  }, [negocio?.sucursalDefaultId, sucursales]);
+  const sucursalesIds = useMemo(
+    () => sucursales.map((s) => s.sucursalId),
+    [sucursales],
+  );
+  const defaultSucursalId = useMemo(
+    () => resolverSucursalDefaultId(negocio?.sucursalDefaultId, sucursalesIds),
+    [negocio?.sucursalDefaultId, sucursalesIds],
+  );
+  const sucursalFiltro = sucursales.find(
+    (s) => s.sucursalId === filtroSucursal,
+  );
+  const ubicacionFiltro = useMemo(
+    () =>
+      filtroSucursal
+        ? resolverUbicacionStock(
+            filtroSucursal,
+            negocio?.sucursalDefaultId,
+            sucursalesIds,
+          )
+        : null,
+    [filtroSucursal, negocio?.sucursalDefaultId, sucursalesIds],
+  );
+  // Sólo con negocio y sucursales cargados: si no, la default podría
+  // resolverse con datos incompletos.
+  const puedeEditarExistencias =
+    !!negocioId &&
+    !!sucursalFiltro &&
+    !!ubicacionFiltro &&
+    !loadingNegocio &&
+    !loadingSucursales;
   const subcategoriasFiltradas = useMemo(
     () =>
       filtroCategoria && filtroCategoria !== FILTRO_SIN_CATEGORIA
@@ -103,7 +137,7 @@ export function ArticulosPage() {
     setFiltroSubcategoria(FILTRO_TODAS);
     setFiltroEtiqueta(FILTRO_TODAS);
     setFiltroVariaciones("");
-    setFiltroSucursal(FILTRO_TODAS);
+    if (!editandoExistencias) setFiltroSucursal(FILTRO_TODAS);
   }
 
   const hayFiltrosActivos =
@@ -194,7 +228,8 @@ export function ArticulosPage() {
         <select
           value={filtroSucursal}
           onChange={(e) => setFiltroSucursal(e.target.value)}
-          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+          disabled={editandoExistencias}
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
           title="Existencia por sucursal"
         >
           <option value={FILTRO_TODAS}>Existencia · todas las sucursales</option>
@@ -206,15 +241,39 @@ export function ArticulosPage() {
         </select>
       </div>
 
-      {hayFiltrosActivos && (
-        <div className="flex justify-end">
-          <Button variant="ghost" size="sm" onClick={limpiarFiltros}>
-            Limpiar filtros
-          </Button>
+      {(hayFiltrosActivos || puedeEditarExistencias) && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {puedeEditarExistencias && !editandoExistencias && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditandoExistencias(true)}
+            >
+              <ClipboardList className="mr-2 h-4 w-4" />
+              Editar existencias · {sucursalFiltro?.nombre}
+            </Button>
+          )}
+          {hayFiltrosActivos && (
+            <Button variant="ghost" size="sm" onClick={limpiarFiltros}>
+              Limpiar filtros
+            </Button>
+          )}
         </div>
       )}
 
-      {loading ? (
+      {editandoExistencias &&
+      negocioId &&
+      sucursalFiltro &&
+      ubicacionFiltro ? (
+        <ExistenciasSucursalEditor
+          key={filtroSucursal}
+          negocioId={negocioId}
+          articulos={resultados}
+          ubicacion={ubicacionFiltro}
+          sucursalNombre={sucursalFiltro.nombre}
+          onCerrar={() => setEditandoExistencias(false)}
+        />
+      ) : loading ? (
         <p className="py-8 text-center text-sm text-muted-foreground">
           Cargando…
         </p>
