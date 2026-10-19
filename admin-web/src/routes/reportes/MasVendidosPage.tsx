@@ -43,6 +43,10 @@ export function MasVendidosPage() {
     const map = new Map<string, Aggregado>();
     for (const v of ventas) {
       for (const art of v.articulos) {
+        // Las tarjetas de regalo (Feature 5) NO son artículos de catálogo: su
+        // denominación no es "unidades vendidas". Excluirlas del top de más
+        // vendidos (si no, contaminarían el bucket id "00000000").
+        if ((art as { giftCard?: boolean }).giftCard === true) continue;
         const cant = Number(art.cantidad) || 0;
         const precio = Number(art.precio) || 0;
         const monto = cant * precio;

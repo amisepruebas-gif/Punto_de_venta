@@ -76,7 +76,7 @@ export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
       <form
         onSubmit={onSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md space-y-4 rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl"
+        className="max-h-[90vh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl"
       >
         <div>
           <h2 className="text-lg font-semibold">Registrar cliente · Puntos</h2>

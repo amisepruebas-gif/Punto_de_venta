@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CheckCircle2, CircleDashed, Minus, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, CircleDashed, Gift, Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCarrito, subtotalItem } from "./carritoStore";
 
@@ -226,25 +226,38 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
           transition: dragX === null ? "transform 0.2s ease-out" : "none",
         }}
       >
-        {/* Controles horizontales: [+] [-] [cantidad] */}
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={() => incrementar(it.key)}
-          aria-label="Más"
-          className="h-9 w-9 shrink-0"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={() => decrementar(it.key)}
-          aria-label="Menos"
-          className="h-9 w-9 shrink-0"
-        >
-          <Minus className="h-4 w-4" />
-        </Button>
+        {/* Controles horizontales: [+] [-] [cantidad]. La línea gift NO se puede
+            multiplicar (una tarjeta física = una denominación) → sin +/-; se
+            elimina deslizando. */}
+        {it.giftCard ? (
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-amber-100 text-amber-600"
+            aria-label="Tarjeta de regalo"
+          >
+            <Gift className="h-4 w-4" />
+          </span>
+        ) : (
+          <>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => incrementar(it.key)}
+              aria-label="Más"
+              className="h-9 w-9 shrink-0"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => decrementar(it.key)}
+              aria-label="Menos"
+              className="h-9 w-9 shrink-0"
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+          </>
+        )}
         <span className="shrink-0 text-sm font-bold tabular-nums leading-none">
           {it.cantidad}
           <span className="ml-0.5 text-[9px] font-normal text-muted-foreground">

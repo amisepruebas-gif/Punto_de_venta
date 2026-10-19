@@ -219,3 +219,120 @@ export const fnDesbloquearTarjeta = callable<
   DesbloquearTarjetaInput,
   DesbloquearTarjetaOutput
 >("desbloquearTarjeta");
+
+// ---- Tarjeta de REGALO (Feature 5, Fase 2) ----
+// Crédito prepago (pozo separado del cashback; vence a 6m). El POS proxya a
+// amise.mx /api/loyalty/gift/*; idempotencia por ventaId.
+export type EmitirTarjetaRegaloInput = {
+  /** Email del DESTINATARIO (quien la usará). Obligatorio. */
+  email: string;
+  phone?: string;
+  nombre?: string;
+  /** Monto de crédito a cargar ($200/$300/$500 o custom >$500). */
+  denominacion: number;
+  /** Barcode EAN-13 de la tarjeta física (D2: siempre física). */
+  barcode: string;
+  /** Venta donde se cobra/emite (idempotencia). */
+  ventaId: string;
+};
+export type EmitirTarjetaRegaloOutput = {
+  ok: boolean;
+  walletId: string;
+  balance: number;
+  /** Vencimiento del crédito (ms epoch). */
+  expiraAt: number;
+  /** Código de acceso online EN CLARO (solo la 1ª emisión; null en reintentos). */
+  accessCode: string | null;
+  /** 'issued' | 'linked' | 'already-active' — por qué (no) vino accessCode. */
+  accessCodeReason: string;
+  /** ¿Se vinculó el barcode físico al monedero? */
+  cardLinked: boolean;
+  cardReason: string;
+  /** true si la emisión ya existía (reintento idempotente). */
+  already: boolean;
+};
+export const fnEmitirTarjetaRegalo = callable<
+  EmitirTarjetaRegaloInput,
+  EmitirTarjetaRegaloOutput
+>("emitirTarjetaRegalo");
+
+export type RecargarTarjetaRegaloInput = {
+  email?: string;
+  phone?: string;
+  /** Alternativa: identificar por el barcode de la tarjeta. */
+  codigo?: string;
+  /** Monto a recargar (>0). */
+  amount: number;
+  ventaId: string;
+};
+export type RecargarTarjetaRegaloOutput = {
+  ok: boolean;
+  walletId: string;
+  balance: number;
+  expiraAt: number;
+  already: boolean;
+};
+export const fnRecargarTarjetaRegalo = callable<
+  RecargarTarjetaRegaloInput,
+  RecargarTarjetaRegaloOutput
+>("recargarTarjetaRegalo");
+
+export type ConsultarSaldoRegaloInput = {
+  email?: string;
+  phone?: string;
+  /** Barcode EAN-13 de la tarjeta. */
+  codigo?: string;
+};
+export type ConsultarSaldoRegaloOutput = {
+  ok: boolean;
+  /** Crédito EFECTIVO en $ (0 si venció). */
+  saldo: number;
+  /** Vencimiento (ms epoch) o null. */
+  expiraAt: number | null;
+  /** true si había crédito pero venció. */
+  vencido: boolean;
+};
+export const fnConsultarSaldoTarjetaRegalo = callable<
+  ConsultarSaldoRegaloInput,
+  ConsultarSaldoRegaloOutput
+>("consultarSaldoTarjetaRegalo");
+
+// ---- Uso de crédito de regalo en el POS (Feature 5, Fase 3) ----
+// El crédito se aplica como DESCUENTO (reduce montoCobro → NO es ingreso). Candado
+// (pendingLock) anti doble-débito, idempotente por ventaId.
+export type RedimirCreditoRegaloInput = {
+  email?: string;
+  phone?: string;
+  /** Barcode EAN-13 de la tarjeta (identificación por escaneo). */
+  codigo?: string;
+  /** $ de crédito a usar. */
+  money: number;
+  idempotencyKey: string;
+  /** Activa el candado del servidor (anti doble-cobro). */
+  pendingLock?: boolean;
+};
+export type RedimirCreditoRegaloOutput = {
+  ok: boolean;
+  used: number;
+  balance: number;
+  money: number;
+  /** cobroId para cerrar el candado tras crear la venta. */
+  cobroId: string;
+};
+export const fnRedimirCreditoRegalo = callable<
+  RedimirCreditoRegaloInput,
+  RedimirCreditoRegaloOutput
+>("redimirCreditoRegalo");
+
+export type CerrarCreditoRegaloInput = {
+  email?: string;
+  phone?: string;
+  codigo?: string;
+  /** cobroId (= idempotencyKey del uso) a cerrar. */
+  cobroId: string;
+};
+export type CerrarCreditoRegaloOutput = { ok: boolean; closed: boolean };
+export const fnCerrarCreditoRegalo = callable<
+  CerrarCreditoRegaloInput,
+  CerrarCreditoRegaloOutput
+>("cerrarCreditoRegalo");

@@ -2050,9 +2050,14 @@ async function llamarAmise(path, payload) {
   }
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    throw new HttpsError(
-        resp.status === 409 ? "already-exists" : "internal",
-        (data && data.error) || `amise.mx ${resp.status}`);
+    // 5xx = fallo TRANSITORIO server-side → 'unavailable' para que el POS lo
+    // reintente (todas las ops de lealtad son idempotentes: earn/card por
+    // ventaId, canje por key, gift por ventaId → reintentar no duplica). 409 =
+    // idempotencia/conflicto; 4xx = terminal → 'internal' (no reintentar).
+    const code = resp.status >= 500 ?
+        "unavailable" :
+        resp.status === 409 ? "already-exists" : "internal";
+    throw new HttpsError(code, (data && data.error) || `amise.mx ${resp.status}`);
   }
   return data;
 }
@@ -2279,6 +2284,218 @@ exports.desbloquearTarjeta = onCall(
       }
       await llamarAmise("/api/loyalty/card/unblock", {email, phone, codigo});
       return {ok: true};
+    },
+);
+
+// ── Tarjeta de REGALO (Feature 5, Fase 2) ────────────────────
+// Proxies a amise.mx /api/loyalty/gift/*. Mismo modelo que la tarjeta física: el
+// POS nunca ve LOYALTY_POS_SECRET; idempotencia por ventaId. El crédito de regalo
+// es un pozo SEPARADO del cashback (vence a 6m; gastarlo no genera cashback).
+
+/** Como llamarAmise pero GET (para /gift/balance, que es GET en amise). */
+async function llamarAmiseGet(path) {
+  let resp;
+  try {
+    resp = await fetch(`${AMISE_API_BASE}${path}`, {
+      method: "GET",
+      headers: {"Authorization": `Bearer ${LOYALTY_POS_SECRET.value()}`},
+    });
+  } catch (e) {
+    throw new HttpsError("unavailable", `No se pudo contactar a amise.mx: ${e.message}`);
+  }
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    // 5xx = fallo TRANSITORIO server-side → 'unavailable' para que el POS lo
+    // reintente (todas las ops de lealtad son idempotentes: earn/card por
+    // ventaId, canje por key, gift por ventaId → reintentar no duplica). 409 =
+    // idempotencia/conflicto; 4xx = terminal → 'internal' (no reintentar).
+    const code = resp.status >= 500 ?
+        "unavailable" :
+        resp.status === 409 ? "already-exists" : "internal";
+    throw new HttpsError(code, (data && data.error) || `amise.mx ${resp.status}`);
+  }
+  return data;
+}
+
+// Vender/activar una tarjeta de regalo al cobrar. Carga el crédito prepago (+6m,
+// sin cashback), vincula el barcode físico y emite el código de acceso online.
+// Input: { email, denominacion(>0), ventaId, barcode, phone?, nombre? }.
+// Idempotente por ventaId (= idempotencyKey del lado amise). accessCode viene en
+// claro SOLO la 1ª vez (reintentos: null → ya se entregó, usar recuperación).
+exports.emitirTarjetaRegalo = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      // auth best-effort (POS sin login fijo). Seguridad real: secreto server-side.
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const d = request.data || {};
+      const {email, phone, nombre, denominacion, barcode, ventaId} = d;
+      if (!email || typeof email !== "string") {
+        throw new HttpsError("invalid-argument", "email requerido");
+      }
+      const monto = Number(denominacion);
+      if (!Number.isFinite(monto) || monto <= 0) {
+        throw new HttpsError("invalid-argument", "denominacion (>0) requerida");
+      }
+      if (!ventaId || typeof ventaId !== "string") {
+        throw new HttpsError("invalid-argument", "ventaId requerido");
+      }
+      // D2: la tarjeta de regalo SIEMPRE es física → barcode obligatorio.
+      if (!barcode || typeof barcode !== "string") {
+        throw new HttpsError("invalid-argument", "barcode requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/gift/issue", {
+        email,
+        phone,
+        nombre,
+        denominacion: monto,
+        barcode,
+        idempotencyKey: ventaId,
+        sucursalId: t.sucursalId || d.sucursalId || null,
+        nodoId: t.nodoId || d.nodoId || null,
+      });
+      return {
+        ok: true,
+        walletId: data.walletId || "",
+        balance: Number(data.balance) || 0,
+        expiraAt: Number(data.expiraAt) || 0,
+        accessCode: data.accessCode || null,
+        accessCodeReason: data.accessCodeReason || "",
+        cardLinked: Boolean(data.cardLinked),
+        cardReason: data.cardReason || "",
+        already: Boolean(data.already),
+      };
+    },
+);
+
+// Recargar una tarjeta de regalo existente (suma crédito + reinicia vigencia +6m).
+// Input: { email?|phone?|codigo, amount(>0), ventaId }. Idempotente por ventaId.
+exports.recargarTarjetaRegalo = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {email, phone, codigo, amount, ventaId} = request.data || {};
+      if (!email && !phone && !codigo) {
+        throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
+      }
+      const monto = Number(amount);
+      if (!Number.isFinite(monto) || monto <= 0) {
+        throw new HttpsError("invalid-argument", "amount (>0) requerido");
+      }
+      if (!ventaId || typeof ventaId !== "string") {
+        throw new HttpsError("invalid-argument", "ventaId requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/gift/recharge", {
+        email,
+        phone,
+        codigo,
+        amount: monto,
+        idempotencyKey: ventaId,
+        sucursalId: t.sucursalId || request.data.sucursalId || null,
+        nodoId: t.nodoId || request.data.nodoId || null,
+      });
+      return {
+        ok: true,
+        walletId: data.walletId || "",
+        balance: Number(data.balance) || 0,
+        expiraAt: Number(data.expiraAt) || 0,
+        already: Boolean(data.already),
+      };
+    },
+);
+
+// Consultar el crédito de regalo (efectivo, 0 si venció). Input: { email?|phone?|codigo }.
+exports.consultarSaldoTarjetaRegalo = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {email, phone, codigo} = request.data || {};
+      if (!email && !phone && !codigo) {
+        throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
+      }
+      const qs = new URLSearchParams();
+      if (email) qs.set("email", email);
+      if (phone) qs.set("phone", phone);
+      if (codigo) qs.set("codigo", codigo);
+      const data = await llamarAmiseGet(`/api/loyalty/gift/balance?${qs.toString()}`);
+      return {
+        ok: true,
+        saldo: Number(data.saldo) || 0,
+        expiraAt: data.expiraAt == null ? null : Number(data.expiraAt),
+        vencido: Boolean(data.vencido),
+      };
+    },
+);
+
+// Fase 3 — REDIME (debita) crédito de regalo al cobrar (se aplica como DESCUENTO,
+// no como ingreso). Idempotente por idempotencyKey (= ventaId). El candado
+// (pendingLock) previene el doble-débito si el POS reintenta/reconecta.
+// Input: { email?|phone?|codigo, money, idempotencyKey } →
+//   { ok, used, balance, money, cobroId }. Rechazos (vencido/insuficiente/en curso)
+//   llegan como error (llamarAmise mapea el 409 a already-exists con el mensaje).
+exports.redimirCreditoRegalo = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {email, phone, codigo, money, idempotencyKey} = request.data || {};
+      if (!idempotencyKey || typeof idempotencyKey !== "string") {
+        throw new HttpsError("invalid-argument", "idempotencyKey requerido");
+      }
+      const m = Number(money);
+      if (!isFinite(m) || m <= 0) {
+        throw new HttpsError("invalid-argument", "money inválido");
+      }
+      if (!email && !phone && !codigo) {
+        throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/gift/redeem", {
+        email, phone, codigo, money: m, idempotencyKey,
+        pendingLock: request.data.pendingLock === true,
+        sucursalId: t.sucursalId || request.data.sucursalId || null,
+        nodoId: t.nodoId || request.data.nodoId || null,
+      });
+      return {
+        ok: true,
+        used: Number(data.used) || 0,
+        balance: Number(data.balance) || 0,
+        money: Number(data.money) || 0,
+        cobroId: typeof data.cobroId === "string" ? data.cobroId : idempotencyKey,
+      };
+    },
+);
+
+// Fase 3 — cierra el uso de crédito de regalo pendiente tras crear la venta
+// (libera el candado). Idempotente. Input: { email?|phone?|codigo, cobroId } →
+//   { ok, closed }.
+exports.cerrarCreditoRegalo = onCall(
+    {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
+        throw new HttpsError("permission-denied", "Sin permiso");
+      }
+      const {email, phone, codigo, cobroId} = request.data || {};
+      if (!cobroId || typeof cobroId !== "string") {
+        throw new HttpsError("invalid-argument", "cobroId requerido");
+      }
+      if (!email && !phone && !codigo) {
+        throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
+      }
+      const data = await llamarAmise("/api/loyalty/gift/cerrar", {
+        email, phone, codigo, cobroId,
+      });
+      return {ok: true, closed: !!data.closed};
     },
 );
 

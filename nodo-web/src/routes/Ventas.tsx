@@ -30,7 +30,7 @@ import { FloatingReimprimirButton } from "@/features/ventas/FloatingReimprimirBu
 import { RegistrosVentasSheet } from "@/features/ventas/historial/RegistrosVentasSheet";
 import { PinPromptModal } from "@/features/ventas/historial/PinPromptModal";
 import { usePinVentas } from "@/features/ventas/historial/usePinVentas";
-import { useCarrito } from "@/features/ventas/carritoStore";
+import { useCarrito, subtotalItem } from "@/features/ventas/carritoStore";
 import { useArticulos } from "@/features/articulos/useArticulos";
 import { crearVenta } from "@/features/ventas/ventaService";
 import { generarID } from "@shared";
@@ -46,6 +46,20 @@ import {
   PreRegistroClienteModal,
   type PreRegistroData,
 } from "@/features/puntos/PreRegistroClienteModal";
+import { FloatingVenderRegaloButton } from "@/features/puntos/FloatingVenderRegaloButton";
+import {
+  VenderRegaloModal,
+  type VenderRegaloData,
+} from "@/features/puntos/VenderRegaloModal";
+import { FloatingRecargarRegaloButton } from "@/features/puntos/FloatingRecargarRegaloButton";
+import {
+  RecargarRegaloModal,
+  type RecargarRegaloData,
+} from "@/features/puntos/RecargarRegaloModal";
+import {
+  GiftEmitidaModal,
+  type GiftEmitidaInfo,
+} from "@/features/puntos/GiftEmitidaModal";
 import { VinculacionClienteModal } from "@/features/puntos/VinculacionClienteModal";
 import { useClientePuntos } from "@/features/puntos/clientePuntosStore";
 import { usePuntosColaFlush } from "@/features/puntos/usePuntosColaFlush";
@@ -58,7 +72,13 @@ import {
   fnCerrarCanje,
   fnActivarTarjeta,
   fnReponerTarjeta,
+  fnEmitirTarjetaRegalo,
+  fnRecargarTarjetaRegalo,
+  fnConsultarSaldoTarjetaRegalo,
+  fnRedimirCreditoRegalo,
+  fnCerrarCreditoRegalo,
   type CerrarCanjeInput,
+  type CerrarCreditoRegaloInput,
 } from "@/firebase/callable";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
@@ -85,6 +105,10 @@ export function Ventas() {
   useEffect(() => {
     if (items.length === 0) {
       useClientePuntos.getState().limpiarTarjetaPendiente();
+      // Igual para la gift card: un pendiente rancio (venta cancelada o recarga
+      // de página) no debe emitirse en la próxima venta. El guard "emitida ⟺
+      // cobrada" ya lo cubre; esto lo limpia proactivamente.
+      useClientePuntos.getState().limpiarGiftPendiente();
     }
   }, [items.length]);
   const banner =
@@ -102,6 +126,10 @@ export function Ventas() {
   const { pin: pinRegistros } = usePinVentas(negocioId);
   const [noRegOpen, setNoRegOpen] = useState(false);
   const [preRegOpen, setPreRegOpen] = useState(false);
+  const [giftOpen, setGiftOpen] = useState(false);
+  const [recargaOpen, setRecargaOpen] = useState(false);
+  // Confirmación de emisión de gift card (muestra el código de acceso al cajero).
+  const [giftEmitida, setGiftEmitida] = useState<GiftEmitidaInfo | null>(null);
   const [vinculacionOpen, setVinculacionOpen] = useState(false);
   const [ventaParaVincular, setVentaParaVincular] = useState<{
     venta: Venta;
@@ -305,6 +333,13 @@ export function Ventas() {
     const puntosTel = preview.puntosTelefono;
     const descPuntos = preview.descuentoPuntos;
     const cashbackUsar = Number(descPuntos) || 0;
+    // Fase 3 — crédito de regalo usado como descuento (NO ingreso: montoCobro ya
+    // lo excluye). Se debita EN LÍNEA antes de crear la venta (como el cashback).
+    const regaloUsar = Number(preview.descuentoRegalo) || 0;
+    const regaloIdent =
+      regaloUsar > 0
+        ? { codigo: preview.regaloCodigo, phone: preview.regaloPhone }
+        : null;
 
     // USAR cashback REQUIERE conexión: se debita EN LÍNEA *antes* de crear la venta.
     // Si falla (sin red o saldo), se aborta el cobro: NO se aplica el descuento y
@@ -358,6 +393,52 @@ export function Ventas() {
       }
     }
 
+    // Fase 3 — USAR crédito de regalo: se debita EN LÍNEA antes de crear la venta
+    // (mismo patrón que el cashback). Candado SEPARADO (regalosPendientes) anti
+    // doble-débito. El crédito es un DESCUENTO → NO es ingreso (montoCobro ya lo
+    // excluye). Idempotente por cobroId (= ventaId). Si falla, se aborta el cobro.
+    if (regaloUsar > 0 && regaloIdent) {
+      // Drenar TODOS los 'cerrarRegalo' encolados antes del nuevo débito: un cierre
+      // previo fallido dejaría su candado abierto y podría rechazar este cobro con
+      // 409. Se cierran todos (no solo el que empata por identificador) porque la
+      // MISMA tarjeta puede identificarse por código O por teléfono —canales
+      // distintos que resuelven al mismo monedero—, así que un match exacto fallaría.
+      // Cada cierre es idempotente (el server solo borra si el cobroId coincide).
+      const pendientesCerrar = useClientePuntos
+        .getState()
+        .cola.filter((x) => x.tipo === "cerrarRegalo");
+      for (const p of pendientesCerrar) {
+        try {
+          await fnCerrarCreditoRegalo(p.payload as unknown as CerrarCreditoRegaloInput);
+          useClientePuntos.getState().quitarDeCola(p.id);
+        } catch {
+          /* si falla, seguimos; el 409 de abajo lo reporta si aplica */
+        }
+      }
+      try {
+        await fnRedimirCreditoRegalo({
+          codigo: regaloIdent.codigo,
+          phone: regaloIdent.phone,
+          money: regaloUsar,
+          idempotencyKey: cobroId,
+          pendingLock: true,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        throw new Error(
+          msg.includes("en curso")
+            ? "Ya hay un uso de crédito en curso para esta tarjeta. Espera unos minutos y reintenta."
+            : msg.includes("vencido")
+            ? "El crédito de regalo venció. Quítalo y reintenta."
+            : msg.includes("insuficiente")
+            ? "Crédito de regalo insuficiente. Ajusta el monto y reintenta."
+            : msg.includes("no encontrad")
+            ? "Tarjeta o monedero no encontrado. Verifica el código."
+            : "No se pudo usar el crédito de regalo (sin conexión). Quítalo o reintenta.",
+        );
+      }
+    }
+
     const result = await crearVenta({
       negocioId,
       sucursalId,
@@ -365,6 +446,21 @@ export function Ventas() {
       ...preview,
       idempotencyKey: cobroId, // venta ligada al MISMO id del débito
     });
+
+    // SNAPSHOT de los pendientes ANTES de limpiar() (que dispara el effect de
+    // higiene cart-empty → borra tarjetaPendiente/giftPendiente de forma ASÍNCRONA).
+    // Sin esto, el bloque de emisión de gift —que corre DESPUÉS del await de la
+    // vinculación de la tarjeta de lealtad— podía leer giftPendiente ya en null:
+    // la gift quedaba cobrada pero NUNCA emitida (pérdida silenciosa). Capturados
+    // aquí (carrito aún NO vaciado), la decisión es inmune a esa carrera de timing.
+    const tarjPend = useClientePuntos.getState().tarjetaPendiente;
+    const giftPend = useClientePuntos.getState().giftPendiente;
+    const giftLine = (result.venta.articulos ?? []).find((a) => a.giftCard === true);
+    // Total cobrado por líneas gift: base a EXCLUIR del cashback ganado (§0.3).
+    const giftTotal = (result.venta.articulos ?? [])
+      .filter((a) => a.giftCard === true)
+      .reduce((s, a) => s + subtotalItem(a), 0);
+
     // Fase 5: canje debitado y venta creada → cerrar el pendiente (idempotente).
     // Best-effort + encolado durable.
     if (puntosTel && cashbackUsar > 0) {
@@ -374,6 +470,20 @@ export function Ventas() {
         useClientePuntos
           .getState()
           .encolar("cerrar", { phone: puntosTel, cobroId });
+      }
+    }
+    // Fase 3 — cerrar el candado del crédito de regalo (idempotente). Best-effort
+    // + encolado durable ('cerrarRegalo') si falla la red.
+    if (regaloUsar > 0 && regaloIdent) {
+      const cerrarPayload = {
+        ...(regaloIdent.codigo ? { codigo: regaloIdent.codigo } : {}),
+        ...(regaloIdent.phone ? { phone: regaloIdent.phone } : {}),
+        cobroId,
+      };
+      try {
+        await fnCerrarCreditoRegalo(cerrarPayload);
+      } catch {
+        useClientePuntos.getState().encolar("cerrarRegalo", cerrarPayload);
       }
     }
     limpiar();
@@ -390,8 +500,8 @@ export function Ventas() {
     // idempotente por (código de barras + monedero), NO por ventaId (el ventaId solo
     // se guarda como metadato). Best-effort: la venta YA existe, un fallo no la
     // revierte. Limpiamos el pendiente antes para que NUNCA se arrastre a otra venta.
-    // Offline: se omite (la vinculación necesita red).
-    const tarjPend = useClientePuntos.getState().tarjetaPendiente;
+    // Offline: se omite (la vinculación necesita red). `tarjPend` viene del snapshot
+    // de arriba (inmune a la higiene cart-empty, igual que `giftPend`).
     // "Vinculado ⟺ pagado": solo vincular si el ARTÍCULO de la tarjeta realmente se
     // cobró en ESTA venta. Blinda contra un pendiente arrastrado (carrito cancelado
     // /vaciado sin cobrar) que vincularía la tarjeta sin haberse pagado.
@@ -449,9 +559,87 @@ export function Ventas() {
       }
     }
 
+    // Feature 5 · Fase 2 — EMITIR (venta nueva) o RECARGAR (tarjeta existente) la
+    // gift card tras crear la venta ("pagó → se emite/recarga"). El monto = lo
+    // REALMENTE cobrado por la línea gift (money-safety: crédito == dinero recibido,
+    // sin importar edición). Guard "hecha ⟺ cobrada": solo si la línea gift está en
+    // la venta. Idempotente por ventaId. Offline: se encola (necesita red).
+    // `giftPend`/`giftLine`/`giftTotal` vienen del SNAPSHOT de arriba (inmunes a la
+    // carrera con el effect de higiene cart-empty).
+    const giftMonto = giftLine ? subtotalItem(giftLine) : 0;
+    if (giftPend && !giftLine) {
+      // Pendiente pero la línea NO se cobró → descartar sin emitir/recargar.
+      useClientePuntos.getState().limpiarGiftPendiente();
+    } else if (giftPend && giftLine && giftPend.modo === "emitir") {
+      useClientePuntos.getState().limpiarGiftPendiente();
+      const giftPayload = {
+        email: giftPend.email,
+        phone: giftPend.phone,
+        nombre: giftPend.nombre,
+        barcode: giftPend.barcode,
+        denominacion: giftMonto,
+        ventaId: result.venta.ventaId,
+      };
+      if (result.offline) {
+        useClientePuntos.getState().encolar("gift", giftPayload);
+        setToast("Sin conexión: la tarjeta de regalo se activará al reconectar. La venta sí se cobró.");
+        window.setTimeout(() => setToast(null), 6000);
+      } else {
+        try {
+          const res = await fnEmitirTarjetaRegalo(giftPayload);
+          setGiftEmitida({
+            balance: Number(res.data.balance) || giftPayload.denominacion,
+            accessCode: res.data.accessCode ?? null,
+            cardLinked: Boolean(res.data.cardLinked),
+          });
+        } catch (e) {
+          const err = e as { code?: string; message?: string };
+          // Solo un fallo de RED ('unavailable') se reintenta (idempotente por
+          // ventaId). Un rechazo definitivo conserva el mensaje y NO se encola.
+          if (String(err?.code || "").includes("unavailable")) {
+            useClientePuntos.getState().encolar("gift", giftPayload);
+            setToast("La tarjeta de regalo se activará al reconectar. La venta sí se cobró.");
+          } else {
+            setToast(`Tarjeta de regalo NO activada (${err?.message || "revisa los datos"}). La venta sí se cobró.`);
+          }
+          window.setTimeout(() => setToast(null), 7000);
+        }
+      }
+    } else if (giftPend && giftLine && giftPend.modo === "recargar") {
+      useClientePuntos.getState().limpiarGiftPendiente();
+      const recargaPayload = {
+        email: giftPend.email,
+        phone: giftPend.phone,
+        codigo: giftPend.codigo,
+        amount: giftMonto,
+        ventaId: result.venta.ventaId,
+      };
+      if (result.offline) {
+        useClientePuntos.getState().encolar("giftRecarga", recargaPayload);
+        setToast("Sin conexión: la recarga se aplicará al reconectar. La venta sí se cobró.");
+        window.setTimeout(() => setToast(null), 6000);
+      } else {
+        try {
+          const res = await fnRecargarTarjetaRegalo(recargaPayload);
+          const bal = Number(res.data.balance) || 0;
+          setToast(`Recarga aplicada. Nuevo saldo de crédito: $${bal.toLocaleString("es-MX")}.`);
+        } catch (e) {
+          const err = e as { code?: string; message?: string };
+          if (String(err?.code || "").includes("unavailable")) {
+            useClientePuntos.getState().encolar("giftRecarga", recargaPayload);
+            setToast("La recarga se aplicará al reconectar. La venta sí se cobró.");
+          } else {
+            setToast(`Recarga NO aplicada (${err?.message || "revisa la tarjeta"}). La venta sí se cobró.`);
+          }
+          window.setTimeout(() => setToast(null), 7000);
+        }
+      }
+    }
+
     // PT-10: cliente EXISTENTE. El canje (débito) ya ocurrió en línea arriba; aquí
-    // solo se ACREDITA sobre lo pagado por método (= montoCobro neto). La
-    // acreditación es best-effort y puede encolarse offline (idempotente por ventaId).
+    // solo se ACREDITA sobre lo pagado por método (= montoCobro neto, EXCLUYENDO
+    // la denominación de gift cards). La acreditación es best-effort y puede
+    // encolarse offline (idempotente por ventaId).
     if (puntosTel) {
       let ventaFinal: Venta =
         descPuntos && Number(descPuntos) > 0
@@ -459,7 +647,8 @@ export function Ventas() {
           : result.venta;
       const earnPayload = {
         phone: puntosTel,
-        amount: Number(monto) || 0,
+        // Excluir la denominación de gift cards: adquirir una NO genera cashback.
+        amount: Math.max(0, (Number(monto) || 0) - giftTotal),
         ventaId: result.venta.ventaId,
         sucursalId,
         nodoId
@@ -543,6 +732,59 @@ export function Ventas() {
     window.setTimeout(() => setToast(null), 5000);
   }
 
+  // Vender tarjeta de regalo (FAB): agrega la denominación como línea de venta
+  // (ingreso, sin inventario) y deja la emisión PENDIENTE. "Pagó → se emite": al
+  // cobrar se carga el crédito. La denominación que se carga la da la línea gift
+  // de la venta (money-safety), no este pendiente.
+  function handleVenderRegalo(data: VenderRegaloData) {
+    useCarrito.getState().agregarGiftCard({
+      nombre: `Tarjeta de regalo $${data.denominacion}`,
+      monto: String(data.denominacion),
+    });
+    useClientePuntos.getState().setGiftPendiente({
+      modo: "emitir",
+      email: data.email,
+      phone: data.phone,
+      nombre: data.nombre,
+      barcode: data.barcode,
+    });
+    setToast(`Tarjeta de regalo $${data.denominacion} agregada al cobro.`);
+    window.setTimeout(() => setToast(null), 4000);
+  }
+
+  // Recargar tarjeta de regalo existente (FAB): agrega el monto como línea de
+  // venta (ingreso, sin inventario) y deja la RECARGA pendiente. "Pagó → se
+  // recarga": al cobrar se suma el crédito y se reinicia la vigencia +6m. El monto
+  // real que se recarga lo da la línea gift de la venta (money-safety).
+  function handleRecargarRegalo(data: RecargarRegaloData) {
+    useCarrito.getState().agregarGiftCard({
+      nombre: `Recarga tarjeta de regalo $${data.monto}`,
+      monto: String(data.monto),
+    });
+    useClientePuntos.getState().setGiftPendiente({
+      modo: "recargar",
+      codigo: data.codigo,
+      phone: data.phone,
+    });
+    setToast(`Recarga de $${data.monto} agregada al cobro.`);
+    window.setTimeout(() => setToast(null), 4000);
+  }
+
+  // Consulta el saldo de una tarjeta de regalo (para el modal de recarga, antes de
+  // cobrar). Devuelve null si falla la red → el modal avisa y bloquea la recarga.
+  async function handleLookupRegalo(id: { codigo?: string; phone?: string }) {
+    try {
+      const res = await fnConsultarSaldoTarjetaRegalo(id);
+      return {
+        saldo: Number(res.data.saldo) || 0,
+        expiraAt: res.data.expiraAt ?? null,
+        vencido: Boolean(res.data.vencido),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   // "Sí": acreditar los puntos de esta venta + imprimir el ticket con la
   // contraseña temporal + limpiar el pendiente.
   async function handleVincularSi() {
@@ -555,10 +797,14 @@ export function Ventas() {
       return;
     }
     let venta: Venta = { ...sel.venta, codigoPuntos: pend.code };
+    // Excluir la denominación de gift cards del cashback ganado (§0.3).
+    const giftTotalV = (sel.venta.articulos ?? [])
+      .filter((a) => a.giftCard === true)
+      .reduce((s, a) => s + subtotalItem(a), 0);
     const payload = {
       email: pend.correo,
       phone: pend.telefono,
-      amount: Number(sel.monto) || 0,
+      amount: Math.max(0, (Number(sel.monto) || 0) - giftTotalV),
       ventaId: sel.venta.ventaId,
       sucursalId,
       nodoId,
@@ -779,6 +1025,20 @@ export function Ventas() {
         onClose={() => setPreRegOpen(false)}
         onRegistrar={handlePreRegistrar}
       />
+      <FloatingVenderRegaloButton onClick={() => setGiftOpen(true)} />
+      <VenderRegaloModal
+        open={giftOpen}
+        onClose={() => setGiftOpen(false)}
+        onVender={handleVenderRegalo}
+      />
+      <FloatingRecargarRegaloButton onClick={() => setRecargaOpen(true)} />
+      <RecargarRegaloModal
+        open={recargaOpen}
+        onClose={() => setRecargaOpen(false)}
+        onLookup={handleLookupRegalo}
+        onRecargar={handleRecargarRegalo}
+      />
+      <GiftEmitidaModal info={giftEmitida} onClose={() => setGiftEmitida(null)} />
       <VinculacionClienteModal
         open={vinculacionOpen}
         correo={pendientePuntos?.correo ?? ""}

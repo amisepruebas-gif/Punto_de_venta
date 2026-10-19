@@ -21,7 +21,7 @@ export function VinculacionClienteModal({ open, correo, onSi, onNo }: Props) {
       role="dialog"
       aria-modal
     >
-      <div className="w-full max-w-md space-y-4 rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl">
+      <div className="max-h-[90vh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl">
         <div>
           <h2 className="text-lg font-semibold">¿Sumar puntos a este cliente?</h2>
           <p className="text-sm text-muted-foreground">

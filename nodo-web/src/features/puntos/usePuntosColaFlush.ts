@@ -7,10 +7,16 @@ import {
   fnActivarTarjeta,
   fnReponerTarjeta,
   fnCerrarCanje,
+  fnEmitirTarjetaRegalo,
+  fnRecargarTarjetaRegalo,
+  fnCerrarCreditoRegalo,
   type RegistrarClientePuntosInput,
   type AcreditarPuntosInput,
   type CanjearPuntosInput,
   type CerrarCanjeInput,
+  type EmitirTarjetaRegaloInput,
+  type RecargarTarjetaRegaloInput,
+  type CerrarCreditoRegaloInput,
 } from "@/firebase/callable";
 
 const MAX_INTENTOS = 60; // ~60 min de reintentos (antes 8 = solo 8 min). La cola
@@ -63,12 +69,48 @@ export function usePuntosColaFlush() {
           } else if (item.tipo === "cerrar") {
             // Fase 5: cierra el canje pendiente en el servidor (idempotente).
             await fnCerrarCanje(item.payload as unknown as CerrarCanjeInput);
+          } else if (item.tipo === "gift") {
+            // Feature 5 · Fase 2: emisión de tarjeta de regalo (idempotente por
+            // ventaId; NO re-cobra — la venta ya existe). El accessCode en claro
+            // se pierde en un reintento (null): el cliente lo recupera aparte.
+            await fnEmitirTarjetaRegalo(
+              item.payload as unknown as EmitirTarjetaRegaloInput,
+            );
+          } else if (item.tipo === "giftRecarga") {
+            // Feature 5 · Fase 2: recarga de tarjeta de regalo (idempotente por
+            // ventaId; NO re-cobra — la venta ya existe).
+            await fnRecargarTarjetaRegalo(
+              item.payload as unknown as RecargarTarjetaRegaloInput,
+            );
+          } else if (item.tipo === "cerrarRegalo") {
+            // Feature 5 · Fase 3: cierra el candado del crédito de regalo
+            // (idempotente). NO es valor pagado → descartable tras MAX_INTENTOS
+            // (el candado auto-expira por TTL de todos modos).
+            await fnCerrarCreditoRegalo(
+              item.payload as unknown as CerrarCreditoRegaloInput,
+            );
           } else {
             await fnAcreditarPuntos(item.payload as unknown as AcreditarPuntosInput);
           }
           useClientePuntos.getState().quitarDeCola(item.id);
         } catch {
-          if (item.intentos + 1 >= MAX_INTENTOS) {
+          // La emisión/recarga de gift representa VALOR que el cliente YA pagó:
+          // NUNCA se descarta en silencio (a diferencia de 'card', donde solo se
+          // pierde la conveniencia del plástico). Se reintenta indefinidamente —
+          // es idempotente por ventaId, así que reintentar no duplica crédito.
+          if (item.tipo === "gift" || item.tipo === "giftRecarga") {
+            if (item.intentos + 1 === MAX_INTENTOS) {
+              console.error(
+                "[PUNTOS] Op de gift (",
+                item.tipo,
+                ") lleva",
+                MAX_INTENTOS,
+                "intentos sin éxito (se SIGUE reintentando; revisar conexión):",
+                item.payload,
+              );
+            }
+            useClientePuntos.getState().incrementarIntento(item.id);
+          } else if (item.intentos + 1 >= MAX_INTENTOS) {
             // Descarte tras agotar reintentos: dejar rastro para auditoría (no
             // se pierde en silencio). Lo idóneo a futuro: bandera en admin-web.
             console.error(

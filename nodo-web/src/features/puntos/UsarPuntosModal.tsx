@@ -92,6 +92,30 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   // Cashback 1:1 en $: el descuento es el monto pedido (a centavos), tope incluido.
   const pedido = Math.round(Math.min(Number(monto) || 0, tope) * 100) / 100;
 
+  // Estados en los que el canje/acumulación NO puede prosperar. Se derivan aquí
+  // para que los BOTONES los reflejen (deshabilitados + motivo junto a ellos) en
+  // vez de aceptar el click y salir por un `return` silencioso: ese era el "botón
+  // congelado" reportado — el `setError` se pinta arriba del modal (sobre los
+  // formularios de consulta), fuera de donde mira el cajero al presionar.
+  // Las guardas de `aplicarUsar`/`soloAcumular` se CONSERVAN a propósito
+  // (defensa en profundidad, FIX-MONEDERO-POS.md Fase 1 · A).
+  //  - sin teléfono: el monedero no se puede operar (earn y redeem van por
+  //    teléfono). Pasa al consultar por barcode un monedero sin `telefono`.
+  //  - tope 0: no hay subtotal de productos al que aplicar el descuento (el
+  //    `maxTotal` que manda PagoFooter excluye líneas de tarjeta de regalo y lo
+  //    ya cubierto por crédito de regalo).
+  const sinTelefono = !telefono.trim();
+  const puedeAcumular = !sinTelefono;
+  const puedeUsar = !sinTelefono && tope > 0;
+  // El caso "saldo del cliente < $0.50" NO entra aquí: tiene su propio aviso
+  // (abajo) y ahí el botón de usar ni se renderiza. Este motivo es sólo para
+  // cuando SÍ hay saldo usable pero la venta no da tope.
+  const motivoBloqueo = sinTelefono
+    ? "Este monedero no trae teléfono, y sin teléfono no se puede debitar ni acumular cashback. Consulta al cliente por teléfono (o por correo) para operarlo."
+    : tope <= 0 && !!saldo && saldo.saldoUsable > 0
+      ? `Tope disponible ${money(tope)}: esta venta no tiene subtotal de productos al que aplicar el descuento. Las tarjetas de regalo se pagan con dinero real.`
+      : null;
+
   // Aplica la respuesta de saldo (compartido por teléfono y por barcode). Al
   // consultar por barcode, toma el teléfono del monedero para operar (earn/canje
   // en el POS trabajan por teléfono). Existe: se puede ACUMULAR aunque tenga 0.
@@ -294,7 +318,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md space-y-4 rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl"
+        className="max-h-[90vh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl"
       >
         <h2 className="text-lg font-semibold">Puntos del cliente</h2>
 
@@ -401,12 +425,30 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                 esta venta.
               </div>
             )}
+            {/* Motivo JUNTO a los botones (no arriba del modal): si algo impide
+                operar, el cajero lo lee donde está mirando y con la salida clara. */}
+            {motivoBloqueo && (
+              <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-900">
+                {motivoBloqueo}
+              </p>
+            )}
             <div className="flex gap-2 pt-1">
-              <Button type="button" variant="outline" className="flex-1" onClick={soloAcumular}>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                disabled={!puedeAcumular}
+                onClick={soloAcumular}
+              >
                 Acumular en esta venta
               </Button>
               {saldo.saldoUsable > 0 && (
-                <Button type="button" className="flex-1" onClick={aplicarUsar}>
+                <Button
+                  type="button"
+                  className="flex-1"
+                  disabled={!puedeUsar}
+                  onClick={aplicarUsar}
+                >
                   Usar cashback
                 </Button>
               )}

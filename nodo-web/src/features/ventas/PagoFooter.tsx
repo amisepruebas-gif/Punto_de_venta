@@ -6,6 +6,7 @@ import { useCarrito, subtotalItem } from "./carritoStore";
 import { useNodoSession } from "@/hooks/useNodoSession";
 import { useSucursal } from "@/features/sucursal/useSucursal";
 import { UsarPuntosModal } from "@/features/puntos/UsarPuntosModal";
+import { UsarRegaloModal } from "@/features/puntos/UsarRegaloModal";
 import type { MovimientoPago, VentaArticulo } from "@shared";
 
 /** Billetes con sus imágenes copiadas de `nodo_1/.../drawable/billete*`.
@@ -41,6 +42,11 @@ export type CobrarPayload = {
   /** Canje de cashback (POS): $ descuento aplicado + cliente para acreditar/debitar. */
   descuentoPuntos?: string;
   puntosTelefono?: string;
+  /** Fase 3 — crédito de regalo usado como descuento (NO es ingreso) +
+   *  identificador de la tarjeta para debitarlo (uno de los dos). */
+  descuentoRegalo?: string;
+  regaloCodigo?: string;
+  regaloPhone?: string;
 };
 
 type Props = {
@@ -81,6 +87,17 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     [itemsActivos],
   );
 
+  // Total cobrado por líneas de tarjeta de regalo. El cashback NO puede financiar
+  // la denominación de una gift card (convertiría cashback no-transferible en
+  // crédito transferible; rompe "crédito == dinero recibido"): el canje se limita
+  // al subtotal de PRODUCTOS reales (subtotalBruto − giftTotal).
+  const giftTotal = useMemo(
+    () =>
+      itemsActivos
+        .filter((it) => it.giftCard)
+        .reduce((acc, it) => acc + subtotalItem(it), 0),
+    [itemsActivos],
+  );
   const [recibido, setRecibido] = useState("");
   const [metodo, setMetodo] = useState<Metodo>("pagoEfectivo");
   const [error, setError] = useState<string | null>(null);
@@ -90,9 +107,29 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     null,
   );
   const [usarPuntosOpen, setUsarPuntosOpen] = useState(false);
+  // Fase 3 — crédito de regalo usado (pesos) + identificador de la tarjeta para
+  // debitarlo. Es un DESCUENTO (reduce el total; NO es ingreso — ya se contó al
+  // vender la tarjeta).
+  const [descuentoRegalo, setDescuentoRegalo] = useState(0);
+  const [regaloId, setRegaloId] = useState<{ codigo?: string; phone?: string } | null>(
+    null,
+  );
+  const [usarRegaloOpen, setUsarRegaloOpen] = useState(false);
+  // Un descuento (cashback o crédito de regalo) YA aplicado se invalida al editar
+  // el carrito — ver el effect de [subtotalBruto]. Sin avisar, el cajero cobraba
+  // creyendo que seguía aplicado (el botón sigue diciendo "Cashback ✓", porque
+  // ese ✓ refleja el CLIENTE vinculado, que sí se conserva). Esta bandera lo
+  // hace visible; se limpia al reaplicar o al empezar otra venta.
+  const [descuentoInvalidado, setDescuentoInvalidado] = useState(false);
 
-  // Total a cobrar = bruto menos los puntos aplicados como descuento.
-  const total = Math.max(0, subtotalBruto - descuentoPuntos);
+  // Cashback y crédito de regalo se TOPAN mutuamente contra el subtotal de
+  // PRODUCTOS reales (subtotalBruto − giftTotal): su suma nunca cubre la
+  // adquisición de una gift card (esa se paga con dinero real) ni se solapan.
+  const maxCashbackAplicable = Math.max(0, subtotalBruto - giftTotal - descuentoRegalo);
+  const maxRegaloAplicable = Math.max(0, subtotalBruto - giftTotal - descuentoPuntos);
+
+  // Total a cobrar = bruto menos cashback menos crédito de regalo (ambos descuentos).
+  const total = Math.max(0, subtotalBruto - descuentoPuntos - descuentoRegalo);
 
   // Si el carrito cambia (se edita), invalidar SOLO el DESCUENTO de cashback: se
   // calculó sobre el total anterior y podría exceder el nuevo (el cajero lo
@@ -100,7 +137,15 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   // así que se CONSERVA — si se borrara, fijar "acumular" antes de agregar
   // artículos perdería el teléfono y no se acreditaría nada.
   useEffect(() => {
+    // `descuentoPuntos`/`descuentoRegalo` NO van en deps a propósito: el closure
+    // trae el valor del render en que cambió el subtotal, es decir el descuento
+    // que estaba aplicado justo antes de invalidarse.
+    if (descuentoPuntos > 0 || descuentoRegalo > 0) setDescuentoInvalidado(true);
     setDescuentoPuntos(0);
+    // El crédito de regalo también se recalcula sobre el nuevo subtotal.
+    setDescuentoRegalo(0);
+    setRegaloId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtotalBruto]);
 
   // Reset explícito por señal del padre (al FINALIZAR o CANCELAR una venta) para
@@ -109,6 +154,9 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   useEffect(() => {
     setDescuentoPuntos(0);
     setClientePuntos(null);
+    setDescuentoRegalo(0);
+    setRegaloId(null);
+    setDescuentoInvalidado(false);
   }, [resetSignal]);
 
   // Comisión — solo aplica con tarjeta y si la sucursal tiene cobrarComision=true
@@ -148,6 +196,9 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
       setError(null);
       setDescuentoPuntos(0);
       setClientePuntos(null);
+      setDescuentoRegalo(0);
+      setRegaloId(null);
+      setDescuentoInvalidado(false);
     }
   }, [items.length]);
 
@@ -228,6 +279,13 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
             descuentoPuntos: String(descuentoPuntos),
           }
         : {}),
+      ...(descuentoRegalo > 0 && regaloId
+        ? {
+            descuentoRegalo: String(descuentoRegalo),
+            ...(regaloId.codigo ? { regaloCodigo: regaloId.codigo } : {}),
+            ...(regaloId.phone ? { regaloPhone: regaloId.phone } : {}),
+          }
+        : {}),
     });
   }
 
@@ -249,12 +307,24 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     <div className="w-full bg-transparent">
       <UsarPuntosModal
         open={usarPuntosOpen}
-        maxTotal={subtotalBruto}
+        maxTotal={maxCashbackAplicable}
         onClose={() => setUsarPuntosOpen(false)}
         onAplicar={({ telefono, descuento }) => {
           setDescuentoPuntos(descuento);
           setClientePuntos({ telefono });
+          setDescuentoInvalidado(false);
           setUsarPuntosOpen(false);
+        }}
+      />
+      <UsarRegaloModal
+        open={usarRegaloOpen}
+        maxTotal={maxRegaloAplicable}
+        onClose={() => setUsarRegaloOpen(false)}
+        onAplicar={({ codigo, phone, monto }) => {
+          setDescuentoRegalo(monto);
+          setRegaloId({ codigo, phone });
+          setDescuentoInvalidado(false);
+          setUsarRegaloOpen(false);
         }}
       />
       {tieneDesmarcados && !error && (
@@ -274,6 +344,11 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
       {motivoCobrar && !error && (
         <p className="pointer-events-auto bg-amber-100 px-3 py-0.5 text-center text-[11px] font-semibold text-amber-900">
           {motivoCobrar}
+        </p>
+      )}
+      {descuentoInvalidado && descuentoPuntos === 0 && descuentoRegalo === 0 && (
+        <p className="pointer-events-auto bg-indigo-100 px-3 py-0.5 text-center text-[11px] font-semibold text-indigo-900">
+          El carrito cambió: el descuento se quitó y hay que volver a aplicarlo.
         </p>
       )}
 
@@ -398,13 +473,22 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
                     ${totalConTarjeta}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setUsarPuntosOpen(true)}
-                  className="text-[11px] font-semibold text-indigo-600 underline"
-                >
-                  {clientePuntos ? "Cashback ✓" : "Cashback"}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUsarPuntosOpen(true)}
+                    className="text-[11px] font-semibold text-indigo-600 underline"
+                  >
+                    {clientePuntos ? "Cashback ✓" : "Cashback"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUsarRegaloOpen(true)}
+                    className="text-[11px] font-semibold text-amber-700 underline"
+                  >
+                    {descuentoRegalo > 0 ? "Crédito ✓" : "Crédito regalo"}
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="leading-tight">
@@ -419,13 +503,27 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
                     − ${descuentoPuntos.toFixed(2)} de cashback
                   </p>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setUsarPuntosOpen(true)}
-                  className="text-[11px] font-semibold text-indigo-600 underline"
-                >
-                  {clientePuntos ? "Cashback ✓" : "Cashback"}
-                </button>
+                {descuentoRegalo > 0 && (
+                  <p className="text-[11px] font-semibold text-amber-700 tabular-nums">
+                    − ${descuentoRegalo.toFixed(2)} de crédito de regalo
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUsarPuntosOpen(true)}
+                    className="text-[11px] font-semibold text-indigo-600 underline"
+                  >
+                    {clientePuntos ? "Cashback ✓" : "Cashback"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUsarRegaloOpen(true)}
+                    className="text-[11px] font-semibold text-amber-700 underline"
+                  >
+                    {descuentoRegalo > 0 ? "Crédito ✓" : "Crédito regalo"}
+                  </button>
+                </div>
               </div>
             )}
 

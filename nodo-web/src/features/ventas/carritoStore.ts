@@ -57,6 +57,11 @@ type CarritoState = {
   setVendedor: (nombre: string, idUsuario?: string) => void;
   agregar: (articulo: Articulo, opts?: AgregarOpts) => void;
   agregarManual: (input: { nombre: string; precio: string; cantidad?: number }) => void;
+  /** Feature 5 · Fase 2 — agrega la línea de VENTA de una tarjeta de regalo (la
+   *  denominación como crédito). Una sola por venta (reemplaza la previa). */
+  agregarGiftCard: (input: { nombre: string; monto: string }) => void;
+  /** Quita la línea de gift card (si el cajero cancela la venta de la tarjeta). */
+  quitarGiftCard: () => void;
   incrementar: (key: string) => void;
   decrementar: (key: string) => void;
   quitar: (key: string) => void;
@@ -176,10 +181,37 @@ export const useCarrito = create<CarritoState>()(
       return { items: [...st.items, nuevo] };
     }),
 
+  agregarGiftCard: ({ nombre, monto }) =>
+    set((st) => {
+      // Una sola gift card por venta: descarta cualquier línea gift previa.
+      // id "00000000" → NO mueve inventario (agruparItems la ignora), pero SÍ
+      // suma al total (ingreso). cantidad SIEMPRE "1" (una tarjeta = una
+      // denominación). El marcador `giftCard` sobrevive al strip de PagoFooter
+      // (no está en su lista de campos internos) y viaja a la Venta para el
+      // guard "emitida ⟺ cobrada".
+      const sinGift = st.items.filter((i) => !i.giftCard);
+      const nuevo: CarritoItem = {
+        key: `gift_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: "00000000",
+        cantidad: "1",
+        precio: monto,
+        nombrePublico: nombre,
+        descripcion: "",
+        giftCard: true,
+      };
+      return { items: [...sinGift, nuevo] };
+    }),
+
+  quitarGiftCard: () =>
+    set((st) => ({ items: st.items.filter((i) => !i.giftCard) })),
+
   incrementar: (key) =>
     set((st) => ({
       items: st.items.map((i) => {
-        if (i.key !== key) return i;
+        // La línea gift SIEMPRE es cantidad 1 (una tarjeta física = una
+        // denominación): incrementarla cargaría 2× crédito en un plástico con
+        // una etiqueta de $X → saldo ≠ etiqueta. No-op para gift.
+        if (i.key !== key || i.giftCard) return i;
         const nuevaCant = Number(i.cantidad) + 1;
         const update: Partial<CarritoItem> = { cantidad: String(nuevaCant) };
         if (i.aply_3x2) update.aply_3x2 = compute3x2(nuevaCant);

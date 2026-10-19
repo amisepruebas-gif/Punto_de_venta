@@ -354,6 +354,11 @@ export type VentaArticulo = {
    *  venta. Permite mostrar miniatura en el historial sin hacer lookups
    *  contra `articulos_n`. */
   imagenUrl?: string;
+  /** Feature 5 · Fase 2 — línea de VENTA de una tarjeta de regalo (la
+   *  denominación cargada como crédito prepago). Cuenta como INGRESO pero NO
+   *  mueve inventario (usa id "00000000"). El marcador permite al POS emitir la
+   *  gift card DESPUÉS de crear la venta (guard "emitida ⟺ cobrada"). */
+  giftCard?: boolean;
 };
 
 export type MovimientoPago =
@@ -405,6 +410,9 @@ export type Venta = {
   sobreventa?: boolean;
   /** Descuento aplicado por canje de puntos (pesos) — para el ticket/registro. */
   descuentoPuntos?: string;
+  /** Feature 5 · Fase 3 — crédito de regalo USADO (pesos) como descuento. NO es
+   *  ingreso (ya se contó al vender la tarjeta): reduce `montoCobro`. Auditoría. */
+  descuentoRegalo?: string;
   /** Cliente de puntos vinculado a la venta (auditoría). NO se guarda la
    *  contraseña temporal — es credencial. Se escriben vía updateDoc post-venta. */
   puntosClienteEmail?: string;

@@ -199,7 +199,10 @@ export function ConfirmarVentaModal({ data, onCancel, onConfirm }: Props) {
                 const precioFinal = Number(a.descuento) || precioBase;
                 const tieneDescuento =
                   !!a.descuento && precioFinal !== precioBase;
-                const isNoReg = a.id === "00000000" || a.id === "0";
+                // La línea gift comparte el id "00000000" pero NO es "no
+                // registrado" (tiene nombre propio y es un pago real) → excluir.
+                const isNoReg =
+                  (a.id === "00000000" || a.id === "0") && !a.giftCard;
                 const nombre = a.subvariacionNombre
                   ? `${a.nombrePublico} - ${a.subvariacionNombre}`
                   : a.nombrePublico;

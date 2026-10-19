@@ -44,6 +44,8 @@ export type NuevaVentaInput = {
   statusComision?: string;
   /** Descuento aplicado por canje de puntos (pesos). Se persiste para auditoría. */
   descuentoPuntos?: string;
+  /** Crédito de regalo USADO (pesos) como descuento. NO es ingreso. Auditoría. */
+  descuentoRegalo?: string;
   /**
    * Clave de idempotencia. Si se reintenta `crearVenta` con la MISMA key
    * (porque el primer intento falló con timeout y el cliente reintenta),
@@ -221,6 +223,9 @@ function buildVenta(p: NuevaVentaInput & {
   if (p.statusComision) v.statusComision = p.statusComision;
   if (p.descuentoPuntos && Number(p.descuentoPuntos) > 0) {
     v.descuentoPuntos = p.descuentoPuntos;
+  }
+  if (p.descuentoRegalo && Number(p.descuentoRegalo) > 0) {
+    v.descuentoRegalo = p.descuentoRegalo;
   }
   if (p.sobreventa) v.sobreventa = true;
   return v;

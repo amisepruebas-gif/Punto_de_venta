@@ -26,6 +26,9 @@ type ItemLegacy = {
   aply_3x2?: unknown;
   mayoreoAply?: unknown;
   numeroAp?: string;
+  /** Feature 5 · Fase 2 — línea de venta de una tarjeta de regalo. Comparte el
+   *  id "00000000" con los "no registrados" pero NO es NR. */
+  giftCard?: boolean;
 };
 
 const ID_NO_REGISTRADO = new Set(["00000000", "0", ""]);
@@ -38,7 +41,9 @@ function precioEfectivo(it: ItemLegacy): number {
 }
 
 function isNoRegistrado(it: ItemLegacy): boolean {
-  return ID_NO_REGISTRADO.has(it.id ?? "");
+  // La línea gift comparte el id "00000000" pero NO es "no registrado" (tiene
+  // nombre propio "Tarjeta de regalo $X" y es un pago real) → excluir.
+  return ID_NO_REGISTRADO.has(it.id ?? "") && it.giftCard !== true;
 }
 
 function metodoPago(m: string): { label: string; cls: string } {

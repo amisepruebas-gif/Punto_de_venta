@@ -110,7 +110,8 @@ export function TicketModal({ venta, onClose }: Props) {
             const sub = subtotalItem(a);
             const precioBase = Number(a.precio) || 0;
             const precioFinal = Number(a.descuento) || precioBase;
-            const isNoReg = a.id === "00000000" || a.id === "0";
+            // La gift comparte id "00000000" pero NO es "no registrado" → excluir.
+            const isNoReg = (a.id === "00000000" || a.id === "0") && !a.giftCard;
             const tieneDescuento = !!a.descuento && precioFinal !== precioBase;
             return (
               <li
