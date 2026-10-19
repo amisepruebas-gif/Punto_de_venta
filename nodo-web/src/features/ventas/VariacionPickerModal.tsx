@@ -4,7 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useTecladoFisico } from "@/hooks/useTecladoFisico";
 import { useBackHandler } from "@/lib/back-handler";
-import type { Articulo, ArticuloSubvariacion } from "@shared";
+import { useUbicacionStock } from "@/features/sucursal/useUbicacionStock";
+import {
+  leerStockTienda,
+  type Articulo,
+  type ArticuloSubvariacion,
+} from "@shared";
 
 type Props = {
   /** Cuando es null, el modal está cerrado. */
@@ -46,6 +51,8 @@ export function VariacionPickerModal({
   const inputRef = useRef<HTMLInputElement>(null);
   const otroInputRef = useRef<HTMLInputElement>(null);
   const hayTecladoFisico = useTecladoFisico();
+  // Stock de la sucursal del nodo (null mientras resuelve el default).
+  const ubicacion = useUbicacionStock();
 
   useEffect(() => {
     if (padre) {
@@ -191,7 +198,13 @@ export function VariacionPickerModal({
           ) : (
             <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-7">
               {filtradas.map((sv) => {
-                const sinStock = (Number(sv.cantidad) || 0) === 0;
+                const sinStock =
+                  ubicacion !== null &&
+                  leerStockTienda(
+                    sv,
+                    ubicacion.sucursalId,
+                    ubicacion.esDefault,
+                  ) === 0;
                 return (
                   <li key={sv.codigo ?? sv.nombre}>
                     <button

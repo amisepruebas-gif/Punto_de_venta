@@ -1,15 +1,10 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  runTransaction,
-  setDoc,
-} from "firebase/firestore";
+import { doc, runTransaction, setDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
+import { cargarSucursalesIds } from "@/features/sucursal/ubicacionStock";
 import {
   COL_DATOS,
-  COL_SUCURSALES,
   DOC_ARTICULOS_AC,
+  esSucursalDefault,
   fechaISO_MX,
   generarID,
   paths,
@@ -24,59 +19,9 @@ import {
 // ============================================================
 // Helpers de stock por ubicación
 // ============================================================
-
-/**
- * Resuelve si la sucursal `sid` es la default del negocio. Si el negocio
- * tiene `sucursalDefaultId` seteado, esa es la respuesta. Si no, fallback:
- * sólo se considera default cuando es la única sucursal conocida (caso
- * actual de "amise"). En la práctica el caller pasa una lista de sucursales
- * cuando aplica el fallback.
- */
-function esSucursalDefault(
-  sid: string,
-  defaultId: string | undefined,
-  fallbackPrimerId?: string,
-): boolean {
-  if (defaultId) return sid === defaultId;
-  if (fallbackPrimerId) return sid === fallbackPrimerId;
-  // Sin info: tratamos como NO default — entra al mapa, evita pisar `cantidad`.
-  return false;
-}
-
-/**
- * Lee el stock actual de tienda (no bodega) para una sucursal específica
- * sobre un Articulo o ArticuloSubvariacion. Sigue la regla:
- *   - Si `sid` es default → `obj.cantidad`.
- *   - Si no → `obj.cantidadPorSucursal?.[sid]`.
- *
- * Devuelve número (parseado), 0 si no hay valor.
- */
-export function leerStockTienda(
-  obj: { cantidad?: string; cantidadPorSucursal?: Record<string, string> },
-  sid: string,
-  esDefault: boolean,
-): number {
-  const raw = esDefault
-    ? obj.cantidad
-    : obj.cantidadPorSucursal?.[sid];
-  return Number(raw) || 0;
-}
-
-/**
- * Carga la lista de IDs de sucursales del negocio ordenados alfabéticamente.
- * Sirve para resolver `fallbackPrimerId` de `esSucursalDefault` cuando
- * `Negocio.sucursalDefaultId` no está seteado. Esto preserva el contrato
- * legacy de que la primera sucursal (única "amise" hoy) usa `cantidad`.
- */
-async function cargarSucursalesIds(negocioId: string): Promise<string[]> {
-  const snap = await getDocs(
-    collection(db, `${paths.negocio(negocioId)}/${COL_SUCURSALES}`),
-  );
-  const ids: string[] = [];
-  snap.forEach((d) => ids.push(d.id));
-  ids.sort();
-  return ids;
-}
+// `esSucursalDefault` vive en `@shared` (stockSucursal.ts) y
+// `cargarSucursalesIds` en `@/features/sucursal/ubicacionStock`, compartidos
+// con `stockService` (ventas / apartados).
 
 /**
  * Recalcula `cantidad` y `cantidadBodega` (snapshots a nivel de padre)
