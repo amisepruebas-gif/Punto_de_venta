@@ -234,6 +234,12 @@ async function resolverSubvariaciones(
         ...(imagenUrl ? { imagenUrl } : {}),
         ...(sv.cantidad ? { cantidad: sv.cantidad } : {}),
         ...(sv.cantidadBodega ? { cantidadBodega: sv.cantidadBodega } : {}),
+        // El editor no maneja el stock de las otras sucursales: se toma del
+        // doc actual para no borrar lo que cargaron resurtidos o el editor
+        // de existencias (ni pisar ventas hechas mientras se editaba).
+        ...(existenteSv?.cantidadPorSucursal
+          ? { cantidadPorSucursal: existenteSv.cantidadPorSucursal }
+          : {}),
         ...(sv.precioDescuento
           ? { precioDescuento: sv.precioDescuento }
           : {}),
