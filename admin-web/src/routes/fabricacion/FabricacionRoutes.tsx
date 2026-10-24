@@ -5,6 +5,8 @@ import { RegistrarProduccionPage } from "./RegistrarProduccionPage";
 import { FabricadosPage } from "./FabricadosPage";
 import { FabricadoDetallePage } from "./FabricadoDetallePage";
 import { ZonasPage } from "./ZonasPage";
+import { EtiquetasPage } from "./EtiquetasPage";
+import { CatalogoPage } from "./CatalogoPage";
 
 /** Rutas de `/fabricacion/*`. App.tsx solo monta este componente. */
 export function FabricacionRoutes() {
@@ -16,16 +18,9 @@ export function FabricacionRoutes() {
         <Route path="articulos" element={<FabricadosPage />} />
         <Route path="articulos/:id" element={<FabricadoDetallePage />} />
         <Route path="zonas" element={<ZonasPage />} />
-        <Route path="catalogo" element={<EnConstruccion />} />
+        <Route path="catalogo" element={<CatalogoPage />} />
+        <Route path="etiquetas" element={<EtiquetasPage />} />
       </Route>
     </Routes>
-  );
-}
-
-function EnConstruccion() {
-  return (
-    <p className="py-8 text-center text-sm text-muted-foreground">
-      Próximamente.
-    </p>
   );
 }
