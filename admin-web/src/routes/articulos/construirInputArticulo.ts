@@ -1,5 +1,9 @@
 import type { ArticuloInput } from "@/features/articulos/articuloService";
-import type { ArticuloSubvariacion } from "@shared";
+import {
+  escalonesDeTexto,
+  type ArticuloSubvariacion,
+  type EscalonTexto,
+} from "@shared";
 
 export type FormStateInput = {
   nombre: string;
@@ -14,8 +18,11 @@ export type FormStateInput = {
   etiquetas: string[];
   imagenUrl: string;
   tallas: string;
-  mayoreo: string;
-  cantMayoreo: string;
+  /** Escalones de mayoreo como texto (0–3 filas). */
+  escalones: EscalonTexto[];
+  /** Zona de precios ("" = sin zona, precio propio). */
+  zonaPrecioId: string;
+  soloMayoreo: boolean;
   precioDescuento: string;
   flag3x2: boolean;
   flagSeña: boolean;
@@ -80,8 +87,15 @@ export function construirInputArticulo(args: ConstruirInputArgs): ArticuloInput 
         ? { imagenUrl: form.imagenUrl }
         : {}),
     ...(form.tallas && { tallas: form.tallas }),
-    ...(form.mayoreo && { mayoreo: form.mayoreo }),
-    ...(form.cantMayoreo && { cantMayoreo: form.cantMayoreo }),
+    // Mayoreo: siempre explícito para poder QUITARLO (el service mezcla con
+    // el doc existente). Los escalones reemplazan al legacy de un escalón,
+    // que se vacía; `zonaPrecioId: ""` = sin zona. articuloService borra
+    // las llaves vacías.
+    escalonesMayoreo: escalonesDeTexto(form.escalones),
+    mayoreo: "",
+    cantMayoreo: "",
+    zonaPrecioId: form.zonaPrecioId,
+    soloMayoreo: form.soloMayoreo,
     // Espejo de FIX D3 para imagenUrl: emitimos `precioDescuento` SIEMPRE.
     // `""` del form llega como "" al service → "user limpió el descuento",
     // el service lo strip-ea antes de persistir. Sin esto, el conditional

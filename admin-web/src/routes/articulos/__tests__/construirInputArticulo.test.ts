@@ -17,8 +17,9 @@ const FORM_BASE: FormStateInput = {
   etiquetas: [],
   imagenUrl: "https://firebasestorage.googleapis.com/v0/b/x.appspot.com/o/media_web_new_version%2Farticulos%2F123.webp?alt=media&token=abc",
   tallas: "",
-  mayoreo: "",
-  cantMayoreo: "",
+  escalones: [],
+  zonaPrecioId: "",
+  soloMayoreo: false,
   precioDescuento: "",
   flag3x2: false,
   flagSeña: false,
@@ -119,5 +120,43 @@ describe("construirInputArticulo — guard de no-regresión imagenFile", () => {
       form: { ...FORM_BASE, precioDescuento: "120" },
     });
     expect(input.precioDescuento).toBe("120");
+  });
+});
+
+describe("construirInputArticulo — mayoreo, zona y solo mayoreo", () => {
+  it("convierte los escalones y vacía el mayoreo legacy", () => {
+    const input = construirInputArticulo({
+      ...ARGS_BASE,
+      form: {
+        ...FORM_BASE,
+        escalones: [
+          { minPz: "10", precio: "130" },
+          { minPz: "25", precio: "120" },
+        ],
+      },
+    });
+    expect(input.escalonesMayoreo).toEqual([
+      { minPz: 10, precio: 130 },
+      { minPz: 25, precio: 120 },
+    ]);
+    expect(input.mayoreo).toBe("");
+    expect(input.cantMayoreo).toBe("");
+  });
+
+  it("sin mayoreo manda [] explícito (para poder quitarlo)", () => {
+    const input = construirInputArticulo(ARGS_BASE);
+    expect(input.escalonesMayoreo).toEqual([]);
+  });
+
+  it("soloMayoreo y zonaPrecioId siempre van explícitos", () => {
+    const sin = construirInputArticulo(ARGS_BASE);
+    expect(sin.soloMayoreo).toBe(false);
+    expect(sin.zonaPrecioId).toBe("");
+    const con = construirInputArticulo({
+      ...ARGS_BASE,
+      form: { ...FORM_BASE, soloMayoreo: true, zonaPrecioId: "llaveros" },
+    });
+    expect(con.soloMayoreo).toBe(true);
+    expect(con.zonaPrecioId).toBe("llaveros");
   });
 });

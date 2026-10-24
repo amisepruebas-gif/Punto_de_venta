@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Save, Trash2, X as XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useArticulo } from "@/features/articulos/useArticulos";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useAuth } from "@/hooks/useAuth";
-import { useCategorias } from "@/features/categorias/useCategorias";
+import { CategoriaInlineSelect } from "@/features/categorias/CategoriaInlineSelect";
+import { EscalonesMayoreoEditor } from "@/features/mayoreo/EscalonesMayoreoEditor";
+import { ZonaPrecioSelect } from "@/features/zonas-precio/ZonaPrecioSelect";
+import { useZonasPrecio } from "@/features/zonas-precio/useZonasPrecio";
+import { useSucursales } from "@/features/sucursales/useSucursales";
 import { ImageUpload } from "@/features/articulos/ImageUpload";
 import { SubvariacionesEditor } from "@/features/articulos/SubvariacionesEditor";
 import { ArticulosSearchBar } from "@/features/articulos/ArticulosSearchBar";
@@ -18,7 +22,14 @@ import {
   eliminarArticulo,
 } from "@/features/articulos/articuloService";
 import { construirInputArticulo } from "@/routes/articulos/construirInputArticulo";
-import type { ArticuloSubvariacion } from "@shared";
+import {
+  escalonesDeTexto,
+  escalonesEditables,
+  resolverSucursalDefaultId,
+  validarEscalones,
+  type ArticuloSubvariacion,
+  type EscalonTexto,
+} from "@shared";
 
 type FormState = {
   nombre: string;
@@ -33,8 +44,11 @@ type FormState = {
   etiquetas: string[];
   imagenUrl: string;
   tallas: string;
-  mayoreo: string;
-  cantMayoreo: string;
+  /** Escalones de mayoreo como texto (0–3 filas). */
+  escalones: EscalonTexto[];
+  /** Zona de precios ("" = precio propio). */
+  zonaPrecioId: string;
+  soloMayoreo: boolean;
   precioDescuento: string;
   flag3x2: boolean;
   flagSeña: boolean;
@@ -55,8 +69,9 @@ const FORM_EMPTY: FormState = {
   etiquetas: [],
   imagenUrl: "",
   tallas: "",
-  mayoreo: "",
-  cantMayoreo: "",
+  escalones: [],
+  zonaPrecioId: "",
+  soloMayoreo: false,
   precioDescuento: "",
   flag3x2: false,
   flagSeña: false,
@@ -72,11 +87,22 @@ export function ArticuloEditPage() {
   // SubvariacionesEditor para que expanda + scrollee a esa sub al cargar.
   const [searchParams] = useSearchParams();
   const initialExpandCodigo = searchParams.get("sub") ?? undefined;
-  const { negocioId } = useNegocio();
+  const { negocioId, negocio } = useNegocio();
   const { user } = useAuth();
   const editing = !!id;
   const { articulo, loading } = useArticulo(id ?? null);
-  const { categorias, subcategorias } = useCategorias();
+  const { zonas } = useZonasPrecio();
+  const { sucursales } = useSucursales();
+  // Sucursal default: su stock de tienda vive en `cantidad`.
+  const defaultSucursalId = resolverSucursalDefaultId(
+    negocio?.sucursalDefaultId,
+    sucursales.map((s) => s.sucursalId),
+  );
+  // Al crear: a qué sucursal entra el "Stock tienda" ("" = la principal).
+  const [sucursalStockId, setSucursalStockId] = useState("");
+  // Lo fabricado mueve su stock solo desde Fabricación (lotes, embarques,
+  // reducciones con motivo): aquí se ve de solo lectura.
+  const esFabricado = editing && !!articulo?.fabricado;
 
   const [form, setForm] = useState<FormState>(FORM_EMPTY);
   const [imagenFile, setImagenFile] = useState<File | null>(null);
@@ -87,14 +113,17 @@ export function ArticuloEditPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Subcategorías filtradas por la categoría actualmente seleccionada.
-  const subcategoriasFiltradas = useMemo(
-    () =>
-      form.categoriaId
-        ? subcategorias.filter((sc) => sc.categoriaId === form.categoriaId)
-        : [],
-    [form.categoriaId, subcategorias],
+  // Con zona, precio y mayoreo los manda la zona (copia viva).
+  const zonaActual = useMemo(
+    () => zonas.find((z) => z.zonaId === form.zonaPrecioId) ?? null,
+    [zonas, form.zonaPrecioId],
   );
+  const precioVigente = zonaActual
+    ? String(zonaActual.precioVenta)
+    : form.precioVenta;
+  const escalonesVigentes = zonaActual
+    ? escalonesEditables({ escalonesMayoreo: zonaActual.escalones })
+    : form.escalones;
 
   // FIX D2: inicializar el form solo UNA VEZ por artículo (por id). Evita
   // resets mientras el user edita si llega un snapshot update remoto.
@@ -116,8 +145,9 @@ export function ArticuloEditPage() {
       etiquetas: articulo.etiquetas ?? [],
       imagenUrl: articulo.imagenUrl ?? "",
       tallas: articulo.tallas ?? "",
-      mayoreo: articulo.mayoreo ?? "",
-      cantMayoreo: articulo.cantMayoreo ?? "",
+      escalones: escalonesEditables(articulo),
+      zonaPrecioId: articulo.zonaPrecioId ?? "",
+      soloMayoreo: !!articulo.soloMayoreo,
       // Migración orgánica: si el padre traía el campo legacy `descuento`
       // pero no `precioDescuento`, lo subimos al campo nuevo. Al guardar
       // se persiste sólo en `precioDescuento` y `descuento` se vacía.
@@ -135,7 +165,7 @@ export function ArticuloEditPage() {
   }, [articulo]);
 
   const nCompra = Number(form.preciCompra) || 0;
-  const nVenta = Number(form.precioVenta) || 0;
+  const nVenta = Number(precioVigente) || 0;
   const nCantidad = Number(form.cantidad) || 0;
   const utilidad = nVenta - nCompra;
   const utilidadTotal = utilidad * nCantidad;
@@ -149,15 +179,25 @@ export function ArticuloEditPage() {
     if (!negocioId) return;
     setError(null);
 
-    if (!form.nombre.trim() || !form.precioVenta) {
+    if (!form.nombre.trim() || !precioVigente) {
       setError("Nombre y precio de venta son obligatorios");
       return;
+    }
+    if (!zonaActual) {
+      const errorEscalones = validarEscalones(
+        escalonesDeTexto(form.escalones),
+        nVenta,
+      );
+      if (errorEscalones) {
+        setError(errorEscalones);
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
       const input = construirInputArticulo({
-        form,
+        form: { ...form, precioVenta: precioVigente, escalones: escalonesVigentes },
         imagenFile,
         imagenViaNanobanana,
         imagenRemoved,
@@ -172,6 +212,30 @@ export function ArticuloEditPage() {
             }
           : null,
       });
+
+      if (esFabricado && articulo) {
+        // Valor VIVO: no pisar ventas ni lotes registrados mientras tanto.
+        input.cantidad = articulo.cantidad ?? "0";
+        if (articulo.cantidadBodega !== undefined) {
+          input.cantidadBodega = articulo.cantidadBodega;
+        } else {
+          delete input.cantidadBodega;
+        }
+      }
+      // Alta con stock de tienda en una sucursal que no es la principal:
+      // entra a `cantidadPorSucursal[sucursal]`, no a `cantidad`.
+      const sid = sucursalStockId;
+      if (!editing && sid && sid !== defaultSucursalId) {
+        input.cantidad = "0";
+        input.cantidadPorSucursal = { [sid]: form.cantidad || "0" };
+        if (input.subvariaciones) {
+          input.subvariaciones = input.subvariaciones.map((sv) => ({
+            ...sv,
+            cantidad: "0",
+            cantidadPorSucursal: { [sid]: sv.cantidad || "0" },
+          }));
+        }
+      }
 
       if (editing && id) {
         await actualizarArticulo(negocioId, id, input);
@@ -275,60 +339,12 @@ export function ArticuloEditPage() {
               onChange={(e) => set("referencia", e.target.value)}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="categoria">Categoría</Label>
-            <select
-              id="categoria"
-              value={form.categoriaId}
-              onChange={(e) => {
-                const nuevoCat = e.target.value;
-                setForm((s) => ({
-                  ...s,
-                  categoriaId: nuevoCat,
-                  // Si cambia la categoría, limpiar la subcategoría para
-                  // que no quede una huérfana del padre nuevo.
-                  subcategoriaId:
-                    nuevoCat &&
-                    subcategorias.find(
-                      (sc) =>
-                        sc.subcategoriaId === s.subcategoriaId &&
-                        sc.categoriaId === nuevoCat,
-                    )
-                      ? s.subcategoriaId
-                      : "",
-                }));
-              }}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-            >
-              <option value="">— Sin categoría —</option>
-              {categorias.map((c) => (
-                <option key={c.categoriaId} value={c.categoriaId}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="subcategoria">Subcategoría</Label>
-            <select
-              id="subcategoria"
-              value={form.subcategoriaId}
-              onChange={(e) => set("subcategoriaId", e.target.value)}
-              disabled={!form.categoriaId}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="">— Sin subcategoría —</option>
-              {subcategoriasFiltradas.map((sc) => (
-                <option key={sc.subcategoriaId} value={sc.subcategoriaId}>
-                  {sc.nombre}
-                </option>
-              ))}
-            </select>
-            {!form.categoriaId && (
-              <p className="text-[11px] text-muted-foreground">
-                Selecciona una categoría primero
-              </p>
-            )}
+          <div className="sm:col-span-2">
+            <CategoriaInlineSelect
+              categoriaId={form.categoriaId}
+              subcategoriaId={form.subcategoriaId}
+              onChange={(v) => setForm((s) => ({ ...s, ...v }))}
+            />
           </div>
           <div className="sm:col-span-2 space-y-1.5">
             <Label htmlFor="etiquetas">Etiquetas</Label>
@@ -360,22 +376,89 @@ export function ArticuloEditPage() {
               id="precioVenta"
               type="number"
               inputMode="decimal"
-              value={form.precioVenta}
+              value={precioVigente}
               onChange={(e) => set("precioVenta", e.target.value)}
+              disabled={!!zonaActual}
               required
             />
+          </div>
+          <div className="sm:col-span-2">
+            <ZonaPrecioSelect
+              value={form.zonaPrecioId}
+              categoriaId={form.categoriaId || undefined}
+              onChange={(zona) =>
+                setForm((s) =>
+                  zona
+                    ? {
+                        ...s,
+                        zonaPrecioId: zona.zonaId,
+                        precioVenta: String(zona.precioVenta),
+                        escalones: escalonesEditables({
+                          escalonesMayoreo: zona.escalones,
+                        }),
+                      }
+                    : { ...s, zonaPrecioId: "" },
+                )
+              }
+            />
+          </div>
+          <div className="sm:col-span-2 space-y-3 rounded-md border bg-muted/10 p-3">
+            <EscalonesMayoreoEditor
+              filas={escalonesVigentes}
+              onChange={(filas) => set("escalones", filas)}
+              disabled={!!zonaActual}
+            />
+            <label className="flex items-start gap-2">
+              <Checkbox
+                className="mt-0.5"
+                checked={form.soloMayoreo}
+                onChange={(e) => set("soloMayoreo", e.target.checked)}
+              />
+              <span className="text-sm">
+                Solo mayoreo
+                <span className="block text-[11px] text-muted-foreground">
+                  Solo lo ven y venden las sucursales de mayoreo.
+                </span>
+              </span>
+            </label>
           </div>
           {form.subvariaciones.length === 0 && (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="cantidad">Stock tienda</Label>
+                <Label htmlFor="cantidad">
+                  Stock tienda
+                  {editing
+                    ? ` · ${
+                        sucursales.find((s) => s.sucursalId === defaultSucursalId)
+                          ?.nombre ?? "principal"
+                      }`
+                    : ""}
+                </Label>
                 <Input
                   id="cantidad"
                   type="number"
                   inputMode="numeric"
-                  value={form.cantidad}
+                  value={esFabricado ? articulo?.cantidad ?? "0" : form.cantidad}
                   onChange={(e) => set("cantidad", e.target.value)}
+                  disabled={esFabricado}
                 />
+                {!editing && sucursales.length > 1 && (
+                  <select
+                    aria-label="Sucursal del stock de tienda"
+                    value={sucursalStockId}
+                    onChange={(e) => setSucursalStockId(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                  >
+                    {sucursales.map((s) => (
+                      <option
+                        key={s.sucursalId}
+                        value={s.sucursalId === defaultSucursalId ? "" : s.sucursalId}
+                      >
+                        Entra a: {s.nombre}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="cantidadBodega">Stock bodega</Label>
@@ -383,10 +466,27 @@ export function ArticuloEditPage() {
                   id="cantidadBodega"
                   type="number"
                   inputMode="numeric"
-                  value={form.cantidadBodega}
+                  value={
+                    esFabricado
+                      ? articulo?.cantidadBodega ?? "0"
+                      : form.cantidadBodega
+                  }
                   onChange={(e) => set("cantidadBodega", e.target.value)}
+                  disabled={esFabricado}
                 />
               </div>
+              {esFabricado && (
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  Artículo fabricado: su existencia se mueve en{" "}
+                  <Link
+                    to={`/fabricacion/articulos/${id}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Fabricación
+                  </Link>{" "}
+                  (producción, embarques y reducciones con motivo).
+                </p>
+              )}
             </>
           )}
           {form.subvariaciones.length > 0 && (
@@ -473,26 +573,6 @@ export function ArticuloEditPage() {
             </label>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="mayoreo">Precio mayoreo</Label>
-              <Input
-                id="mayoreo"
-                type="number"
-                inputMode="decimal"
-                value={form.mayoreo}
-                onChange={(e) => set("mayoreo", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cantMayoreo">Cantidad mín. mayoreo</Label>
-              <Input
-                id="cantMayoreo"
-                type="number"
-                inputMode="numeric"
-                value={form.cantMayoreo}
-                onChange={(e) => set("cantMayoreo", e.target.value)}
-              />
-            </div>
             <div className="space-y-1.5">
               <Label htmlFor="precioDescuento">Precio descuento</Label>
               <Input

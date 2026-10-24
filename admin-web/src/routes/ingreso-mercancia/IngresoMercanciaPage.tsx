@@ -21,7 +21,31 @@ import {
   sumarStock,
   type IngresoResult,
 } from "@/features/ingreso-mercancia/ingresoService";
-import type { ArticuloSubvariacion } from "@shared";
+import { useSucursales } from "@/features/sucursales/useSucursales";
+import {
+  leerStockUbicacion,
+  resolverUbicacionStock,
+  type ArticuloSubvariacion,
+  type UbicacionResuelta,
+} from "@shared";
+
+/** Destino del ingreso: "bodega" o un sucursalId. Se recuerda el último
+ *  por navegador (comodidad; si el almacenamiento falla, se pregunta). */
+const LS_DESTINO = "admin.ingreso.destino";
+function leerDestinoGuardado(): string {
+  try {
+    return localStorage.getItem(LS_DESTINO) ?? "";
+  } catch {
+    return "";
+  }
+}
+function guardarDestino(d: string) {
+  try {
+    localStorage.setItem(LS_DESTINO, d);
+  } catch {
+    /* sin almacenamiento: no pasa nada */
+  }
+}
 
 type ResueltoOk = Extract<ResolveResult, { ok: true }>;
 
@@ -32,7 +56,26 @@ type Toast = {
 };
 
 export function IngresoMercanciaPage() {
-  const { negocioId } = useNegocio();
+  const { negocioId, negocio, loading: cargandoNegocio } = useNegocio();
+  const { sucursales, loading: cargandoSucursales } = useSucursales();
+  const [destino, setDestino] = useState<string>(leerDestinoGuardado);
+  // Ubicación resuelta del destino (null hasta tener negocio y sucursales,
+  // o si el destino guardado ya no existe).
+  const ubicacion: UbicacionResuelta | null =
+    destino === "bodega"
+      ? { tipo: "bodega" }
+      : !cargandoNegocio &&
+          !cargandoSucursales &&
+          sucursales.some((s) => s.sucursalId === destino)
+        ? {
+            tipo: "sucursal",
+            ...resolverUbicacionStock(
+              destino,
+              negocio?.sucursalDefaultId,
+              sucursales.map((s) => s.sucursalId),
+            ),
+          }
+        : null;
   const { user } = useAuth();
   const { resolver } = useResolverCodigo();
 
@@ -83,6 +126,10 @@ export function IngresoMercanciaPage() {
 
   async function confirmar() {
     if (!resuelto || !negocioId) return;
+    if (!ubicacion) {
+      setToast({ tipo: "err", texto: "Elige a qué sucursal (o bodega) entra la mercancía" });
+      return;
+    }
     const n = Number(delta);
     if (!Number.isFinite(n) || n === 0) {
       setToast({ tipo: "err", texto: "La cantidad debe ser distinta de cero" });
@@ -95,6 +142,7 @@ export function IngresoMercanciaPage() {
         resuelto.articulo.id,
         n,
         {
+          ubicacion,
           ...(resuelto.subvariacion?.codigo
             ? { subvariacionCodigo: resuelto.subvariacion.codigo }
             : {}),
@@ -139,6 +187,31 @@ export function IngresoMercanciaPage() {
           <ScanLine className="mr-2 h-4 w-4" /> Escanear
         </Button>
       </div>
+
+        <div className="space-y-1.5 rounded-lg border bg-card p-3">
+          <label htmlFor="destino" className="text-xs font-medium">
+            ¿A dónde entra la mercancía?
+          </label>
+          <select
+            id="destino"
+            value={ubicacion ? destino : ""}
+            onChange={(e) => {
+              setDestino(e.target.value);
+              guardarDestino(e.target.value);
+            }}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+          >
+            <option value="" disabled>
+              — Elige sucursal o bodega —
+            </option>
+            {sucursales.map((s) => (
+              <option key={s.sucursalId} value={s.sucursalId}>
+                Tienda · {s.nombre}
+              </option>
+            ))}
+            <option value="bodega">Bodega</option>
+          </select>
+        </div>
 
       {/* Entrada manual (siempre visible — útil cuando no hay cámara o se
           usa lector USB que inyecta el código como teclado) */}
@@ -194,6 +267,7 @@ export function IngresoMercanciaPage() {
       {resuelto && (
         <PanelConfirmar
           resuelto={resuelto}
+          ubicacion={ubicacion}
           delta={delta}
           onDelta={setDelta}
           onCancelar={() => setResuelto(null)}
@@ -243,6 +317,7 @@ export function IngresoMercanciaPage() {
 
 function PanelConfirmar({
   resuelto,
+  ubicacion,
   delta,
   onDelta,
   onCancelar,
@@ -250,6 +325,8 @@ function PanelConfirmar({
   submitting,
 }: {
   resuelto: ResueltoOk;
+  /** Dónde se suma (null si aún no se elige el destino). */
+  ubicacion: UbicacionResuelta | null;
   delta: string;
   onDelta: (v: string) => void;
   onCancelar: () => void;
@@ -257,9 +334,9 @@ function PanelConfirmar({
   submitting: boolean;
 }) {
   const { articulo, subvariacion } = resuelto;
-  const cantidadActual = subvariacion
-    ? Number(subvariacion.cantidad) || 0
-    : Number(articulo.cantidad) || 0;
+  const cantidadActual = ubicacion
+    ? leerStockUbicacion(subvariacion ?? articulo, ubicacion)
+    : 0;
   const cantidadProyectada = cantidadActual + (Number(delta) || 0);
   const titulo = subvariacion
     ? `${articulo.nombre} — ${subvariacion.nombre}`
@@ -311,7 +388,7 @@ function PanelConfirmar({
           </Button>
           <Button
             onClick={onConfirmar}
-            disabled={submitting || !delta || Number(delta) === 0}
+            disabled={submitting || !ubicacion || !delta || Number(delta) === 0}
             className="h-10 flex-1"
           >
             <PlusCircle className="mr-2 h-4 w-4" />

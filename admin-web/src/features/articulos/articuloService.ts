@@ -346,6 +346,7 @@ export async function crearArticulo(
   if (articulo.precioDescuento === "") {
     delete articulo.precioDescuento;
   }
+  borrarLlavesVacias(articulo);
 
   await setDoc(doc(db, paths.articulo(negocioId, id)), articulo);
   await marcarArticuloEnSync(negocioId);
@@ -451,11 +452,20 @@ export async function actualizarArticulo(
   if (actualizado.descuento !== undefined) {
     delete actualizado.descuento;
   }
+  borrarLlavesVacias(actualizado);
 
   await setDoc(refDoc, actualizado);
   await marcarArticuloEnSync(negocioId);
 
   return actualizado;
+}
+
+/** `""` = "sin valor" en mayoreo legacy y zona: el builder los manda
+ *  vacíos para poder quitarlos y aquí se borran del doc. */
+function borrarLlavesVacias(a: Articulo): void {
+  if (a.mayoreo === "") delete a.mayoreo;
+  if (a.cantMayoreo === "") delete a.cantMayoreo;
+  if (a.zonaPrecioId === "") delete a.zonaPrecioId;
 }
 
 export async function eliminarArticulo(
