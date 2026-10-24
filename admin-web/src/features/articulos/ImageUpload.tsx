@@ -5,7 +5,7 @@ import { ImageLightbox } from "@/components/ImageLightbox";
 import { bytesHuman, compressToWebP } from "@/lib/image";
 import { quitarFondoFromFile, quitarFondoFromUrl } from "@/lib/quitarFondo";
 
-const MAX_BYTES = 800 * 1024; // 800 KB
+const MAX_BYTES = 500 * 1024; // 500 KB
 
 /** Metadata del File para que el padre sepa cómo se obtuvo (subido normal
  *  vs procesado con Gemini). El padre usa esto para registrar costo. */
@@ -60,7 +60,7 @@ export function ImageUpload({
   /**
    * Procesa una imagen recién seleccionada o capturada por la cámara:
    *   1. Valida que sea `image/*`.
-   *   2. La comprime a WebP ≤ 800 KB con la mejor resolución posible
+   *   2. La comprime a WebP ≤ 500 KB con la mejor resolución posible
    *      (lib `compressToWebP`).
    *   3. Setea el File comprimido como nuevo (el preview lo refleja
    *      automáticamente vía useEffect).
@@ -115,9 +115,9 @@ export function ImageUpload({
    * si solo hay `urlActual`, primero la descarga (puede fallar por CORS
    * si Storage no expone `Access-Control-Allow-Origin: *`).
    *
-   * El output de Gemini puede venir como PNG grande (>800 KB). Se vuelve
+   * El output de Gemini puede venir como PNG grande (>500 KB). Se vuelve
    * a pasar por `compressToWebP` para garantizar que cualquier imagen
-   * que termine en el carrito de subida sea WebP ≤ 800 KB.
+   * que termine en el carrito de subida sea WebP ≤ 500 KB.
    */
   async function handleQuitarFondo() {
     if (procesandoFondo) return;
@@ -132,7 +132,7 @@ export function ImageUpload({
       } else {
         return;
       }
-      // Recomprimir el resultado de Gemini para forzar WebP ≤ 800 KB.
+      // Recomprimir el resultado de Gemini para forzar WebP ≤ 500 KB.
       const blob = await compressToWebP(nuevoFile, { maxBytes: MAX_BYTES });
       const baseName =
         nuevoFile.name.replace(/\.[^.]+$/, "") || "imagen_nofondo";

@@ -1,6 +1,11 @@
 /**
  * Comprime cualquier imagen (image/*) a WebP client-side garantizando que el
- * resultado pesa ≤ `maxBytes` (default 800 KB).
+ * resultado pesa ≤ `maxBytes` (default 500 KB).
+ *
+ * Si el archivo ya es `image/webp` y pesa ≤ `maxBytes` se devuelve tal cual,
+ * sin decodificar ni re-codificar: evita la doble compresión cuando el
+ * `ImageUpload` ya lo comprimió al elegir la foto y el servicio vuelve a
+ * llamar a esta función al subirlo.
  *
  * Estrategia: empieza con la mejor resolución posible y baja iterativamente:
  *   1. Reduce `quality` en pasos de 0.05 desde 0.95 hasta 0.55.
@@ -14,7 +19,7 @@
  *   - el navegador no soporta `canvas.toBlob("image/webp")`.
  */
 
-const MAX_BYTES_DEFAULT = 800 * 1024; // 800 KB
+const MAX_BYTES_DEFAULT = 500 * 1024; // 500 KB
 const INITIAL_QUALITY = 0.95;
 const MIN_QUALITY = 0.55;
 const QUALITY_STEP = 0.05;
@@ -33,6 +38,12 @@ export async function compressToWebP(
   }
 
   const maxBytes = opts.maxBytes ?? MAX_BYTES_DEFAULT;
+
+  // Ya es WebP dentro del límite: devolverlo tal cual. Re-codificarlo (WebP
+  // con pérdida) solo lo degradaría sin ganar nada.
+  if (file.type === "image/webp" && file.size <= maxBytes) {
+    return file;
+  }
 
   const bitmap = await createImageBitmap(file).catch(() => null);
   if (!bitmap) {
