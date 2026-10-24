@@ -1,0 +1,17 @@
+{
+  "name": "recomprimir-imagenes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Recomprime a WebP (< 500 KB) las imágenes de artículos ya subidas a Firebase Storage",
+  "main": "recomprimir.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.0",
+    "sharp": "^0.35.5"
+  }
+}
