@@ -23,7 +23,16 @@ import {
   sumarStock,
   type IngresoResult,
 } from "@/features/ingreso-mercancia/ingresoService";
-import type { ArticuloSubvariacion } from "@shared";
+import { useUbicacionStock } from "@/features/sucursal/ubicacionStock";
+import {
+  leerStockUbicacion,
+  type ArticuloSubvariacion,
+  type UbicacionResuelta,
+} from "@shared";
+
+/** A dónde entra la mercancía: la tienda de la sucursal ligada a este
+ *  teléfono o la bodega. */
+type Destino = "tienda" | "bodega";
 
 type ResueltoOk = Extract<ResolveResult, { ok: true }>;
 
@@ -36,8 +45,16 @@ type Toast = {
 export function IngresoMercanciaPage() {
   const navigate = useNavigate();
   const { negocioId } = useNegocio();
-  const { auth } = useSession();
+  const { auth, binding } = useSession();
   const { resolver } = useResolverCodigo();
+  const ubicacionTienda = useUbicacionStock();
+  const [destino, setDestino] = useState<Destino>("tienda");
+  const ubicacion: UbicacionResuelta | null =
+    destino === "bodega"
+      ? { tipo: "bodega" }
+      : ubicacionTienda
+        ? { tipo: "sucursal", ...ubicacionTienda }
+        : null;
 
   const [scannerOpen, setScannerOpen] = useState(false);
   const [manualInput, setManualInput] = useState("");
@@ -85,6 +102,10 @@ export function IngresoMercanciaPage() {
 
   async function confirmar() {
     if (!resuelto || !negocioId) return;
+    if (!ubicacion) {
+      setToast({ tipo: "err", texto: "Aún se está resolviendo la sucursal; intenta de nuevo" });
+      return;
+    }
     const n = Number(delta);
     if (!Number.isFinite(n) || n === 0) {
       setToast({ tipo: "err", texto: "La cantidad debe ser distinta de cero" });
@@ -93,6 +114,7 @@ export function IngresoMercanciaPage() {
     setSubmitting(true);
     try {
       const res = await sumarStock(negocioId, resuelto.articulo.id, n, {
+        ubicacion,
         ...(resuelto.subvariacion?.codigo
           ? { subvariacionCodigo: resuelto.subvariacion.codigo }
           : {}),
@@ -104,7 +126,7 @@ export function IngresoMercanciaPage() {
         tipo: "ok",
         texto: `${n > 0 ? "+" : ""}${n} a ${
           resuelto.subvariacion?.nombre ?? resuelto.articulo.nombre
-        }`,
+        } (${destino === "bodega" ? "bodega" : "tienda"})`,
         detalle: `${res.cantidadAnterior} → ${res.cantidadNueva}`,
       });
       setResuelto(null);
@@ -140,6 +162,27 @@ export function IngresoMercanciaPage() {
       </header>
 
       <main className="flex-1 space-y-3 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <div className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-1" role="radiogroup" aria-label="A dónde entra la mercancía">
+          {(["tienda", "bodega"] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              role="radio"
+              aria-checked={destino === d}
+              onClick={() => setDestino(d)}
+              className={`truncate rounded-md px-3 py-2 text-sm font-medium transition ${
+                destino === d
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {d === "bodega"
+                ? "Bodega"
+                : `Tienda · ${binding?.sucursalNombre ?? "sucursal"}`}
+            </button>
+          ))}
+        </div>
+
         <form
           onSubmit={onManualSubmit}
           className="space-y-2 rounded-lg border bg-card p-3"
@@ -190,6 +233,7 @@ export function IngresoMercanciaPage() {
         {resuelto && (
           <PanelConfirmar
             resuelto={resuelto}
+            ubicacion={ubicacion}
             delta={delta}
             onDelta={setDelta}
             onCancelar={() => setResuelto(null)}
@@ -239,6 +283,7 @@ export function IngresoMercanciaPage() {
 
 function PanelConfirmar({
   resuelto,
+  ubicacion,
   delta,
   onDelta,
   onCancelar,
@@ -246,6 +291,8 @@ function PanelConfirmar({
   submitting,
 }: {
   resuelto: ResueltoOk;
+  /** Dónde se suma (null mientras resuelve la sucursal). */
+  ubicacion: UbicacionResuelta | null;
   delta: string;
   onDelta: (v: string) => void;
   onCancelar: () => void;
@@ -253,9 +300,9 @@ function PanelConfirmar({
   submitting: boolean;
 }) {
   const { articulo, subvariacion } = resuelto;
-  const cantidadActual = subvariacion
-    ? Number(subvariacion.cantidad) || 0
-    : Number(articulo.cantidad) || 0;
+  const cantidadActual = ubicacion
+    ? leerStockUbicacion(subvariacion ?? articulo, ubicacion)
+    : 0;
   const cantidadProyectada = cantidadActual + (Number(delta) || 0);
   const titulo = subvariacion
     ? `${articulo.nombre} — ${subvariacion.nombre}`
@@ -307,7 +354,7 @@ function PanelConfirmar({
         </Button>
         <Button
           onClick={onConfirmar}
-          disabled={submitting || !delta || Number(delta) === 0}
+          disabled={submitting || !ubicacion || !delta || Number(delta) === 0}
           className="flex-1"
         >
           <PlusCircle className="mr-2 h-4 w-4" />

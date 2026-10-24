@@ -18,7 +18,11 @@ import { useSucursales } from "@/features/sucursales/useSucursales";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useSession } from "@/hooks/useSession";
 import { crearResurtido } from "@/features/resurtidos/resurtidoService";
-import type { Articulo, ResurtidoLinea } from "@shared";
+import {
+  articuloVisibleEnSucursal,
+  type Articulo,
+  type ResurtidoLinea,
+} from "@shared";
 
 type Item = Omit<ResurtidoLinea, "disposicion">;
 
@@ -41,6 +45,17 @@ export function ResurtidoCreatePage() {
     () => items.reduce((acc, l) => acc + l.cantidadEnviada, 0),
     [items],
   );
+
+  // Líneas que la sucursal destino NO podrá vender: "solo mayoreo" a una
+  // sucursal normal, o artículos normales a una sucursal de mayoreo.
+  const destino = sucursales.find((s) => s.sucursalId === destinoId);
+  const noVendibles = useMemo(() => {
+    if (!destino) return [];
+    return items.filter((l) => {
+      const art = articulos.find((a) => a.id === l.articuloId);
+      return art && !articuloVisibleEnSucursal(art, destino.modoMayoreo);
+    });
+  }, [items, articulos, destino]);
 
   function addLinea(art: Articulo, sub?: { codigo: string; nombre: string }) {
     const nombre = sub
@@ -98,6 +113,15 @@ export function ResurtidoCreatePage() {
     }
     if (items.length === 0) {
       setError("Agrega al menos un artículo");
+      return;
+    }
+    if (
+      noVendibles.length > 0 &&
+      !window.confirm(
+        `${noVendibles.length} artículo(s) no se podrán vender en "${dest.nombre}" ` +
+          `(${dest.modoMayoreo ? "es sucursal de mayoreo" : "no es sucursal de mayoreo"}). ¿Enviar de todos modos?`,
+      )
+    ) {
       return;
     }
     setSubmitting(true);
@@ -262,6 +286,18 @@ export function ResurtidoCreatePage() {
           />
         </section>
 
+        {destino && noVendibles.length > 0 && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+            <p className="font-medium">
+              {destino.modoMayoreo
+                ? `"${destino.nombre}" es sucursal de mayoreo: solo vende artículos "solo mayoreo".`
+                : `"${destino.nombre}" no es sucursal de mayoreo: no vende artículos "solo mayoreo".`}
+            </p>
+            <p className="mt-1 text-xs">
+              No se podrán vender ahí: {noVendibles.map((l) => l.nombreSnapshot).join(", ")}
+            </p>
+          </div>
+        )}
         {error && (
           <p
             role="alert"

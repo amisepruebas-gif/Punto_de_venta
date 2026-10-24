@@ -11,13 +11,25 @@ import { useSession } from "@/hooks/useSession";
 import { useCategorias } from "@/features/categorias/useCategorias";
 import { ImageUpload } from "@/features/articulos/ImageUpload";
 import { SubvariacionesEditor } from "@/features/articulos/SubvariacionesEditor";
+import { EscalonesMayoreoEditor } from "@/features/articulos/EscalonesMayoreoEditor";
+import {
+  cargarUbicacionStock,
+  useUbicacionStock,
+} from "@/features/sucursal/ubicacionStock";
 import {
   crearArticulo,
   actualizarArticulo,
   eliminarArticulo,
   type ArticuloInput,
 } from "@/features/articulos/articuloService";
-import type { ArticuloSubvariacion } from "@shared";
+import {
+  escalonesDeTexto,
+  escalonesEditables,
+  leerStockTienda,
+  validarEscalones,
+  type ArticuloSubvariacion,
+  type EscalonTexto,
+} from "@shared";
 
 type FormState = {
   nombre: string;
@@ -32,12 +44,13 @@ type FormState = {
   etiquetas: string[];
   imagenUrl: string;
   tallas: string;
-  mayoreo: string;
-  cantMayoreo: string;
+  /** Escalones de mayoreo como texto (0–3 filas). */
+  escalones: EscalonTexto[];
   precioDescuento: string;
   flag3x2: boolean;
   flagSeña: boolean;
   promoBandera: boolean;
+  soloMayoreo: boolean;
   subvariaciones: ArticuloSubvariacion[];
 };
 
@@ -54,12 +67,12 @@ const FORM_EMPTY: FormState = {
   etiquetas: [],
   imagenUrl: "",
   tallas: "",
-  mayoreo: "",
-  cantMayoreo: "",
+  escalones: [],
   precioDescuento: "",
   flag3x2: false,
   flagSeña: false,
   promoBandera: false,
+  soloMayoreo: false,
   subvariaciones: [],
 };
 
@@ -67,10 +80,21 @@ export function ArticuloEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { negocioId } = useNegocio();
-  const { auth } = useSession();
+  const { auth, binding } = useSession();
   const editing = !!id;
   const { articulo, loading } = useArticulo(id ?? null);
   const { categorias, subcategorias } = useCategorias();
+  // Sucursal a la que está ligado el teléfono: el stock de tienda que se
+  // captura aquí es el de esa sucursal.
+  const ubicacion = useUbicacionStock();
+  // Con zona de precios, precio y mayoreo los manda la zona (se editan en
+  // admin). Lo fabricado mueve su stock solo desde Fabricación.
+  const conZona = editing && !!articulo?.zonaPrecioId;
+  const esFabricado = editing && !!articulo?.fabricado;
+  // Al editar, el stock de una sucursal que no es la principal se ve de
+  // solo lectura: para sumar piezas está Ingreso.
+  const stockTiendaBloqueado =
+    esFabricado || (editing && !!ubicacion && !ubicacion.esDefault);
 
   const [form, setForm] = useState<FormState>(FORM_EMPTY);
   const [imagenFile, setImagenFile] = useState<File | null>(null);
@@ -110,8 +134,7 @@ export function ArticuloEditPage() {
       etiquetas: articulo.etiquetas ?? [],
       imagenUrl: articulo.imagenUrl ?? "",
       tallas: articulo.tallas ?? "",
-      mayoreo: articulo.mayoreo ?? "",
-      cantMayoreo: articulo.cantMayoreo ?? "",
+      escalones: escalonesEditables(articulo),
       // Migración orgánica: si el doc trae el campo legacy `descuento`
       // (subtractivo en Android, "%"-shaped en mercancia-web vieja) lo
       // pre-llenamos en `precioDescuento` para no perderlo, pero al
@@ -121,6 +144,7 @@ export function ArticuloEditPage() {
       flag3x2: articulo["3x2"] !== undefined,
       flagSeña: articulo.seña !== undefined,
       promoBandera: articulo.promoBandera === "1",
+      soloMayoreo: !!articulo.soloMayoreo,
       subvariaciones: articulo.subvariaciones ?? [],
     });
     const n = (articulo.subvariaciones ?? []).length;
@@ -130,8 +154,12 @@ export function ArticuloEditPage() {
     setImagenViaNanobanana(false);
   }, [articulo]);
 
+  // Con zona, el precio vigente es el del artículo en vivo (copia de la
+  // zona), no el que se cargó al abrir el formulario.
+  const precioVentaVigente =
+    conZona && articulo ? articulo.precioVenta : form.precioVenta;
   const nCompra = Number(form.preciCompra) || 0;
-  const nVenta = Number(form.precioVenta) || 0;
+  const nVenta = Number(precioVentaVigente) || 0;
   const nCantidad = Number(form.cantidad) || 0;
   const utilidad = nVenta - nCompra;
   const utilidadTotal = utilidad * nCantidad;
@@ -145,21 +173,37 @@ export function ArticuloEditPage() {
     if (!negocioId) return;
     setError(null);
 
-    if (!form.nombre.trim() || !form.sigla.trim() || !form.precioVenta) {
+    if (!form.nombre.trim() || !form.sigla.trim() || !precioVentaVigente) {
       setError("Nombre, sigla y precio de venta son obligatorios");
       return;
+    }
+    const escalones = escalonesDeTexto(form.escalones);
+    if (!conZona) {
+      const errorEscalones = validarEscalones(escalones, nVenta);
+      if (errorEscalones) {
+        setError(errorEscalones);
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
+      const stock = await camposDeStock();
       const input: ArticuloInput = {
         nombre: form.nombre.trim(),
         sigla: form.sigla.trim(),
         referencia: form.referencia.trim(),
-        cantidad: form.cantidad || "0",
-        ...(form.cantidadBodega && { cantidadBodega: form.cantidadBodega }),
+        ...stock,
         preciCompra: form.preciCompra || "0",
-        precioVenta: form.precioVenta,
+        precioVenta: precioVentaVigente,
+        // Mayoreo: siempre explícito (articuloService mezcla con el doc
+        // existente y no borraría un campo omitido). Los escalones
+        // reemplazan al legacy de un escalón, que se vacía.
+        escalonesMayoreo:
+          conZona && articulo ? articulo.escalonesMayoreo ?? [] : escalones,
+        mayoreo: "",
+        cantMayoreo: "",
+        soloMayoreo: form.soloMayoreo,
         utilidad: String(utilidad),
         utilidadTotal: String(utilidadTotal),
         ...(form.categoriaId && { categoriaId: form.categoriaId }),
@@ -173,8 +217,6 @@ export function ArticuloEditPage() {
             ? { imagenUrl: form.imagenUrl }
             : {}),
         ...(form.tallas && { tallas: form.tallas }),
-        ...(form.mayoreo && { mayoreo: form.mayoreo }),
-        ...(form.cantMayoreo && { cantMayoreo: form.cantMayoreo }),
         // Espejo del patrón en admin-web: emitir `precioDescuento` siempre.
         // `""` = "operador quitó el descuento", el service lo strip-ea
         // antes de persistir. Nunca escribir el legacy `descuento`.
@@ -182,9 +224,11 @@ export function ArticuloEditPage() {
         ...(form.flag3x2 && { "3x2": "" }),
         ...(form.flagSeña && { seña: "" }),
         ...(form.promoBandera && { promoBandera: "1" }),
-        ...(form.subvariaciones.length > 0 && {
-          subvariaciones: form.subvariaciones,
-        }),
+        ...(stock.subvariaciones
+          ? { subvariaciones: stock.subvariaciones }
+          : form.subvariaciones.length > 0 && {
+              subvariaciones: form.subvariaciones,
+            }),
         imagenFile,
         imagenViaNanobanana,
         subvariacionesFiles: subvFiles,
@@ -212,6 +256,53 @@ export function ArticuloEditPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /**
+   * Campos de stock a guardar:
+   *   - Al editar, lo bloqueado (fabricado, o sucursal no principal) se
+   *     guarda con el valor VIVO del artículo para no pisar ventas.
+   *   - Al crear desde una sucursal que no es la principal, el stock
+   *     capturado entra a `cantidadPorSucursal[sucursal]`, no a `cantidad`.
+   */
+  async function camposDeStock(): Promise<
+    Pick<ArticuloInput, "cantidad" | "cantidadBodega" | "cantidadPorSucursal"> & {
+      subvariaciones?: ArticuloSubvariacion[];
+    }
+  > {
+    const bodega = esFabricado
+      ? articulo?.cantidadBodega
+      : form.cantidadBodega || undefined;
+    if (editing) {
+      return {
+        cantidad: stockTiendaBloqueado
+          ? articulo?.cantidad ?? "0"
+          : form.cantidad || "0",
+        ...(bodega ? { cantidadBodega: bodega } : {}),
+      };
+    }
+    const ub =
+      binding && negocioId
+        ? await cargarUbicacionStock(negocioId, binding.sucursalId)
+        : null;
+    if (!ub || ub.esDefault) {
+      return { cantidad: form.cantidad || "0", ...(bodega ? { cantidadBodega: bodega } : {}) };
+    }
+    const sid = ub.sucursalId;
+    return {
+      cantidad: "0",
+      cantidadPorSucursal: { [sid]: form.cantidad || "0" },
+      ...(bodega ? { cantidadBodega: bodega } : {}),
+      ...(form.subvariaciones.length > 0
+        ? {
+            subvariaciones: form.subvariaciones.map((sv) => ({
+              ...sv,
+              cantidad: "0",
+              cantidadPorSucursal: { [sid]: sv.cantidad || "0" },
+            })),
+          }
+        : {}),
+    };
   }
 
   async function onDelete() {
@@ -378,21 +469,42 @@ export function ArticuloEditPage() {
               id="precioVenta"
               type="number"
               inputMode="decimal"
-              value={form.precioVenta}
+              value={precioVentaVigente}
               onChange={(e) => set("precioVenta", e.target.value)}
+              disabled={conZona}
               required
             />
+            {conZona && (
+              <p className="text-[11px] text-muted-foreground">
+                Precio de la zona "{articulo?.zonaPrecioId}". Se cambia en
+                admin → Fabricación → Zonas de precios.
+              </p>
+            )}
           </div>
           {form.subvariaciones.length === 0 && (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="cantidad">Stock tienda</Label>
+                <Label htmlFor="cantidad">
+                  Stock tienda
+                  {binding ? ` · ${binding.sucursalNombre}` : ""}
+                </Label>
                 <Input
                   id="cantidad"
                   type="number"
                   inputMode="numeric"
-                  value={form.cantidad}
+                  value={
+                    stockTiendaBloqueado && articulo && ubicacion
+                      ? String(
+                          leerStockTienda(
+                            articulo,
+                            ubicacion.sucursalId,
+                            ubicacion.esDefault,
+                          ),
+                        )
+                      : form.cantidad
+                  }
                   onChange={(e) => set("cantidad", e.target.value)}
+                  disabled={stockTiendaBloqueado}
                 />
               </div>
               <div className="space-y-1.5">
@@ -401,10 +513,22 @@ export function ArticuloEditPage() {
                   id="cantidadBodega"
                   type="number"
                   inputMode="numeric"
-                  value={form.cantidadBodega}
+                  value={
+                    esFabricado
+                      ? articulo?.cantidadBodega ?? "0"
+                      : form.cantidadBodega
+                  }
                   onChange={(e) => set("cantidadBodega", e.target.value)}
+                  disabled={esFabricado}
                 />
               </div>
+              {stockTiendaBloqueado && (
+                <p className="text-[11px] text-muted-foreground sm:col-span-2">
+                  {esFabricado
+                    ? "Artículo fabricado: su existencia se maneja en admin → Fabricación (producción, embarques y reducciones con motivo)."
+                    : "Para sumar piezas a esta sucursal usa Ingreso de mercancía."}
+                </p>
+              )}
             </>
           )}
           {form.subvariaciones.length > 0 && (
@@ -488,28 +612,28 @@ export function ArticuloEditPage() {
               />
               <span className="text-sm">Marcar en promoción</span>
             </label>
+            <label className="flex items-start gap-2">
+              <Checkbox
+                className="mt-0.5"
+                checked={form.soloMayoreo}
+                onChange={(e) => set("soloMayoreo", e.target.checked)}
+              />
+              <span className="text-sm">
+                Solo mayoreo
+                <span className="block text-[11px] text-muted-foreground">
+                  Solo se vende en sucursales de mayoreo
+                </span>
+              </span>
+            </label>
           </div>
+          <EscalonesMayoreoEditor
+            filas={
+              conZona && articulo ? escalonesEditables(articulo) : form.escalones
+            }
+            onChange={(filas) => set("escalones", filas)}
+            disabled={conZona}
+          />
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="mayoreo">Precio mayoreo</Label>
-              <Input
-                id="mayoreo"
-                type="number"
-                inputMode="decimal"
-                value={form.mayoreo}
-                onChange={(e) => set("mayoreo", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cantMayoreo">Cantidad mín. mayoreo</Label>
-              <Input
-                id="cantMayoreo"
-                type="number"
-                inputMode="numeric"
-                value={form.cantMayoreo}
-                onChange={(e) => set("cantMayoreo", e.target.value)}
-              />
-            </div>
             <div className="space-y-1.5">
               <Label htmlFor="precioDescuento">Precio descuento</Label>
               <Input

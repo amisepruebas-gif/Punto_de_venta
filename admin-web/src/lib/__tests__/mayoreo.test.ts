@@ -3,6 +3,8 @@ import {
   aplicarEscalones,
   articuloVisibleEnSucursal,
   escalonAplicable,
+  escalonesDeTexto,
+  escalonesEditables,
   grupoMayoreo,
   precioCobradoLinea,
   resolverEscalones,
@@ -239,5 +241,36 @@ describe("subtotalLinea", () => {
     expect(precioCobradoLinea({ precio: "35" })).toBe(35);
     expect(subtotalLinea({ cantidad: "10", precio: "35", descuento: "30" })).toBe(300);
     expect(subtotalLinea({ cantidad: "6", precio: "35", aply_3x2: "2" })).toBe(140);
+  });
+});
+
+describe("escalonesEditables / escalonesDeTexto", () => {
+  it("carga los escalones guardados o el legacy tal cual (aunque sea inválido)", () => {
+    expect(escalonesEditables({ escalonesMayoreo: [{ minPz: 10, precio: 30 }] })).toEqual([
+      { minPz: "10", precio: "30" },
+    ]);
+    expect(escalonesEditables({ mayoreo: "40", cantMayoreo: "10" })).toEqual([
+      { minPz: "10", precio: "40" },
+    ]);
+    expect(escalonesEditables({})).toEqual([]);
+    expect(escalonesEditables({ escalonesMayoreo: [], mayoreo: "30", cantMayoreo: "10" })).toEqual([]);
+  });
+
+  it("convierte filas a escalones ignorando filas vacías", () => {
+    expect(
+      escalonesDeTexto([
+        { minPz: "10", precio: "30" },
+        { minPz: " ", precio: "" },
+        { minPz: "25", precio: "27.5" },
+      ]),
+    ).toEqual([
+      { minPz: 10, precio: 30 },
+      { minPz: 25, precio: 27.5 },
+    ]);
+  });
+
+  it("una fila a medias se convierte y validarEscalones la rechaza", () => {
+    const escalones = escalonesDeTexto([{ minPz: "10", precio: "" }]);
+    expect(validarEscalones(escalones, 35)).toMatch(/mayor que 0/);
   });
 });

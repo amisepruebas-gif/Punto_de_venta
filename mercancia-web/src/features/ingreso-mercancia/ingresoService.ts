@@ -11,7 +11,10 @@ import {
   fechaISO_MX,
   generarID,
   paths,
+  planearMovimientoStock,
+  ubicacionPersistible,
   type Articulo,
+  type UbicacionResuelta,
 } from "@shared";
 
 /**
@@ -29,8 +32,11 @@ export type IngresoResult = {
 
 /**
  * Suma `delta` al stock del artículo (si `subvariacionCodigo` se omite) o
- * al de la subvariación específica. Atómico vía `runTransaction`. Acepta
- * delta negativo (decrementa) — útil para ajustes manuales.
+ * al de la subvariación específica, en `ubicacion` (tienda de una sucursal
+ * o bodega). Atómico vía `runTransaction`; el cálculo es
+ * `planearMovimientoStock` de `@shared`. Acepta delta negativo (decrementa).
+ * Los artículos fabricados no entran por aquí: su stock se mueve con lotes
+ * de producción en admin → Fabricación.
  *
  * Tras commit, marca `articulos_ac` con nueva huella para que el POS y
  * otros admins se enteren del cambio (mismo patrón de sync).
@@ -40,10 +46,11 @@ export async function sumarStock(
   articuloId: string,
   delta: number,
   opts: {
+    ubicacion: UbicacionResuelta;
     subvariacionCodigo?: string;
     motivo?: string;
     usuario?: string;
-  } = {},
+  },
 ): Promise<IngresoResult> {
   if (!Number.isFinite(delta) || delta === 0) {
     throw new Error("delta debe ser un número distinto de cero");
@@ -57,64 +64,24 @@ export async function sumarStock(
       throw new Error(`Artículo ${articuloId} no existe`);
     }
     const a = snap.data() as Articulo;
-
-    if (opts.subvariacionCodigo) {
-      // Decremento sobre subvariación específica.
-      const subs = a.subvariaciones ?? [];
-      const idx = subs.findIndex((s) => s.codigo === opts.subvariacionCodigo);
-      if (idx === -1) {
-        throw new Error(
-          `Subvariación ${opts.subvariacionCodigo} no encontrada en ${articuloId}`,
-        );
-      }
-      const cantidadAnterior = Number(subs[idx].cantidad) || 0;
-      const cantidadNueva = cantidadAnterior + delta;
-      if (cantidadNueva < 0) {
-        throw new Error(
-          `Stock insuficiente: ${cantidadAnterior} disponible, intentando ${delta}`,
-        );
-      }
-      const nuevasSubs = subs.map((s, i) =>
-        i === idx ? { ...s, cantidad: String(cantidadNueva) } : s,
+    if (a.fabricado) {
+      throw new Error(
+        `"${a.nombre}" es fabricado: registra la producción en admin → Fabricación`,
       );
-      // Snapshot del padre = suma de variaciones.
-      const sumaPadre = nuevasSubs.reduce(
-        (acc, s) => acc + (Number(s.cantidad) || 0),
-        0,
-      );
-      tx.update(ref, {
-        subvariaciones: nuevasSubs,
-        cantidad: String(sumaPadre),
-      });
-      result = {
-        articuloId,
-        subvariacionCodigo: opts.subvariacionCodigo,
-        cantidadAnterior,
-        cantidadNueva,
-        delta,
-      };
-    } else {
-      // Decremento sobre el padre — solo si no tiene variaciones.
-      if ((a.subvariaciones?.length ?? 0) > 0) {
-        throw new Error(
-          "Este artículo tiene subvariaciones; especifica el codigo de la variación",
-        );
-      }
-      const cantidadAnterior = Number(a.cantidad) || 0;
-      const cantidadNueva = cantidadAnterior + delta;
-      if (cantidadNueva < 0) {
-        throw new Error(
-          `Stock insuficiente: ${cantidadAnterior} disponible, intentando ${delta}`,
-        );
-      }
-      tx.update(ref, { cantidad: String(cantidadNueva) });
-      result = {
-        articuloId,
-        cantidadAnterior,
-        cantidadNueva,
-        delta,
-      };
     }
+    const plan = planearMovimientoStock(a, opts.ubicacion, delta, {
+      subvariacionCodigo: opts.subvariacionCodigo,
+    });
+    tx.update(ref, plan.patch);
+    result = {
+      articuloId,
+      ...(opts.subvariacionCodigo
+        ? { subvariacionCodigo: opts.subvariacionCodigo }
+        : {}),
+      cantidadAnterior: plan.cantidadAnterior,
+      cantidadNueva: plan.cantidadNueva,
+      delta,
+    };
   });
 
   // Best-effort: marcar huella para que listeners se actualicen.
@@ -144,6 +111,7 @@ export async function sumarStock(
           ? { subvariacionCodigo: opts.subvariacionCodigo }
           : {}),
         delta,
+        ubicacion: ubicacionPersistible(opts.ubicacion),
         cantidadAnterior: result!.cantidadAnterior,
         cantidadNueva: result!.cantidadNueva,
         ...(opts.motivo ? { motivo: opts.motivo } : {}),

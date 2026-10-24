@@ -120,6 +120,38 @@ export function validarEscalones(
   return null;
 }
 
+/** Fila de un editor de escalones (los inputs se manejan como texto). */
+export type EscalonTexto = { minPz: string; precio: string };
+
+/**
+ * Filas iniciales del editor: los escalones guardados tal cual, también el
+ * mayoreo legacy aunque sea inválido, para que se pueda ver y corregir.
+ */
+export function escalonesEditables(
+  art: Pick<Articulo, "escalonesMayoreo" | "mayoreo" | "cantMayoreo">,
+): EscalonTexto[] {
+  if (Array.isArray(art.escalonesMayoreo)) {
+    return art.escalonesMayoreo.map((e) => ({
+      minPz: String(e.minPz),
+      precio: String(e.precio),
+    }));
+  }
+  if (art.mayoreo || art.cantMayoreo) {
+    return [{ minPz: art.cantMayoreo ?? "", precio: art.mayoreo ?? "" }];
+  }
+  return [];
+}
+
+/** Filas del editor → escalones (ignora filas vacías). La validez la
+ *  decide `validarEscalones`. */
+export function escalonesDeTexto(
+  filas: readonly EscalonTexto[],
+): EscalonMayoreo[] {
+  return filas
+    .filter((f) => f.minPz.trim() !== "" || f.precio.trim() !== "")
+    .map((f) => ({ minPz: Number(f.minPz), precio: Number(f.precio) }));
+}
+
 /**
  * Visibilidad de un artículo en los nodos de una sucursal: las sucursales
  * de mayoreo solo ven artículos `soloMayoreo`; las demás, todos menos esos.
