@@ -7,7 +7,8 @@
 // ============================================================
 
 const {onCall, onRequest, HttpsError} = require("firebase-functions/v2/https");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onDocumentCreated, onDocumentWritten} =
+  require("firebase-functions/v2/firestore");
 const {defineSecret} = require("firebase-functions/params");
 
 // Secret para la key de Gemini (Nano Banana). Se setea una sola vez con
@@ -2559,3 +2560,90 @@ exports.cerrarCreditoRegalo = onCall(
     },
 );
 
+
+// ============================================================
+// Fabricación — zona de precios viva
+// ============================================================
+// Un artículo con `zonaPrecioId` guarda copia de `precioVenta` y de los
+// escalones de su zona (lógica pura en lib/zonaPrecio.js). Dos triggers la
+// mantienen al día:
+//   - sincronizarZonaPrecio: al cambiar precio o escalones de una zona,
+//     reescribe solo los artículos que difieren.
+//   - asegurarPrecioZona: red de seguridad por artículo. Si alguien guarda
+//     un precio viejo (editor abierto, app sin actualizar), lo corrige. Las
+//     ventas solo tocan stock y salen sin leer nada.
+const zonaPrecio = require("./lib/zonaPrecio");
+
+function generarHuella() {
+  const d = new Date();
+  const pad = (n, w = 2) => String(n).padStart(w, "0");
+  return String(d.getFullYear()) + pad(d.getMonth() + 1) + pad(d.getDate()) +
+    pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) +
+    pad(d.getMilliseconds(), 3) + Math.random().toString(36).slice(2, 5);
+}
+
+exports.sincronizarZonaPrecio = onDocumentWritten(
+    {
+      document: "negocios_web_new_version/{negocioId}/" +
+        "zonas_precio_web_new_version/{zonaId}",
+    },
+    async (event) => {
+      const {negocioId, zonaId} = event.params;
+      const antes = event.data && event.data.before.exists ?
+        event.data.before.data() : null;
+      const despues = event.data && event.data.after.exists ?
+        event.data.after.data() : null;
+      if (despues && !zonaPrecio.zonaCambioPrecios(antes, despues)) return;
+
+      const base = db.collection(COL_NEGOCIOS).doc(negocioId);
+      const arts = await base.collection("articulos_n_web_new_version")
+          .where("zonaPrecioId", "==", zonaId).get();
+      if (arts.empty) return;
+
+      const writer = db.bulkWriter();
+      let escritos = 0;
+      arts.forEach((d) => {
+        // Zona borrada: el artículo se queda con su último precio, sin zona.
+        const patch = despues ?
+          zonaPrecio.calcularPatchZona(d.data(), despues) :
+          {zonaPrecioId: admin.firestore.FieldValue.delete()};
+        if (!patch) return;
+        writer.update(d.ref, patch);
+        escritos++;
+      });
+      await writer.close();
+      if (escritos > 0) {
+        await base.collection("datos_web_new_version").doc("articulos_ac")
+            .set({huella: generarHuella()}, {merge: true});
+      }
+      console.log(
+          `sincronizarZonaPrecio ${negocioId}/${zonaId}: ` +
+          `${escritos}/${arts.size} artículos actualizados`);
+    },
+);
+
+exports.asegurarPrecioZona = onDocumentWritten(
+    {
+      document: "negocios_web_new_version/{negocioId}/" +
+        "articulos_n_web_new_version/{articuloId}",
+    },
+    async (event) => {
+      const antes = event.data && event.data.before.exists ?
+        event.data.before.data() : null;
+      const despues = event.data && event.data.after.exists ?
+        event.data.after.data() : null;
+      if (!zonaPrecio.requiereVerificarZona(antes, despues)) return;
+
+      const {negocioId, articuloId} = event.params;
+      const zonaSnap = await db.collection(COL_NEGOCIOS).doc(negocioId)
+          .collection("zonas_precio_web_new_version")
+          .doc(despues.zonaPrecioId).get();
+      if (!zonaSnap.exists) return;
+      const patch = zonaPrecio.calcularPatchZona(despues, zonaSnap.data());
+      if (!patch) return;
+      await event.data.after.ref.update(patch);
+      console.log(
+          `asegurarPrecioZona ${negocioId}/${articuloId}: precio de zona ` +
+          `${despues.zonaPrecioId} restaurado`);
+    },
+);
