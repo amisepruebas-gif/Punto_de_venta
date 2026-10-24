@@ -15,10 +15,12 @@ import { usePinVentas } from "@/features/ventas-admin/usePinVentas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type {
-  MovimientoPago,
-  Venta,
-  VentaArticulo,
+import {
+  precioCobradoLinea,
+  subtotalLinea,
+  type MovimientoPago,
+  type Venta,
+  type VentaArticulo,
 } from "@shared";
 
 type RangoPreset = "hoy" | "7d" | "30d" | "custom";
@@ -576,8 +578,9 @@ function ArticuloRow({
   onZoom: (src: string, alt: string) => void;
 }) {
   const cantidad = Number(a.cantidad) || 0;
-  const precio = Number(a.descuento || a.precio) || 0;
-  const subtotal = cantidad * precio;
+  const precio = precioCobradoLinea(a);
+  // Respeta las piezas gratis del 3x2 (antes las cobraba en el total).
+  const subtotal = subtotalLinea(a);
   const tieneDescuento =
     !!a.descuento && Number(a.descuento) !== Number(a.precio);
 
@@ -625,6 +628,9 @@ function ArticuloRow({
             </>
           ) : (
             <>${precio}</>
+          )}
+          {a.mayoreoAply && (
+            <span className="ml-1 font-semibold text-orange-700">MAYOREO</span>
           )}
         </p>
         <p className="text-sm font-bold tabular-nums">${subtotal}</p>

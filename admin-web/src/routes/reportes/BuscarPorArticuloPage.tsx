@@ -5,6 +5,7 @@ import { useArticulos } from "@/features/articulos/useArticulos";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { subtotalLinea } from "@shared";
 
 const FILTRO_TODAS = "";
 const FILTRO_SIN_VARIACION = "__sin__";
@@ -58,14 +59,15 @@ export function BuscarPorArticuloPage() {
       for (const a of v.articulos) {
         if (!matchItem(a)) continue;
         const cant = Number(a.cantidad) || 0;
-        const precio = Number(a.precio) || 0;
+        // Ingreso COBRADO (promo, mayoreo y 3x2), no el precio de lista.
+        const monto = subtotalLinea(a);
         cantidad += cant;
-        ingresos += cant * precio;
+        ingresos += monto;
         const k = a.subvariacionCodigo ?? FILTRO_SIN_VARIACION;
         const prev = desglose.get(k);
         if (prev) {
           prev.cantidad += cant;
-          prev.ingresos += cant * precio;
+          prev.ingresos += monto;
         } else {
           desglose.set(k, {
             codigo: a.subvariacionCodigo,
@@ -73,7 +75,7 @@ export function BuscarPorArticuloPage() {
               a.subvariacionNombre ??
               (a.subvariacionCodigo ?? "(sin variación)"),
             cantidad: cant,
-            ingresos: cant * precio,
+            ingresos: monto,
           });
         }
       }

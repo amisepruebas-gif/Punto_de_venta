@@ -69,6 +69,11 @@ export function SucursalesPage() {
                       Tel: {s.telefono}
                     </p>
                   )}
+                  {s.modoMayoreo && (
+                    <span className="mt-1 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      Sucursal de mayoreo
+                    </span>
+                  )}
                 </div>
                 <span
                   className={
@@ -162,12 +167,26 @@ function SucursalFormModal({
   const [trMotivo, setTrMotivo] = useState(
     editando?.datosTransferencia?.motivo ?? "",
   );
+  const [modoMayoreo, setModoMayoreo] = useState(
+    editando?.modoMayoreo ?? false,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!nombre.trim() || !direccion.trim()) return;
+    // Cambiar el modo mayoreo cambia lo que las tablets pueden vender:
+    // confirmarlo explícitamente (activarlo en la tienda normal vaciaría su
+    // buscador).
+    if (editando && modoMayoreo !== !!editando.modoMayoreo) {
+      const ok = window.confirm(
+        modoMayoreo
+          ? `¿Convertir "${editando.nombre}" en sucursal de mayoreo?\n\nSus tablets SOLO verán y venderán artículos marcados "solo mayoreo"; todo lo demás desaparecerá de su buscador.`
+          : `¿Quitar el modo mayoreo a "${editando.nombre}"?\n\nSus tablets dejarán de ver los artículos "solo mayoreo" y volverán a ver el resto.`,
+      );
+      if (!ok) return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -190,6 +209,7 @@ function SucursalFormModal({
                 motivo: trMotivo.trim() || undefined,
               }
             : null,
+          modoMayoreo,
         });
       } else {
         await crearSucursal({
@@ -253,6 +273,25 @@ function SucursalFormModal({
 
         {editando && (
           <>
+            <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+              <p className="text-sm font-semibold">Venta de mayoreo</p>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={modoMayoreo}
+                  onChange={(e) => setModoMayoreo(e.target.checked)}
+                />
+                <span>
+                  Sucursal de mayoreo
+                  <span className="block text-xs text-muted-foreground">
+                    Sus tablets solo ven y venden artículos marcados "solo
+                    mayoreo". Las demás sucursales no ven esos artículos.
+                  </span>
+                </span>
+              </label>
+            </div>
+
             <div className="space-y-2 rounded-md border bg-muted/20 p-3">
               <p className="text-sm font-semibold">Pagos con tarjeta</p>
               <label className="flex items-center gap-2 text-sm">

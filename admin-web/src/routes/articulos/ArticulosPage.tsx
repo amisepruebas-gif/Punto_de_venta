@@ -7,11 +7,16 @@ import { useSucursales } from "@/features/sucursales/useSucursales";
 import { useNegocio } from "@/hooks/useNegocio";
 import { Button } from "@/components/ui/button";
 import {
+  resolverEscalones,
   resolverSucursalDefaultId,
   resolverUbicacionStock,
   type Articulo,
   type ArticuloSubvariacion,
 } from "@shared";
+
+/** Filtro por tipo: con precio de mayoreo (incluye el legacy de un
+ *  escalón, para revisarlo), "solo mayoreo" o fabricados. */
+type FiltroTipo = "" | "mayoreo" | "solo" | "fabricado";
 import { resolverTrios, StockTrio } from "@/features/articulos/stockHelpers";
 import { ArticulosSearchBar } from "@/features/articulos/ArticulosSearchBar";
 import { ExistenciasSucursalEditor } from "@/features/articulos/ExistenciasSucursalEditor";
@@ -29,6 +34,7 @@ export function ArticulosPage() {
   const [filtroCategoria, setFiltroCategoria] = useState(FILTRO_TODAS);
   const [filtroSubcategoria, setFiltroSubcategoria] = useState(FILTRO_TODAS);
   const [filtroEtiqueta, setFiltroEtiqueta] = useState(FILTRO_TODAS);
+  const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("");
   const [filtroVariaciones, setFiltroVariaciones] = useState<"" | "con" | "sin">(
     "",
   );
@@ -113,6 +119,12 @@ export function ArticulosPage() {
       if (filtroVariaciones === "sin" && (a.subvariaciones?.length ?? 0) > 0) {
         return false;
       }
+      // Filtro por tipo (mayoreo / solo mayoreo / fabricado)
+      if (filtroTipo === "mayoreo" && resolverEscalones(a).length === 0) {
+        return false;
+      }
+      if (filtroTipo === "solo" && !a.soloMayoreo) return false;
+      if (filtroTipo === "fabricado" && !a.fabricado) return false;
       // Búsqueda por texto libre
       if (!s) return true;
       return (
@@ -129,6 +141,7 @@ export function ArticulosPage() {
     filtroSubcategoria,
     filtroEtiqueta,
     filtroVariaciones,
+    filtroTipo,
     articulos,
   ]);
 
@@ -137,6 +150,7 @@ export function ArticulosPage() {
     setFiltroSubcategoria(FILTRO_TODAS);
     setFiltroEtiqueta(FILTRO_TODAS);
     setFiltroVariaciones("");
+    setFiltroTipo("");
     if (!editandoExistencias) setFiltroSucursal(FILTRO_TODAS);
   }
 
@@ -145,6 +159,7 @@ export function ArticulosPage() {
     !!filtroSubcategoria ||
     !!filtroEtiqueta ||
     !!filtroVariaciones ||
+    !!filtroTipo ||
     !!filtroSucursal;
 
   return (
@@ -170,7 +185,7 @@ export function ArticulosPage() {
         filtroSucursal={filtroSucursal}
       />
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <select
           value={filtroCategoria}
           onChange={(e) => {
@@ -224,6 +239,17 @@ export function ArticulosPage() {
           <option value="">Con y sin variaciones</option>
           <option value="con">Solo con variaciones</option>
           <option value="sin">Solo sin variaciones</option>
+        </select>
+        <select
+          value={filtroTipo}
+          onChange={(e) => setFiltroTipo(e.target.value as FiltroTipo)}
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+          title="Mayoreo y fabricación"
+        >
+          <option value="">Todos los tipos</option>
+          <option value="mayoreo">Con precio de mayoreo</option>
+          <option value="solo">Solo mayoreo</option>
+          <option value="fabricado">Fabricados</option>
         </select>
         <select
           value={filtroSucursal}
@@ -376,6 +402,7 @@ function ArticuloConVariaciones({
             #{articulo.id} · {articulo.sigla} · ${articulo.precioVenta} ·{" "}
             {subs.length} {subs.length === 1 ? "variación" : "variaciones"}
           </p>
+          <MarcasMayoreo articulo={articulo} />
         </Link>
         <StockTrio trio={trio} />
       </header>
@@ -487,6 +514,7 @@ function ArticuloCard({
             ))}
           </div>
         )}
+        <MarcasMayoreo articulo={articulo} />
         <div className="mt-1 flex items-baseline justify-between gap-2">
           <span className="text-base font-semibold">
             ${articulo.precioVenta}
@@ -495,6 +523,35 @@ function ArticuloCard({
         </div>
       </div>
     </Link>
+  );
+}
+
+/** Marcas de fabricación / mayoreo: "Solo mayoreo", "Fabricado" y los
+ *  escalones vigentes (incluido el mayoreo legacy de un escalón). */
+function MarcasMayoreo({ articulo }: { articulo: Articulo }) {
+  const escalones = resolverEscalones(articulo);
+  if (!articulo.soloMayoreo && !articulo.fabricado && escalones.length === 0) {
+    return null;
+  }
+  return (
+    <div className="flex flex-wrap gap-1 text-[10px]">
+      {articulo.soloMayoreo && (
+        <span className="rounded-full bg-emerald-100 px-1.5 font-medium text-emerald-800">
+          Solo mayoreo
+        </span>
+      )}
+      {articulo.fabricado && (
+        <span className="rounded-full bg-sky-100 px-1.5 font-medium text-sky-800">
+          Fabricado
+        </span>
+      )}
+      {escalones.length > 0 && (
+        <span className="rounded-full bg-orange-100 px-1.5 text-orange-800">
+          Mayoreo{" "}
+          {escalones.map((e) => `${e.minPz}+ $${e.precio}`).join(" · ")}
+        </span>
+      )}
+    </div>
   );
 }
 

@@ -25,6 +25,8 @@ type ItemLegacy = {
   seña?: string;
   aply_3x2?: unknown;
   mayoreoAply?: unknown;
+  /** Piezas mínimas del escalón de mayoreo aplicado (POS web). */
+  escalonMinPz?: number;
   numeroAp?: string;
   /** Feature 5 · Fase 2 — línea de venta de una tarjeta de regalo. Comparte el
    *  id "00000000" con los "no registrados" pero NO es NR. */
@@ -38,6 +40,11 @@ function precioEfectivo(it: ItemLegacy): number {
   if (it.precio) return Number(it.precio) || 0;
   if (it.precioVenta) return Number(it.precioVenta) || 0;
   return 0;
+}
+
+/** Piezas cobradas: las del 3x2 (`aply_3x2` = piezas gratis) no se cobran. */
+function piezasCobradas(it: ItemLegacy): number {
+  return (Number(it.cantidad) || 0) - (Number(it.aply_3x2) || 0);
 }
 
 function isNoRegistrado(it: ItemLegacy): boolean {
@@ -103,9 +110,10 @@ export function VentaDetailPage() {
     );
   }
 
-  // Subtotal según jerarquía precio descuento>precio>precioVenta
+  // Subtotal según jerarquía precio descuento>precio>precioVenta, sin las
+  // piezas gratis del 3x2.
   const subtotal = (venta.articulos as unknown as ItemLegacy[]).reduce(
-    (a, it) => a + (Number(it.cantidad) || 0) * precioEfectivo(it),
+    (a, it) => a + piezasCobradas(it) * precioEfectivo(it),
     0,
   );
 
@@ -212,8 +220,10 @@ function ItemRow({ item }: { item: ItemLegacy }) {
   const cant = Number(item.cantidad) || 0;
   const precioBase = Number(item.precio) || Number(item.precioVenta) || 0;
   const precioFinal = precioEfectivo(item);
-  const tieneDescuento = !!item.descuento;
-  const subtotal = cant * precioFinal;
+  const esMayoreo = item.mayoreoAply !== undefined;
+  // El precio de mayoreo también viaja en `descuento`: no es una promo.
+  const tieneDescuento = !!item.descuento && !esMayoreo;
+  const subtotal = piezasCobradas(item) * precioFinal;
   const noReg = isNoRegistrado(item);
   const esApartadoAnidado = !!item.numeroAp;
 
@@ -270,9 +280,9 @@ function ItemRow({ item }: { item: ItemLegacy }) {
               3 X 2
             </span>
           )}
-          {item.mayoreoAply !== undefined && (
+          {esMayoreo && (
             <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-orange-700 font-semibold">
-              MAYOREO
+              MAYOREO{item.escalonMinPz ? ` ${item.escalonMinPz}+ pz` : ""}
             </span>
           )}
           {tieneDescuento && (
@@ -283,7 +293,7 @@ function ItemRow({ item }: { item: ItemLegacy }) {
         </div>
       </div>
       <div className="col-span-2 text-right text-sm tabular-nums">
-        {tieneDescuento && precioBase !== precioFinal ? (
+        {(tieneDescuento || esMayoreo) && precioBase !== precioFinal ? (
           <div>
             <div className="text-xs text-muted-foreground line-through">
               ${precioBase.toFixed(2)}

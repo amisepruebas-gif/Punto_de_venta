@@ -24,6 +24,9 @@ export type EditSucursalCambios = {
   datosTransferencia?: DatosTransferencia | null;
   /** `null` para borrar la configuración (volver al ticket por defecto). */
   ticketConfig?: TicketConfig | null;
+  /** Sucursal de mayoreo: sus nodos solo ven y venden artículos
+   *  `soloMayoreo`. */
+  modoMayoreo?: boolean;
 };
 
 export async function editarSucursal(

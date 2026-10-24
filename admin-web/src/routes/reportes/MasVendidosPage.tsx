@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Trophy } from "lucide-react";
 import { useVentasAdmin } from "@/features/ventas-admin/useVentasAdmin";
 import { Button } from "@/components/ui/button";
+import { subtotalLinea } from "@shared";
 
 type Rango = 7 | 30 | 90;
 
@@ -48,8 +49,8 @@ export function MasVendidosPage() {
         // vendidos (si no, contaminarían el bucket id "00000000").
         if ((art as { giftCard?: boolean }).giftCard === true) continue;
         const cant = Number(art.cantidad) || 0;
-        const precio = Number(art.precio) || 0;
-        const monto = cant * precio;
+        // Monto COBRADO (promo, mayoreo y 3x2), no el precio de lista.
+        const monto = subtotalLinea(art);
 
         let agg = map.get(art.id);
         if (!agg) {
