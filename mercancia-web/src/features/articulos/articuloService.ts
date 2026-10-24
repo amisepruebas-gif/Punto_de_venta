@@ -1,7 +1,9 @@
 import {
+  collection,
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   runTransaction,
   setDoc,
 } from "firebase/firestore";
@@ -14,6 +16,7 @@ import {
 import { db, storage } from "@/firebase/config";
 import {
   paths,
+  COL_ARTICULOS,
   COL_DATOS,
   DOC_ARTICULOS_AC,
   fechaISO_MX,
@@ -35,6 +38,15 @@ import {
 // ============================================================
 // Path: negocios_web_new_version/{nid}/datos_web_new_version/_contadorArticulos
 // { ultimoId: string, actualizado: timestamp }
+//
+// El contador por sí solo no basta: si quedó ausente o atrasado respecto al
+// catálogo (migración legacy que copió artículos sin inicializarlo, altas
+// hechas desde otra app), `siguienteArticuloId(prev)` devuelve un ID que ya
+// existe y el `setDoc` de `crearArticulo` sobrescribe ese artículo en
+// silencio. Por eso SIEMPRE se escanea el máximo numérico de la colección y
+// la base es `max(contador, máximo existente)` — mismo enfoque que admin-web.
+// Costo: un pase por la colección por cada `crearArticulo`; es una acción
+// manual y poco frecuente, y no compensa arriesgar una sobreescritura.
 // ============================================================
 
 async function siguienteId(negocioId: string): Promise<string> {
@@ -42,13 +54,37 @@ async function siguienteId(negocioId: string): Promise<string> {
     db,
     `${paths.negocio(negocioId)}/${COL_DATOS}/_contadorArticulos`,
   );
+
+  // Máximo real del catálogo. Va fuera de la TX (el SDK web no puede leer una
+  // colección dentro de una transacción) y es indispensable contra "contador
+  // atrasado".
+  const colArticulos = collection(
+    db,
+    `${paths.negocio(negocioId)}/${COL_ARTICULOS}`,
+  );
+  const todos = await getDocs(colArticulos);
+  let scanMaxNum = 0;
+  todos.forEach((d) => {
+    if (/^\d+$/.test(d.id)) {
+      const n = parseInt(d.id, 10);
+      if (n > scanMaxNum) scanMaxNum = n;
+    }
+  });
+
   let nuevo = "";
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     const prev = snap.exists()
       ? (snap.data().ultimoId as string | undefined) ?? null
       : null;
-    nuevo = siguienteArticuloId(prev);
+    const counterNum = prev && /^\d+$/.test(prev) ? parseInt(prev, 10) : 0;
+    // max(contador, escaneo) cubre:
+    //   - contador ausente → gana el escaneo
+    //   - contador atrasado → gana el escaneo
+    //   - catálogo vacío (recién vaciado) → gana el contador
+    const baseNum = Math.max(counterNum, scanMaxNum);
+    const base = baseNum > 0 ? String(baseNum) : null;
+    nuevo = siguienteArticuloId(base);
     tx.set(ref, { ultimoId: nuevo }, { merge: true });
   });
   return nuevo;
@@ -175,6 +211,9 @@ async function resolverSubvariaciones(
         imagenProcesos = [...(imagenProcesos ?? []), registro];
       }
 
+      const precioDescuento =
+        sv.precioDescuento ?? existenteSv?.precioDescuento;
+
       const final: ArticuloSubvariacion = {
         codigo,
         nombre: sv.nombre,
@@ -182,6 +221,17 @@ async function resolverSubvariaciones(
         ...(imagenUrl ? { imagenUrl } : {}),
         ...(sv.cantidad ? { cantidad: sv.cantidad } : {}),
         ...(sv.cantidadBodega ? { cantidadBodega: sv.cantidadBodega } : {}),
+        // El editor no maneja el stock de las otras sucursales: se toma del
+        // doc actual para no borrar lo que cargaron resurtidos o el editor de
+        // existencias (ni pisar ventas hechas mientras se editaba; el form
+        // conserva la copia de cuando se abrió la página).
+        ...(existenteSv?.cantidadPorSucursal
+          ? { cantidadPorSucursal: existenteSv.cantidadPorSucursal }
+          : {}),
+        // Tampoco maneja el descuento por subvariación (se edita en
+        // admin-web): `sv` lo trae si el form lo conservó; si no, el del doc.
+        // `""` = quitar el descuento.
+        ...(precioDescuento ? { precioDescuento } : {}),
         ...(imagenProcesos && imagenProcesos.length > 0
           ? { imagenProcesos }
           : {}),
