@@ -1,4 +1,4 @@
-import { mostrarMetaTicket } from "@shared";
+import { mostrarMetaTicket, subtotalLinea } from "@shared";
 import type {
   Sucursal,
   Venta,
@@ -108,10 +108,10 @@ export function formatearTicketEscPos(
 
   // Items
   for (const a of venta.articulos) {
-    const cantNum = Number(a.cantidad) || 0;
     const precioBase = Number(a.precio) || 0;
     const precioFinal = Number(a.descuento) || precioBase;
-    const subtotal = cantNum * precioFinal;
+    // Subtotal cobrado: respeta 3x2 (antes lo ignoraba) y promo/mayoreo.
+    const subtotal = subtotalLinea(a);
 
     const nombre = a.subvariacionNombre
       ? `${a.nombrePublico} - ${a.subvariacionNombre}`
@@ -126,7 +126,13 @@ export function formatearTicketEscPos(
     if (a.talla) {
       out.push(`[L]<font size='small'>Talla: ${s(a.talla)}</font>\n`);
     }
-    if (a.descuento) {
+    if (a.mayoreoAply) {
+      // Igual que el ticket del Android nodo_1: "MAYOREO $precio c/u".
+      out.push(
+        `[L]<font size='small'>MAYOREO $${precioFinal} c/u</font>` +
+          `[R]<b>$${subtotal}</b>\n`,
+      );
+    } else if (a.descuento) {
       out.push(
         `[L]<font size='small'>$${precioBase} c/u con desc.</font>` +
           `[R]<b>$${subtotal}</b>\n`,

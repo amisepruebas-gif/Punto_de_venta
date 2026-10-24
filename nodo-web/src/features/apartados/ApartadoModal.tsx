@@ -47,7 +47,17 @@ export function ApartadoModal({ open, onClose, onSuccess }: Props) {
         nodoId,
         cliente: cliente.trim(),
         ...(telefono.trim() ? { telefonoCliente: telefono.trim() } : {}),
-        articulos: items.map(({ key: _k, ...rest }) => rest),
+        // Sin la llave ni el snapshot interno de mayoreo (el precio de
+        // mayoreo aplicado sí queda en `descuento` + `mayoreoAply`).
+        articulos: items.map(
+          ({
+            key: _k,
+            mayoreoGrupo: _g,
+            mayoreoEscalones: _e,
+            descuentoBase: _b,
+            ...rest
+          }) => rest,
+        ),
         totalApartado: total,
         señaInicial: señaNum,
       });

@@ -237,6 +237,11 @@ export function ConfirmarVentaModal({ data, onCancel, onConfirm }: Props) {
                         ) : (
                           <>${precioFinal} c/u</>
                         )}
+                        {a.mayoreoAply && (
+                          <span className="ml-1 font-bold uppercase text-emerald-600">
+                            · Mayoreo
+                          </span>
+                        )}
                       </span>
                       {a.seña && (
                         <span

@@ -13,7 +13,15 @@ import { useArticulos, type SearchEntry } from "@/features/articulos/useArticulo
 import { useCarrito } from "./carritoStore";
 import { useTecladoFisico } from "@/hooks/useTecladoFisico";
 import { useUbicacionStock } from "@/features/sucursal/useUbicacionStock";
-import { leerStockTienda, type Articulo } from "@shared";
+import { useSucursal } from "@/features/sucursal/useSucursal";
+import {
+  articuloVisibleEnSucursal,
+  leerStockTienda,
+  parseVariacionCodigo,
+  resolverEscalones,
+  type Articulo,
+  type ArticuloSubvariacion,
+} from "@shared";
 
 /** Handle imperativo expuesto al padre para re-enfocar el input tras
  *  cerrar modales (VariacionPicker o SenaPicker). Sin esto, el scanner
@@ -52,16 +60,34 @@ type Props = {
  */
 export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
   function BuscadorArticulo({ onPedirVariacion, onPedirSena }, ref) {
-  const { byId, searchIndex, loading } = useArticulos();
+  const { byId, bySigla, searchIndex, loading } = useArticulos();
   const { agregar, items, limpiar } = useCarrito();
   // Stock de la sucursal del nodo (null mientras resuelve el default).
   const ubicacion = useUbicacionStock();
+  // Modo mayoreo de la sucursal: decide qué artículos se pueden vender aquí.
+  const { sucursal, loading: cargandoSucursal } = useSucursal();
+  const modoMayoreo = !!sucursal?.modoMayoreo;
   const hayTecladoFisico = useTecladoFisico();
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const avisoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(
+    () => () => {
+      if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current);
+    },
+    [],
+  );
+
+  function avisar(texto: string) {
+    setAviso(texto);
+    if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current);
+    avisoTimerRef.current = setTimeout(() => setAviso(null), 5000);
+  }
 
   // Re-foco programático del input — usado tras `elegir` y expuesto al
   // padre via `useImperativeHandle` para que pueda restaurar el foco al
@@ -87,11 +113,20 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
 
   const sugerencias = useMemo<SearchEntry[]>(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return [];
+    // Sin sucursal resuelta no sabemos qué se vende aquí: no sugerir nada
+    // (dura lo que tarda la caché en entregar el doc de la sucursal).
+    if (!s || cargandoSucursal) return [];
     return searchIndex
-      .filter((e) => e.blob.includes(s))
+      .filter(
+        (e) => e.blob.includes(s) && articuloVisibleEnSucursal(e, modoMayoreo),
+      )
       .slice(0, MAX_SUGERENCIAS);
-  }, [q, searchIndex]);
+  }, [q, searchIndex, cargandoSucursal, modoMayoreo]);
+
+  const entryPorId = useMemo(
+    () => new Map(searchIndex.map((e) => [e.idPadre, e])),
+    [searchIndex],
+  );
 
   useEffect(() => {
     setHighlight(0);
@@ -110,7 +145,68 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
     if (!entry) return;
     const padre = byId.get(entry.idPadre);
     if (!padre) return;
-    if (entry.tieneVariaciones) {
+    elegirPadre(padre, entry.tieneVariaciones);
+  }
+
+  /**
+   * Coincidencia exacta del texto con un código: `v-NN-XXX` (solo con
+   * variaciones V2 activas), id de 8 dígitos o sigla. Es lo que manda el
+   * lector al escanear una etiqueta.
+   */
+  function resolverExacto(
+    texto: string,
+  ): { padre: Articulo; sub?: ArticuloSubvariacion } | null {
+    const limpio = texto.trim();
+    if (!limpio) return null;
+    if (limpio.startsWith("v-")) {
+      const partes = parseVariacionCodigo(limpio);
+      const padre = partes ? byId.get(partes.idPadre) : undefined;
+      const sub = padre?.subvariaciones?.find((s) => s.codigo === limpio);
+      if (!padre || !sub || !entryPorId.get(padre.id)?.tieneVariaciones) {
+        return null;
+      }
+      return { padre, sub };
+    }
+    const padre = byId.get(limpio) ?? bySigla.get(limpio.toLowerCase());
+    return padre ? { padre } : null;
+  }
+
+  /** Enter del lector: agrega la coincidencia exacta (o avisa si ese
+   *  artículo no se vende en esta sucursal). `false` si no hubo
+   *  coincidencia y hay que caer a la sugerencia resaltada. */
+  function intentarExacto(texto: string): boolean {
+    if (cargandoSucursal) return false;
+    const r = resolverExacto(texto);
+    if (!r) return false;
+    setQ("");
+    setAbierto(false);
+    if (!articuloVisibleEnSucursal(r.padre, modoMayoreo)) {
+      avisar(
+        modoMayoreo
+          ? `"${r.padre.nombre}" no es de mayoreo: esta sucursal solo vende artículos de mayoreo`
+          : `"${r.padre.nombre}" es solo mayoreo: no se vende en esta sucursal`,
+      );
+      reEnfocarInput();
+      return true;
+    }
+    // Variación escaneada: directo al carrito, salvo artículos con seña
+    // (su modal captura la descripción).
+    if (r.sub && r.padre.seña === undefined) {
+      const imagenUrl = r.sub.imagenUrl ?? r.padre.imagenUrl;
+      agregar(r.padre, {
+        subvariacionCodigo: r.sub.codigo,
+        subvariacionNombre: r.sub.nombre,
+        ...(imagenUrl ? { imagenUrl } : {}),
+      });
+      reEnfocarInput();
+      return true;
+    }
+    elegirPadre(r.padre, entryPorId.get(r.padre.id)?.tieneVariaciones ?? false);
+    return true;
+  }
+
+  function elegirPadre(padre: Articulo, tieneVariaciones: boolean) {
+    if (tieneVariaciones) {
       onPedirVariacion(padre);
       setQ("");
       setAbierto(false);
@@ -159,6 +255,15 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
             }}
             onFocus={() => setAbierto(true)}
             onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                // Si el cajero no movió la selección con las flechas, gana
+                // la coincidencia exacta (etiqueta escaneada) sobre la
+                // primera sugerencia.
+                if (highlight === 0 && intentarExacto(q)) return;
+                if (sugerencias.length) elegir(highlight);
+                return;
+              }
               if (!sugerencias.length) return;
               if (e.key === "ArrowDown") {
                 e.preventDefault();
@@ -166,9 +271,6 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 setHighlight((h) => Math.max(0, h - 1));
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                elegir(highlight);
               } else if (e.key === "Escape") {
                 setAbierto(false);
               }
@@ -210,6 +312,8 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
                           )
                         : null;
                     const imagen = padre?.imagenUrl;
+                    // Primer escalón de mayoreo, como pista para el cajero.
+                    const mayoreo = padre ? resolverEscalones(padre)[0] : undefined;
                     return (
                       <li
                         key={entry.idPadre}
@@ -254,6 +358,11 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
                           <p className="text-sm font-semibold">
                             ${padre?.precioVenta ?? "—"}
                           </p>
+                          {mayoreo && (
+                            <p className="text-[10px] font-medium text-emerald-600">
+                              {mayoreo.minPz}+ pz ${mayoreo.precio}
+                            </p>
+                          )}
                           {!entry.tieneVariaciones && cantidad !== null && (
                             <p className="text-[10px] text-muted-foreground">
                               {cantidad} pz
@@ -282,6 +391,11 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
           {items.length === 1 ? "artículo" : "artículos"}
         </span>
       </div>
+      {aviso && (
+        <p role="alert" className="px-4 pb-2 text-sm font-medium text-destructive">
+          {aviso}
+        </p>
+      )}
 
     </div>
   );

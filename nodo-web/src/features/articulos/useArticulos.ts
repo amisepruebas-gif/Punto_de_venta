@@ -29,6 +29,9 @@ export type SearchEntry = {
   blob: string;
   /** True si el padre tiene subvariaciones (POS abre el picker al elegirlo). */
   tieneVariaciones: boolean;
+  /** Artículo "solo mayoreo": el buscador lo muestra solo en sucursales con
+   *  `modoMayoreo` (`articuloVisibleEnSucursal`). */
+  soloMayoreo: boolean;
 };
 
 type State = {
@@ -129,6 +132,7 @@ export function useArticulos(): State {
             titulo: a.nombre,
             blob: blobParts.join(" ").toLowerCase(),
             tieneVariaciones: tieneVariaciones && usaSubvariacionesV2,
+            soloMayoreo: !!a.soloMayoreo,
           });
         }
 

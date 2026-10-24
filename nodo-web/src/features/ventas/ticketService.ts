@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { mostrarMetaTicket } from "@shared";
+import { mostrarMetaTicket, precioCobradoLinea, subtotalLinea } from "@shared";
 import type { Venta, Sucursal, TicketLinea } from "@shared";
 
 type PdfBlock = Record<string, unknown>;
@@ -70,9 +70,9 @@ export async function generarTicketPDF(params: {
   (pdfMake as { vfs: unknown }).vfs = vfs;
 
   const metodoPago = metodoLegible(venta.movimiento);
-  const subtotal = venta.articulos.reduce((acc, a) => {
-    return acc + (Number(a.cantidad) || 0) * (Number(a.precio) || 0);
-  }, 0);
+  // Precio COBRADO por línea (promo o mayoreo en `descuento`, 3x2 incluido).
+  // Antes usaba el precio de lista y el ticket no cuadraba con el total.
+  const subtotal = venta.articulos.reduce((acc, a) => acc + subtotalLinea(a), 0);
 
   const itemsTable = [
     [
@@ -83,14 +83,17 @@ export async function generarTicketPDF(params: {
     ],
     ...venta.articulos.map((a) => {
       const cant = Number(a.cantidad) || 0;
-      const precio = Number(a.precio) || 0;
+      const precio = precioCobradoLinea(a);
       return [
         { text: String(cant) },
         {
-          text: a.nombrePublico + (a.talla ? ` (${a.talla})` : ""),
+          text:
+            a.nombrePublico +
+            (a.talla ? ` (${a.talla})` : "") +
+            (a.mayoreoAply ? " · mayoreo" : ""),
         },
         { text: `$${precio.toFixed(2)}`, alignment: "right" },
-        { text: `$${(cant * precio).toFixed(2)}`, alignment: "right" },
+        { text: `$${subtotalLinea(a).toFixed(2)}`, alignment: "right" },
       ];
     }),
   ];

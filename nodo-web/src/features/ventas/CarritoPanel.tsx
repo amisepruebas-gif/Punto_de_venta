@@ -367,6 +367,11 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
             )}
             <span className="opacity-70"> c/u</span>
           </p>
+          {it.mayoreoAply && (
+            <p className="text-[9px] font-bold uppercase text-emerald-600">
+              Mayoreo {it.escalonMinPz ? `${it.escalonMinPz}+ pz` : ""}
+            </p>
+          )}
           <p className="text-base font-bold tabular-nums">
             ${subtotal.toFixed(0)}
           </p>

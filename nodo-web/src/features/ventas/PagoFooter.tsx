@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CreditCard, ArrowLeftRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useCarrito, subtotalItem } from "./carritoStore";
+import { useCarrito, subtotalItem, aVentaArticulo } from "./carritoStore";
 import { useNodoSession } from "@/hooks/useNodoSession";
 import { useSucursal } from "@/features/sucursal/useSucursal";
 import { UsarPuntosModal } from "@/features/puntos/UsarPuntosModal";
@@ -252,15 +252,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     onCobrar({
       // Solo enviamos los items ACTIVOS (no desmarcados). Limpiamos
       // también las flags internas del carrito.
-      articulos: itemsActivos.map(
-        ({
-          key: _k,
-          flag3x2: _f,
-          no_registrado: _n,
-          desmarcado: _dm,
-          ...rest
-        }) => rest,
-      ),
+      articulos: itemsActivos.map(aVentaArticulo),
       movimiento: metodo as MovimientoPago,
       montoCobro: String(total),
       montoPago: String(montoPago),

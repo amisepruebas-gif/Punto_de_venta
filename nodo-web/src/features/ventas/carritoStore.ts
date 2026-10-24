@@ -1,6 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { resolverPrecioEfectivo, type Articulo, type VentaArticulo } from "@shared";
+import {
+  aplicarEscalones,
+  grupoMayoreo,
+  resolverEscalones,
+  resolverPrecioEfectivo,
+  subtotalLinea,
+  type Articulo,
+  type EscalonMayoreo,
+  type VentaArticulo,
+} from "@shared";
 
 /**
  * Item del carrito. Replica el shape del Android nodo_1, soportando:
@@ -25,6 +34,14 @@ type CarritoItem = VentaArticulo & {
    *  confirma con el cliente. Mientras haya algún desmarcado, COBRAR
    *  queda bloqueado. */
   desmarcado?: boolean;
+  /** Mayoreo: grupo con el que se suman piezas (zona o artículo) y
+   *  escalones del artículo al agregarlo. El precio del escalón lo pone
+   *  `aplicarEscalones` en `descuento` + `mayoreoAply`. Internos del POS:
+   *  `aVentaArticulo` los quita antes de guardar la venta. */
+  mayoreoGrupo?: string;
+  mayoreoEscalones?: EscalonMayoreo[];
+  /** Descuento previo de la línea mientras el mayoreo está aplicado. */
+  descuentoBase?: string;
 };
 
 /** Opciones al agregar un artículo al carrito (Fase 5: incluye subvariación). */
@@ -87,7 +104,19 @@ function compute3x2(cantidad: number): string {
 
 export const useCarrito = create<CarritoState>()(
   persist(
-    (set) => ({
+    (set) => {
+      // Todo cambio de líneas pasa por aquí y recalcula el mayoreo del
+      // carrito completo: una pieza más de un modelo puede subir de escalón
+      // a otra línea de la misma zona.
+      const setItems = (fn: (st: CarritoState) => Partial<CarritoState>) =>
+        set((st) => {
+          const next = fn(st);
+          return next.items
+            ? { ...next, items: aplicarEscalones(next.items) }
+            : next;
+        });
+
+      return {
       items: [],
       enTurno: null,
       vendedorIdUsuario: null,
@@ -99,7 +128,7 @@ export const useCarrito = create<CarritoState>()(
         }),
 
   agregar: (art, opts) =>
-    set((st) => {
+    setItems((st) => {
       const talla = opts?.talla;
       const subvariacionCodigo = opts?.subvariacionCodigo;
       const subvariacionNombre = opts?.subvariacionNombre;
@@ -145,6 +174,9 @@ export const useCarrito = create<CarritoState>()(
         art,
         subDoc,
       );
+      // Mayoreo: snapshot de escalones y del grupo (zona o artículo). El
+      // precio del escalón lo calcula `aplicarEscalones` vía setItems.
+      const escalones = resolverEscalones(art);
       const nuevo: CarritoItem = {
         key,
         id: art.id,
@@ -160,12 +192,15 @@ export const useCarrito = create<CarritoState>()(
         ...(seña ? { seña } : {}),
         ...(variacionLibre ? { variacionLibre: true } : {}),
         ...(descuentoSnapshot ? { descuento: descuentoSnapshot } : {}),
+        ...(escalones.length > 0
+          ? { mayoreoGrupo: grupoMayoreo(art), mayoreoEscalones: escalones }
+          : {}),
       };
       return { items: [...st.items, nuevo] };
     }),
 
   agregarManual: ({ nombre, precio, cantidad = 1 }) =>
-    set((st) => {
+    setItems((st) => {
       // Items no registrados llevan id "00000000" — replica Android.
       // Cada manual es único (key con timestamp para no fusionarlos).
       const key = `noreg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -182,7 +217,7 @@ export const useCarrito = create<CarritoState>()(
     }),
 
   agregarGiftCard: ({ nombre, monto }) =>
-    set((st) => {
+    setItems((st) => {
       // Una sola gift card por venta: descarta cualquier línea gift previa.
       // id "00000000" → NO mueve inventario (agruparItems la ignora), pero SÍ
       // suma al total (ingreso). cantidad SIEMPRE "1" (una tarjeta = una
@@ -203,10 +238,10 @@ export const useCarrito = create<CarritoState>()(
     }),
 
   quitarGiftCard: () =>
-    set((st) => ({ items: st.items.filter((i) => !i.giftCard) })),
+    setItems((st) => ({ items: st.items.filter((i) => !i.giftCard) })),
 
   incrementar: (key) =>
-    set((st) => ({
+    setItems((st) => ({
       items: st.items.map((i) => {
         // La línea gift SIEMPRE es cantidad 1 (una tarjeta física = una
         // denominación): incrementarla cargaría 2× crédito en un plástico con
@@ -220,7 +255,7 @@ export const useCarrito = create<CarritoState>()(
     })),
 
   decrementar: (key) =>
-    set((st) => {
+    setItems((st) => {
       const items = st.items
         .map((i) => {
           if (i.key !== key) return i;
@@ -240,17 +275,28 @@ export const useCarrito = create<CarritoState>()(
     }),
 
   quitar: (key) =>
-    set((st) => ({ items: st.items.filter((i) => i.key !== key) })),
+    setItems((st) => ({ items: st.items.filter((i) => i.key !== key) })),
 
   limpiar: () => set({ items: [] }),
 
   setDescuento: (key, descuento) =>
-    set((st) => ({
-      items: st.items.map((i) => (i.key === key ? { ...i, descuento } : i)),
+    setItems((st) => ({
+      items: st.items.map((i) => {
+        if (i.key !== key) return i;
+        // Precio manual del cajero: pasa a ser el precio "normal" de la
+        // línea; el mayoreo solo lo reemplaza si es más barato.
+        const {
+          mayoreoAply: _a,
+          escalonMinPz: _e,
+          descuentoBase: _b,
+          ...resto
+        } = i;
+        return { ...resto, descuento };
+      }),
     })),
 
   toggleAply3x2: (key) =>
-    set((st) => ({
+    setItems((st) => ({
       items: st.items.map((i) => {
         if (i.key !== key || !i.flag3x2) return i;
         if (i.aply_3x2) {
@@ -270,12 +316,13 @@ export const useCarrito = create<CarritoState>()(
     })),
 
       toggleDesmarcado: (key) =>
-        set((st) => ({
+        setItems((st) => ({
           items: st.items.map((i) =>
             i.key === key ? { ...i, desmarcado: !i.desmarcado } : i,
           ),
         })),
-    }),
+      };
+    },
     {
       // Persiste sólo el vendedor en turno (sin items ni demás estado del
       // carrito) en localStorage. Sobrevive recargas hasta que el cajero
@@ -290,13 +337,25 @@ export const useCarrito = create<CarritoState>()(
   ),
 );
 
-/** Calcula el subtotal de un item respetando 3x2 y descuento. */
+/** Calcula el subtotal de un item respetando 3x2 y descuento (o precio de
+ *  mayoreo, que también viaja en `descuento`). */
 export function subtotalItem(it: CarritoItem | VentaArticulo): number {
-  const cant = Number((it as CarritoItem).cantidad) || 0;
-  const aply3x2 = Number((it as CarritoItem).aply_3x2) || 0;
-  // Precio efectivo: descuento > precio
-  const precio = Number((it as CarritoItem).descuento) ||
-    Number((it as CarritoItem).precio) || 0;
-  // 3x2: por cada 3, se cobran 2 → restar aply3x2 unidades.
-  return (cant - aply3x2) * precio;
+  return subtotalLinea(it);
+}
+
+/** Línea del carrito → línea de la venta (o del apartado): quita la llave,
+ *  las flags de UI y el snapshot de mayoreo. `mayoreoAply` y
+ *  `escalonMinPz` sí viajan: marcan la línea cobrada a precio de mayoreo. */
+export function aVentaArticulo(it: CarritoItem): VentaArticulo {
+  const {
+    key: _k,
+    flag3x2: _f,
+    no_registrado: _n,
+    desmarcado: _dm,
+    mayoreoGrupo: _g,
+    mayoreoEscalones: _e,
+    descuentoBase: _b,
+    ...rest
+  } = it;
+  return rest;
 }
