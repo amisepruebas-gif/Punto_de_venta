@@ -53,3 +53,26 @@ export function resolverPrecioEfectivo(
   }
   return { precio: baseNum };
 }
+
+/** Campos de una línea de venta (o de carrito) que definen lo cobrado.
+ *  `aply_3x2` no está en `VentaArticulo` pero viaja en las ventas del POS. */
+export type LineaCobro = {
+  cantidad?: string;
+  precio?: string;
+  descuento?: string;
+  aply_3x2?: string;
+};
+
+/** Precio cobrado por pieza: `descuento` (promo o mayoreo) si hay, si no
+ *  `precio`. */
+export function precioCobradoLinea(l: LineaCobro): number {
+  return Number(l.descuento) || Number(l.precio) || 0;
+}
+
+/** Subtotal cobrado de una línea: (piezas − piezas gratis del 3x2) ×
+ *  precio cobrado. Fórmula única para carrito, tickets y reportes. */
+export function subtotalLinea(l: LineaCobro): number {
+  const cant = Number(l.cantidad) || 0;
+  const gratis = Number(l.aply_3x2) || 0;
+  return (cant - gratis) * precioCobradoLinea(l);
+}

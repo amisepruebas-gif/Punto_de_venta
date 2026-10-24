@@ -3,6 +3,8 @@ export * from "./collections";
 export * from "./schema";
 export * from "./precio";
 export * from "./stockSucursal";
+export * from "./mayoreo";
+export * from "./inventario";
 export * from "./ids";
 export * from "./date";
 export * from "./pinHash";

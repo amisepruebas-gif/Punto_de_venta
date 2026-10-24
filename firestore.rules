@@ -76,15 +76,31 @@ service cloud.firestore {
       }
 
       // datos: config (admin), huellas *_ac (nodo), tallas (mercancia).
+      // El folio de Fabricacion (_contadorFabricacion) solo lo avanza admin.
       match /datos_web_new_version/{k} {
         allow read: if miembro(nid);
-        allow write: if esAdmin(nid) || esNodo(nid) || esMercancia(nid);
+        allow write: if esAdmin(nid)
+          || ((esNodo(nid) || esMercancia(nid)) && k != '_contadorFabricacion');
       }
 
       // G3: resurtidos — mercancia también crea/despacha.
       match /resurtidos_web_new_version/{rid} {
         allow read: if miembro(nid);
         allow write: if esAdmin(nid) || esNodo(nid) || esMercancia(nid);
+      }
+
+      // Fabricacion: zonas de precios (las leen los editores; solo admin escribe).
+      match /zonas_precio_web_new_version/{zid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid);
+      }
+      // Fabricacion: lotes de produccion y reducciones con motivo. Inmutables
+      // (sin update/delete): un error se corrige con otro registro.
+      match /produccion_web_new_version/{loteId} {
+        allow read, create: if esAdmin(nid);
+      }
+      match /ajustes_inventario_web_new_version/{ajusteId} {
+        allow read, create: if esAdmin(nid);
       }
 
       // G9: log de auditoría de ingreso de mercancía (best-effort).

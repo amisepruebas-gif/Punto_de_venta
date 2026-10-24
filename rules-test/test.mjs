@@ -3,7 +3,7 @@ import {
   assertFails,
   assertSucceeds,
 } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 
 const RULES = readFileSync(
@@ -48,6 +48,11 @@ const P = {
   chatGrupo: `${N}/chat_grupos_web_new_version/G1`,
   chatWhitelist: `${N}/chat_whitelist_admin_web_new_version/W1`,
   ingreso: `${N}/ingresos_mercancia_web_new_version/ING1`,
+  zona: `${N}/zonas_precio_web_new_version/llaveros`,
+  lote: `${N}/produccion_web_new_version/L1`,
+  ajuste: `${N}/ajustes_inventario_web_new_version/A1`,
+  contadorFab: `${N}/datos_web_new_version/_contadorFabricacion`,
+  huellaArt: `${N}/datos_web_new_version/articulos_ac`,
   sysDoc: `system/auth_kick_switch`,
   // --- RAIZ legacy (debe quedar ABIERTA como hoy) ---
   raizMensajes: `mensajes_n/2026`,
@@ -72,6 +77,10 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(db, P.chatGrupo), { ultimo: "hey" });
   await setDoc(doc(db, P.chatWhitelist), { email: "d@x.com" });
   await setDoc(doc(db, P.sysDoc), { value: "v1" });
+  await setDoc(doc(db, P.zona), { nombre: "Llaveros", precioVenta: 35, escalones: [] });
+  await setDoc(doc(db, P.lote), { folio: "FAB-000001", cantidad: 30 });
+  await setDoc(doc(db, P.ajuste), { delta: -2, motivo: "danado" });
+  await setDoc(doc(db, P.contadorFab), { ultimo: 1 });
   // raiz legacy sembrada
   await setDoc(doc(db, P.raizMensajes), { m: 1 });
   await setDoc(doc(db, P.raizVentas), { total: 9 });
@@ -161,6 +170,30 @@ await check("G9 mercancia crea ingreso_mercancia", "ok", setDoc(doc(merc, P.ingr
 await check("G8 admin lee system", "ok", getDoc(doc(adminC, P.sysDoc)));
 await check("G8 anon lee system (kill-switch publico, pre-login)", "ok", getDoc(doc(anon, P.sysDoc)));
 await check("G8 anon NO escribe system", "fail", setDoc(doc(anon, P.sysDoc), { value: "hack" }));
+
+// ============ FABRICACION: zonas, lotes, ajustes, folio ============
+await check("FAB admin escribe zona", "ok", setDoc(doc(adminC, P.zona), { nombre: "Llaveros", precioVenta: 36, escalones: [] }));
+await check("FAB superadmin escribe zona", "ok", updateDoc(doc(supera, P.zona), { precioVenta: 35 }));
+await check("FAB mercancia lee zona", "ok", getDoc(doc(merc, P.zona)));
+await check("FAB nodo lee zona", "ok", getDoc(doc(nodo1, P.zona)));
+await check("FAB mercancia NO escribe zona", "fail", updateDoc(doc(merc, P.zona), { precioVenta: 1 }));
+await check("FAB nodo NO escribe zona", "fail", updateDoc(doc(nodo1, P.zona), { precioVenta: 1 }));
+await check("FAB anon NO lee zona", "fail", getDoc(doc(anon, P.zona)));
+await check("FAB admin crea lote", "ok", setDoc(doc(adminC, `${N}/produccion_web_new_version/L2`), { folio: "FAB-000002", cantidad: 10 }));
+await check("FAB admin lee lote", "ok", getDoc(doc(adminC, P.lote)));
+await check("FAB admin NO modifica lote (inmutable)", "fail", updateDoc(doc(adminC, P.lote), { cantidad: 99 }));
+await check("FAB admin NO borra lote (inmutable)", "fail", deleteDoc(doc(adminC, P.lote)));
+await check("FAB nodo NO crea lote", "fail", setDoc(doc(nodo1, `${N}/produccion_web_new_version/L3`), { cantidad: 1 }));
+await check("FAB mercancia NO lee lote", "fail", getDoc(doc(merc, P.lote)));
+await check("FAB admin crea ajuste", "ok", setDoc(doc(adminC, `${N}/ajustes_inventario_web_new_version/A2`), { delta: -1, motivo: "extravio" }));
+await check("FAB admin NO modifica ajuste (inmutable)", "fail", updateDoc(doc(adminC, P.ajuste), { delta: -9 }));
+await check("FAB nodo NO lee ajuste", "fail", getDoc(doc(nodo1, P.ajuste)));
+await check("FAB mercancia NO crea ajuste", "fail", setDoc(doc(merc, `${N}/ajustes_inventario_web_new_version/A3`), { delta: -1 }));
+await check("FAB admin avanza folio", "ok", updateDoc(doc(adminC, P.contadorFab), { ultimo: 2 }));
+await check("FAB nodo NO avanza folio", "fail", updateDoc(doc(nodo1, P.contadorFab), { ultimo: 99 }));
+await check("FAB mercancia NO avanza folio", "fail", updateDoc(doc(merc, P.contadorFab), { ultimo: 99 }));
+await check("FAB nodo sigue escribiendo huella articulos_ac", "ok", setDoc(doc(nodo1, P.huellaArt), { huella: "h1" }));
+await check("FAB mercancia sigue escribiendo huella articulos_ac", "ok", setDoc(doc(merc, P.huellaArt), { huella: "h2" }));
 
 let ok = true;
 for (const [pass, name] of res) { console.log((pass ? "PASS" : "FALLA") + "  " + name); if (!pass) ok = false; }

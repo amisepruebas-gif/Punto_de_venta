@@ -33,6 +33,14 @@ export const COL_USUARIOS_MERCANCIA = `usuariosMercancia${SUFFIX}`;
 /** Resurtidos (transferencias bodega → sucursal). Scope por negocio. */
 export const COL_RESURTIDOS = `resurtidos${SUFFIX}`;
 
+// Fabricación — scope por negocio.
+/** Zonas de precios (precio normal + escalones de mayoreo compartidos). */
+export const COL_ZONAS_PRECIO = `zonas_precio${SUFFIX}`;
+/** Lotes de producción de mercancía propia. Inmutables. */
+export const COL_PRODUCCION = `produccion${SUFFIX}`;
+/** Reducciones manuales de inventario con motivo. Inmutables. */
+export const COL_AJUSTES_INVENTARIO = `ajustes_inventario${SUFFIX}`;
+
 // Chat — ver docs/14-chat-arquitectura.md
 export const COL_CHAT_GRUPOS = `chat_grupos${SUFFIX}`;
 export const COL_CHAT_DIRECTOS = `chat_directos${SUFFIX}`;
@@ -60,6 +68,9 @@ export const DOC_PIN_VENTAS = "pinVentas";
  *  huella vista y dispara limpieza+reload solo cuando detecta cambio.
  *  Shape: `{ huella: string, fecha: string, by?: string }`. */
 export const DOC_REFRESCO_RENDER = "refrescoRender";
+/** Contador del folio de lotes de producción (`FAB-000001`). Shape:
+ *  `{ ultimo: number }`. Solo admin lo escribe (regla dedicada). */
+export const DOC_CONTADOR_FABRICACION = "_contadorFabricacion";
 
 // Storage paths
 export const STORAGE_MEDIA_ARTICULOS = `media${SUFFIX}/articulos`;
@@ -106,6 +117,17 @@ export const paths = {
   resurtido: (nid: string, rid: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}/${rid}`,
   resurtidosCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}`,
+
+  zonaPrecio: (nid: string, zid: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_ZONAS_PRECIO}/${zid}`,
+  zonasPrecioCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_ZONAS_PRECIO}`,
+  lote: (nid: string, loteId: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_PRODUCCION}/${loteId}`,
+  produccionCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_PRODUCCION}`,
+  ajuste: (nid: string, ajusteId: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_AJUSTES_INVENTARIO}/${ajusteId}`,
+  ajustesCol: (nid: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_AJUSTES_INVENTARIO}`,
 
   storageArticuloPrincipal: (artId: string, ext = "webp") =>
     `${STORAGE_MEDIA_ARTICULOS}/${artId}.${ext}`,

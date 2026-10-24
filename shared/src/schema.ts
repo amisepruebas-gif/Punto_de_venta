@@ -155,6 +155,11 @@ export type Sucursal = {
    *  admin-web (`/sucursales/:sid/ticket`). Si está ausente, nodo-web
    *  imprime el ticket con el header/footer por defecto. */
   ticketConfig?: TicketConfig;
+  /** Sucursal de mayoreo. `true` → sus nodos SOLO ven y venden artículos
+   *  `soloMayoreo`; ausente/`false` → esos artículos no aparecen en sus
+   *  nodos. Editable desde admin-web (`SucursalesPage`). Regla única:
+   *  `articuloVisibleEnSucursal` en `@shared`. */
+  modoMayoreo?: boolean;
 };
 
 // ---------- Nodo (tablet) ----------
@@ -293,8 +298,27 @@ export type Articulo = {
   tallas?: string; // referencia al grupo en datos.tallas
   seña?: string; // presencia = true
   "3x2"?: string;
+  /** LEGACY (un solo escalón, Android nodo_1): precio unitario de mayoreo
+   *  que aplica al llegar a `cantMayoreo` piezas. Se sigue leyendo como
+   *  fallback cuando el artículo no tiene `escalonesMayoreo` (ver
+   *  `resolverEscalones`). Las apps nuevas escriben `escalonesMayoreo` y
+   *  dejan estos dos vacíos. */
   mayoreo?: string;
   cantMayoreo?: string;
+  /** Escalones de mayoreo (0–3, ver `validarEscalones`). Si el campo
+   *  existe —aunque sea `[]`— manda sobre el legacy `mayoreo`. Cuando el
+   *  artículo tiene `zonaPrecioId` es copia de la zona y lo mantiene la
+   *  function `sincronizarZonaPrecio`. */
+  escalonesMayoreo?: EscalonMayoreo[];
+  /** FK a `ZonaPrecio.zonaId`. Con zona, `precioVenta` y
+   *  `escalonesMayoreo` son copia viva de la zona (no se editan aquí). */
+  zonaPrecioId?: string;
+  /** Solo visible y vendible en sucursales con `modoMayoreo`. */
+  soloMayoreo?: boolean;
+  /** Dado de alta desde Fabricación (mercancía propia). Su stock solo se
+   *  mueve con lotes de producción, ajustes con motivo, embarques y
+   *  ventas — los editores generales lo muestran de solo lectura. */
+  fabricado?: boolean;
   /** Precio con descuento del artículo (aplica cuando no hay
    *  subvariaciones, o como descuento global del padre cuando una sub no
    *  define el suyo propio). Si está presente y > 0, reemplaza a
@@ -359,6 +383,12 @@ export type VentaArticulo = {
    *  mueve inventario (usa id "00000000"). El marcador permite al POS emitir la
    *  gift card DESPUÉS de crear la venta (guard "emitida ⟺ cobrada"). */
   giftCard?: boolean;
+  /** "1" cuando la línea se cobró a precio de mayoreo (escalón). El precio
+   *  cobrado va en `descuento`. Mismo campo que el Android nodo_1. */
+  mayoreoAply?: string;
+  /** Piezas mínimas del escalón aplicado (informativo para ticket y
+   *  reportes). Solo presente junto con `mayoreoAply`. */
+  escalonMinPz?: number;
 };
 
 export type MovimientoPago =
@@ -610,6 +640,98 @@ export type Resurtido = {
   lineas: ResurtidoLinea[];
   /** Notas globales del resurtido. */
   notas?: string;
+};
+
+// ---------- Mayoreo y zonas de precios ----------
+/** Un escalón de mayoreo: al juntar `minPz` piezas, cada una cuesta
+ *  `precio`. Reglas en `validarEscalones` (`@shared`). */
+export type EscalonMayoreo = {
+  /** Piezas mínimas (entero ≥ 2). */
+  minPz: number;
+  /** Precio unitario en MXN al alcanzar `minPz`. */
+  precio: number;
+};
+
+/**
+ * Zona de precios: precio normal + escalones de mayoreo compartidos por
+ * varios artículos (p. ej. "Llaveros"). Es la fuente viva: al editarla, la
+ * function `sincronizarZonaPrecio` copia `precioVenta` y `escalones` a
+ * todos los artículos con ese `zonaPrecioId`. Las piezas de artículos
+ * distintos de la misma zona se suman para alcanzar un escalón.
+ * Vive en `negocios_web_new_version/{nid}/zonas_precio_web_new_version/{zonaId}`.
+ */
+export type ZonaPrecio = {
+  /** Slug del nombre (`slugCategoria`) — impide zonas duplicadas. */
+  zonaId: string;
+  nombre: string;
+  /** Categoría sugerida (informativo, para filtrar en la UI). */
+  categoriaId?: string;
+  /** Precio unitario normal (menudeo), MXN. */
+  precioVenta: number;
+  /** 0–3 escalones. */
+  escalones: EscalonMayoreo[];
+  /** Las inactivas no se ofrecen al asignar zona; sus artículos conservan
+   *  el último precio. */
+  activa: boolean;
+  fechaCreacion: string; // ISO 8601 MX
+  fechaActualizacion?: string;
+};
+
+// ---------- Fabricación e inventario ----------
+/** Dónde está el stock: la bodega global (en Fabricación se muestra como
+ *  "Taller", campo `cantidadBodega`) o la tienda de una sucursal. */
+export type UbicacionInventario =
+  | { tipo: "bodega" }
+  | { tipo: "sucursal"; sucursalId: string };
+
+/**
+ * Lote de producción de mercancía propia. Inmutable: un error se corrige
+ * con un `AjusteInventario` (o con otro lote). Se crea en la misma
+ * transacción que suma el stock y avanza el folio.
+ * Vive en `negocios_web_new_version/{nid}/produccion_web_new_version/{loteId}`.
+ */
+export type LoteProduccion = {
+  loteId: string;
+  /** Folio legible y único: `FAB-000001` (ver `folioFabricacion`). */
+  folio: string;
+  articuloId: string;
+  nombreSnapshot: string;
+  cantidad: number;
+  destino: UbicacionInventario;
+  /** "Taller" o el nombre de la sucursal (snapshot). */
+  destinoNombre: string;
+  /** Fecha de producción `YYYY-MM-DD` (la elige el usuario). */
+  fechaProduccion: string;
+  /** `true` en el lote que dio de alta el artículo. */
+  esAlta: boolean;
+  usuario: string;
+  notas?: string;
+  fechaRegistro: string; // ISO 8601 MX
+};
+
+export type MotivoAjuste = "extravio" | "danado" | "otro" | "sin_motivo";
+
+/**
+ * Reducción manual de existencia con motivo. Inmutable.
+ * Vive en `negocios_web_new_version/{nid}/ajustes_inventario_web_new_version/{ajusteId}`.
+ */
+export type AjusteInventario = {
+  ajusteId: string;
+  articuloId: string;
+  subvariacionCodigo?: string;
+  nombreSnapshot: string;
+  ubicacion: UbicacionInventario;
+  /** "Taller" o el nombre de la sucursal (snapshot). */
+  ubicacionNombre: string;
+  /** Siempre negativo: solo reducciones. */
+  delta: number;
+  cantidadAnterior: number;
+  cantidadNueva: number;
+  motivo: MotivoAjuste;
+  /** Obligatorio cuando `motivo === "otro"`. */
+  motivoDetalle?: string;
+  usuario: string;
+  fecha: string; // ISO 8601 MX
 };
 
 // ---------- mercancia-web ----------
