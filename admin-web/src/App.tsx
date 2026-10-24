@@ -12,6 +12,7 @@ import { NodosPage } from "./routes/nodos/NodosPage";
 import { EquipoPage } from "./routes/equipo/EquipoPage";
 import { UsuariosMercanciaPage } from "./routes/usuarios-mercancia/UsuariosMercanciaPage";
 import { ResurtidosPage } from "./routes/resurtidos/ResurtidosPage";
+import { FabricacionRoutes } from "./routes/fabricacion/FabricacionRoutes";
 import { ResurtidoCreatePage } from "./routes/resurtidos/ResurtidoCreatePage";
 import { ResurtidoDetailPage } from "./routes/resurtidos/ResurtidoDetailPage";
 import { TallasPage } from "./routes/tallas/TallasPage";
@@ -92,6 +93,7 @@ export default function App() {
             path="usuarios-mercancia"
             element={<UsuariosMercanciaPage />}
           />
+          <Route path="fabricacion/*" element={<FabricacionRoutes />} />
           <Route path="resurtidos" element={<ResurtidosPage />} />
           <Route
             path="resurtidos/nuevo"

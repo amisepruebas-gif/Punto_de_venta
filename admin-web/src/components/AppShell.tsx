@@ -20,6 +20,7 @@ import {
   Sparkles,
   KeyRound,
   ArrowRightLeft,
+  Factory,
   MessagesSquare,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
@@ -44,6 +45,7 @@ const NAV: NavItem[] = [
   { to: "/categorias", label: "Categorías", icon: FolderTree },
   { to: "/ingreso-mercancia", label: "Ingreso", icon: Truck },
   { to: "/resurtidos", label: "Resurtidos", icon: ArrowRightLeft },
+  { to: "/fabricacion", label: "Fabricación", icon: Factory },
   { to: "/ventas", label: "Ventas", icon: ShoppingBag },
   { to: "/cortes", label: "Cortes", icon: ScrollText },
   { to: "/apartados", label: "Apartados", icon: Bookmark },

@@ -43,6 +43,68 @@ export async function crearCategoria(
 }
 
 /**
+ * Categoría con ese nombre: la existente (mismo slug) o una nueva. Es lo
+ * que usa "crear en el momento" (Fabricación, editor de artículo): escribir
+ * un nombre que ya existe simplemente la selecciona.
+ */
+export async function asegurarCategoria(
+  negocioId: string,
+  nombre: string,
+): Promise<Categoria> {
+  const slug = slugCategoria(nombre);
+  if (!slug) throw new Error("Nombre de categoría inválido");
+  const ref = doc(db, paths.categoria(negocioId, slug));
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists()) return snap.data() as Categoria;
+    const data: Categoria = {
+      categoriaId: slug,
+      nombre: nombre.trim(),
+      fechaCreacion: fechaISO_MX(),
+    };
+    tx.set(ref, data);
+    return data;
+  });
+}
+
+/**
+ * Subcategoría con ese nombre dentro de `categoriaId`: la existente o una
+ * nueva. El slug de subcategoría es único en TODO el negocio, así que si ya
+ * existe bajo otra categoría se rechaza con un mensaje claro.
+ */
+export async function asegurarSubcategoria(
+  negocioId: string,
+  nombre: string,
+  categoriaId: string,
+): Promise<Subcategoria> {
+  const slug = slugCategoria(nombre);
+  if (!slug) throw new Error("Nombre de subcategoría inválido");
+  const ref = doc(db, paths.subcategoria(negocioId, slug));
+  const catRef = doc(db, paths.categoria(negocioId, categoriaId));
+  return runTransaction(db, async (tx) => {
+    const [snap, catSnap] = await Promise.all([tx.get(ref), tx.get(catRef)]);
+    if (!catSnap.exists()) throw new Error("La categoría padre no existe");
+    if (snap.exists()) {
+      const sc = snap.data() as Subcategoria;
+      if (sc.categoriaId !== categoriaId) {
+        throw new Error(
+          `La subcategoría "${sc.nombre}" ya existe en otra categoría`,
+        );
+      }
+      return sc;
+    }
+    const data: Subcategoria = {
+      subcategoriaId: slug,
+      nombre: nombre.trim(),
+      categoriaId,
+      fechaCreacion: fechaISO_MX(),
+    };
+    tx.set(ref, data);
+    return data;
+  });
+}
+
+/**
  * Renombrar mantiene el `categoriaId` (slug) intacto: los artículos no
  * requieren backfill. Solo cambia la etiqueta visible. Si el nuevo nombre
  * normalizado colisiona con otra categoría, se rechaza.
