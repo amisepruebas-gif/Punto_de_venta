@@ -98,9 +98,13 @@ export function ExistenciasSucursalEditor({
               clave: claveDe(a.id),
               articuloId: a.id,
               nombre: a.nombre,
-              detalle: `#${a.id}${a.sigla ? ` · ${a.sigla}` : ""}`,
+              detalle: a.fabricado
+                ? `#${a.id} · fabricado: se mueve en Fabricación`
+                : `#${a.id}${a.sigla ? ` · ${a.sigla}` : ""}`,
               actual: leerStockTienda(a, sucursalId, esDefault),
-              editable: true,
+              // Lo fabricado solo se mueve con lotes, embarques y
+              // reducciones con motivo (Fabricación).
+              editable: !a.fabricado,
             },
           ],
         };
@@ -115,7 +119,7 @@ export function ExistenciasSucursalEditor({
           nombre: sv.nombre,
           detalle: sv.codigo ?? "Sin código: guarda el artículo para asignarlo",
           actual: leerStockTienda(sv, sucursalId, esDefault),
-          editable: !!sv.codigo,
+          editable: !!sv.codigo && !a.fabricado,
         })),
       };
     });
