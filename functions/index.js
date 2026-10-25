@@ -538,8 +538,16 @@ exports.revocarNodo = onCall(async (request) => {
 // reconciliarVentasOffline — trigger v2 onCreate.
 // Si numeroDeVenta empieza con "OFFLINE-", asigna número real via transacción
 // y descuenta el stock que el POS no pudo descontar (lib/stockVentaOffline.js).
+// Con `retry: true`: si un paso falla, el handler lanza y la plataforma
+// reintenta el evento. Los dos pasos son idempotentes, así que el reintento
+// solo rehace el que falló (lib/reintento.js).
 // ============================================================
 const stockVentaOffline = require("./lib/stockVentaOffline");
+const reintento = require("./lib/reintento");
+
+// Pasado este tiempo desde que la venta llegó al servidor se deja de pedir
+// reintento, y queda en el log qué faltó (renumerar o descontar stock).
+const REINTENTO_VENTA_OFFLINE_MAX_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Sucursal de stock de `sucursalId` con la default resuelta (espejo de
@@ -564,6 +572,7 @@ exports.reconciliarVentasOffline = onDocumentCreated(
       document: "negocios_web_new_version/{negocioId}/" +
         "sucursales_data_web_new_version/{sucursalId}/" +
         "ventas_n_web_new_version/{year}/{month}/{day}/items/{ventaId}",
+      retry: true,
     },
     async (event) => {
       const snap = event.data;
@@ -575,22 +584,23 @@ exports.reconciliarVentasOffline = onDocumentCreated(
       const {negocioId, sucursalId, year, month, day} = event.params;
       const ymd = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-      const contadorRef = db
-          .collection(COL_NEGOCIOS).doc(negocioId)
+      const negocioRef = db.collection(COL_NEGOCIOS).doc(negocioId);
+      const contadorRef = negocioRef
           .collection("sucursales_data_web_new_version").doc(sucursalId)
           .collection("contadores_web_new_version").doc(ymd);
 
-      try {
-        await db.runTransaction(async (tx) => {
+      const renumerar = async () => {
+        const numeroReal = await db.runTransaction(async (tx) => {
           // Re-verificar dentro de la transacción que el doc todavía es
-          // OFFLINE (idempotencia: si dos disparos del trigger corren para
-          // el mismo doc, el segundo ve numeroDeVenta ya cambiado y aborta).
+          // OFFLINE (idempotencia: si dos disparos del trigger, o un
+          // reintento, corren para el mismo doc, el segundo ve numeroDeVenta
+          // ya cambiado y aborta).
           const ventaActual = await tx.get(snap.ref);
-          if (!ventaActual.exists) return;
+          if (!ventaActual.exists) return null;
           const numActual = ventaActual.data().numeroDeVenta;
           if (typeof numActual !== "string" ||
               !numActual.startsWith("OFFLINE-")) {
-            return;
+            return null;
           }
 
           const contadorSnap = await tx.get(contadorRef);
@@ -599,9 +609,9 @@ exports.reconciliarVentasOffline = onDocumentCreated(
           const prev = contadorSnap.exists ?
             (contadorSnap.data().ultimoNumeroVenta ?? 0) :
             0;
-          const numeroReal = String(prev + 1);
+          const numero = String(prev + 1);
           tx.update(snap.ref, {
-            numeroDeVenta: numeroReal,
+            numeroDeVenta: numero,
             numeroDeVentaOffline: venta.numeroDeVenta,
             reconciliadoEn: admin.firestore.FieldValue.serverTimestamp(),
           });
@@ -613,18 +623,18 @@ exports.reconciliarVentasOffline = onDocumentCreated(
               },
               {merge: true},
           );
+          return numero;
         });
-        console.log(`Reconciliada venta OFFLINE ${venta.numeroDeVenta} → real para sucursal ${sucursalId}/${ymd}`);
-      } catch (err) {
-        console.error("Fallo reconciliando venta offline:", err);
-      }
+        if (numeroReal) {
+          console.log(`Reconciliada venta OFFLINE ${venta.numeroDeVenta} → ${numeroReal} para sucursal ${sucursalId}/${ymd}`);
+        }
+      };
 
       // Stock: sin red el POS guardó la venta sin su tx de stock. Va en una tx
       // aparte de la renumeración para no alargar la que compite por el
-      // contador, y para que una falla no frene a la otra. La marca
-      // `stockAplicado` (misma tx que el stock) evita descontar dos veces.
-      try {
-        const negocioRef = db.collection(COL_NEGOCIOS).doc(negocioId);
+      // contador. La marca `stockAplicado` (misma tx que el stock) evita
+      // descontar dos veces.
+      const descontarStock = async () => {
         const ubicacion = await cargarUbicacionStock(negocioRef, sucursalId);
         const r = await db.runTransaction((tx) =>
           stockVentaOffline.aplicarStockVentaEnTx(tx, {
@@ -644,9 +654,27 @@ exports.reconciliarVentasOffline = onDocumentCreated(
               `Venta OFFLINE ${venta.numeroDeVenta}: líneas sin descontar`,
               JSON.stringify(r.omitidas));
         }
-      } catch (err) {
-        console.error("Fallo descontando stock de venta offline:", err);
+      };
+
+      // Cada paso corre aunque el otro falle.
+      const {fallas, reintentar, edadMs} = await reintento.correrPasos([
+        ["renumerar", renumerar],
+        ["descontar stock", descontarStock],
+      ], {eventTime: event.time, maxMs: REINTENTO_VENTA_OFFLINE_MAX_MS});
+      if (fallas.length === 0) return;
+      for (const {nombre, err} of fallas) {
+        console.error(
+            `Fallo al ${nombre} (venta offline ${venta.numeroDeVenta}):`, err);
       }
+      const falta = fallas.map((f) => f.nombre).join(" y ");
+      if (reintentar) {
+        // Lanzar = pedir otro intento a la plataforma (retry: true).
+        throw new Error(
+            `Venta OFFLINE ${venta.numeroDeVenta}: falta ${falta}; se reintenta`);
+      }
+      console.error(
+          `Venta OFFLINE ${venta.numeroDeVenta} (${sucursalId}/${ymd}): se deja ` +
+          `de reintentar tras ${Math.round(edadMs / 60000)} min; falta ${falta}`);
     },
 );
 
