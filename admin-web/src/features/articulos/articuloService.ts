@@ -234,12 +234,18 @@ async function resolverSubvariaciones(
         ...(imagenUrl ? { imagenUrl } : {}),
         ...(sv.cantidad ? { cantidad: sv.cantidad } : {}),
         ...(sv.cantidadBodega ? { cantidadBodega: sv.cantidadBodega } : {}),
-        // El editor no maneja el stock de las otras sucursales: se toma del
-        // doc actual para no borrar lo que cargaron resurtidos o el editor
-        // de existencias (ni pisar ventas hechas mientras se editaba).
-        ...(existenteSv?.cantidadPorSucursal
-          ? { cantidadPorSucursal: existenteSv.cantidadPorSucursal }
-          : {}),
+        // Sub existente: el stock de las otras sucursales se toma del doc
+        // actual (el editor no lo maneja: no borrar lo que cargaron
+        // resurtidos o el editor de existencias, ni pisar ventas). Sub nueva:
+        // el que trae el form — solo lo llena el alta con stock inicial en una
+        // sucursal que no es la principal.
+        ...(existenteSv
+          ? existenteSv.cantidadPorSucursal
+            ? { cantidadPorSucursal: existenteSv.cantidadPorSucursal }
+            : {}
+          : sv.cantidadPorSucursal
+            ? { cantidadPorSucursal: sv.cantidadPorSucursal }
+            : {}),
         ...(sv.precioDescuento
           ? { precioDescuento: sv.precioDescuento }
           : {}),
