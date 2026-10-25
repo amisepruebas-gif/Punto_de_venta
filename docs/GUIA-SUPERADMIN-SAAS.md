@@ -57,7 +57,7 @@ Todo se deriva de `shared/src/collections.ts` (`paths` + constantes `COL_*`). Ra
 | **Globales (sin scope de negocio)** | `system/auth_kick_switch`, `usuarios`, **`planes`** (← `COL_PLANES` declarada **pero sin uso runtime**) |
 
 - **Custom claims** (fuente de aislamiento): `{ role: 'superadmin'|'admin'|'vendedor'|'nodo', negocioId?, sucursalId?, nodoId? }`.
-- **Proyecto único** `amisetienda-c7eab` (hardcodeado e idéntico en ambos `firebase/config.ts`). Deploy multi‑target en `firebase.json`/`.firebaserc`: `admin → amise-admin`, `nodo → amise-nodo`, `mercancia → amise-mercancia`. Functions `nodejs20`, región **default `us-central1`**.
+- **Proyecto único** `amisetienda-c7eab` (hardcodeado e idéntico en ambos `firebase/config.ts`). Deploy multi‑target en `firebase.json`/`.firebaserc`: `admin → amise-admin`, `nodo → amise-nodo`, `mercancia → amise-mercancia`. Functions `nodejs22`, región **default `us-central1`**.
 
 ### 1.4 La verdad incómoda (lo que NO existe hoy)
 - ❌ **Cero billing**: sin Stripe, sin pagos, sin facturas, sin trial, sin vencimiento/vigencia. (Todo "plan/pago/suspendido" que aparece en `nodo-web` son falsos positivos: plan de migración, ticket de prueba, apartado cancelado…)
@@ -258,7 +258,7 @@ Los 3 docs viven en `planes/{planId}`. Editar un precio aquí afecta el autollen
 ### 5.1 Vía A — Stripe *(PENDIENTE — Fase 5)*
 **Catálogo**: en Stripe, un **Producto por plan** y **2 Prices recurrentes** (mensual, anual). Los `priceId` se guardan en `planes/{planId}` → el mapeo plan↔price es **data, no código**.
 
-**Funciones** (codebase `functions`, `nodejs20`, misma región `us-central1`; secretos `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` en Secret Manager, mismo patrón que `quitarFondoImagen`):
+**Funciones** (codebase `functions`, `nodejs22`, misma región `us-central1`; secretos `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` en Secret Manager, mismo patrón que `quitarFondoImagen`):
 
 | Función | Tipo | Qué hace |
 |---|---|---|

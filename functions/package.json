@@ -3,7 +3,7 @@
   "description": "Cloud Functions — amise-web (admin + nodo)",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "scripts": {
