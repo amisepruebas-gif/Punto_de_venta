@@ -14,7 +14,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "setup": "node setup-initial.js",
-    "test": "node --test test/zonaPrecio.test.js"
+    "test": "node --test test/zonaPrecio.test.js test/stockVentaOffline.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

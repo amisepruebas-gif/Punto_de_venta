@@ -72,8 +72,9 @@ export type VentaResult = {
  * 3. Fuera de la transacción: actualiza huella_venta en datos_web_new_version/ventas_ac
  *
  * Si la transacción falla por falta de red, cae a modo OFFLINE:
- * numeroDeVenta = "OFFLINE-{nodoId}-{millis}" y una Cloud Function reconcilia
- * al reconectar (TODO: implementar reconciliarVentasOffline).
+ * numeroDeVenta = "OFFLINE-{nodoId}-{millis}", SIN descontar stock. Al
+ * llegar al servidor, la Cloud Function `reconciliarVentasOffline` le asigna
+ * número real y descuenta su stock (marca `stockAplicado`).
  */
 export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
   const { negocioId, sucursalId, nodoId, idempotencyKey } = input;

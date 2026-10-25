@@ -422,6 +422,10 @@ export type Venta = {
   // Poblado por reconciliarVentasOffline cuando reconcilia un OFFLINE-
   numeroDeVentaOffline?: string;
   reconciliadoEn?: unknown; // Firestore Timestamp
+  /** true cuando la function ya descontó el stock de la venta OFFLINE (el
+   *  POS no lo hizo sin red). También queda si no había nada que descontar
+   *  (cierra un apartado, solo regalos). Evita descontar dos veces. */
+  stockAplicado?: boolean;
 
   /** Comisión cobrada al cliente por pago con tarjeta. Equivale al campo
    *  `comicion` (sic) del Android nodo_1. Sin presencia o "0" = sin comisión. */

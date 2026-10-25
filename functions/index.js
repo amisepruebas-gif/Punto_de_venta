@@ -536,8 +536,29 @@ exports.revocarNodo = onCall(async (request) => {
 
 // ============================================================
 // reconciliarVentasOffline — trigger v2 onCreate.
-// Si numeroDeVenta empieza con "OFFLINE-", asigna número real via transacción.
+// Si numeroDeVenta empieza con "OFFLINE-", asigna número real via transacción
+// y descuenta el stock que el POS no pudo descontar (lib/stockVentaOffline.js).
 // ============================================================
+const stockVentaOffline = require("./lib/stockVentaOffline");
+
+/**
+ * Sucursal de stock de `sucursalId` con la default resuelta (espejo de
+ * `cargarUbicacionStock` de nodo-web). Se lee FUERA de la tx, como en el
+ * POS; la lista de sucursales solo hace falta si el negocio no fija
+ * `sucursalDefaultId`.
+ * @param {FirebaseFirestore.DocumentReference} negocioRef
+ * @param {string} sucursalId
+ * @return {Promise<{sucursalId: string, esDefault: boolean}>}
+ */
+async function cargarUbicacionStock(negocioRef, sucursalId) {
+  const negocioSnap = await negocioRef.get();
+  const defaultId = negocioSnap.get("sucursalDefaultId");
+  const ids = defaultId ? [] :
+    (await negocioRef.collection(COL_SUCURSALES).select().get())
+        .docs.map((d) => d.id);
+  return stockVentaOffline.resolverUbicacionStock(sucursalId, defaultId, ids);
+}
+
 exports.reconciliarVentasOffline = onDocumentCreated(
     {
       document: "negocios_web_new_version/{negocioId}/" +
@@ -596,6 +617,35 @@ exports.reconciliarVentasOffline = onDocumentCreated(
         console.log(`Reconciliada venta OFFLINE ${venta.numeroDeVenta} → real para sucursal ${sucursalId}/${ymd}`);
       } catch (err) {
         console.error("Fallo reconciliando venta offline:", err);
+      }
+
+      // Stock: sin red el POS guardó la venta sin su tx de stock. Va en una tx
+      // aparte de la renumeración para no alargar la que compite por el
+      // contador, y para que una falla no frene a la otra. La marca
+      // `stockAplicado` (misma tx que el stock) evita descontar dos veces.
+      try {
+        const negocioRef = db.collection(COL_NEGOCIOS).doc(negocioId);
+        const ubicacion = await cargarUbicacionStock(negocioRef, sucursalId);
+        const r = await db.runTransaction((tx) =>
+          stockVentaOffline.aplicarStockVentaEnTx(tx, {
+            ventaRef: snap.ref,
+            articuloRef: (id) =>
+              negocioRef.collection("articulos_n_web_new_version").doc(id),
+            ubicacion,
+          }));
+        if (!r) return;
+        console.log(
+            `Stock de venta OFFLINE ${venta.numeroDeVenta}: ` +
+            `${r.patches.size} artículo(s) en sucursal ${sucursalId}` +
+            (ubicacion.esDefault ? " (default)" : "") +
+            (r.sobreventa ? ", con sobreventa" : ""));
+        if (r.omitidas.length > 0) {
+          console.warn(
+              `Venta OFFLINE ${venta.numeroDeVenta}: líneas sin descontar`,
+              JSON.stringify(r.omitidas));
+        }
+      } catch (err) {
+        console.error("Fallo descontando stock de venta offline:", err);
       }
     },
 );
