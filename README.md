@@ -30,7 +30,7 @@ dispositivo_1/
 ├── nodo-web/                   ← PWA tablet vendedor
 ├── admin-web/                  ← Panel super-admin
 ├── shared/                     ← Tipos TS + utilidades compartidas
-├── functions/                  ← Cloud Functions (Node 20)
+├── functions/                  ← Cloud Functions (Node 22)
 ├── firestore.rules
 ├── firestore.indexes.json
 ├── storage.rules
@@ -47,7 +47,7 @@ dispositivo_1/
 
 ### Pre-requisitos
 
-- Node 20+
+- Node 22+
 - Firebase CLI (`npm i -g firebase-tools`)
 - Login: `firebase login`
 - Acceso al proyecto `amisetienda-c7eab`

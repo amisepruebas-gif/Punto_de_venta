@@ -1,5 +1,5 @@
 "use strict";
-// node --test test/  (Node 20, sin dependencias)
+// node --test test/  (Node 22, sin dependencias)
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {

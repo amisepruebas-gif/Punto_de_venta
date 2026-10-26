@@ -19,7 +19,8 @@
 
 ## Prerequisitos
 
-- **Node 20** (para `functions/`).
+- **Node 22** (para `functions/`; el runtime de Cloud Functions es
+  `nodejs22`, fijado en `firebase.json`).
 - **Firebase CLI**:
   ```bash
   npm install -g firebase-tools
@@ -153,6 +154,11 @@ Primera vez: instalará APIs necesarias (Cloud Build, Artifact Registry),
 puede tardar 5-10 min.
 
 Subsequent: 1-2 min si solo hay cambios menores.
+
+El runtime (`runtime` en `firebase.json`, que manda sobre `engines` de
+`functions/package.json`) solo cambia en las funciones que se despliegan:
+tras cambiarlo (p. ej. Node 20 → 22), despliega **todas** con
+`--only functions`.
 
 Deploys selectivos (más rápido):
 
@@ -299,6 +305,28 @@ firebase use amisetienda-c7eab
 Primera vez. Ir a:
 https://console.developers.google.com/apis/api/cloudbuild.googleapis.com/overview?project=amisetienda-c7eab
 y habilitar. Espera 1-2 min, reintenta.
+
+### Functions deploy falla con "User code failed to load… Timeout after 10000"
+
+Antes de desplegar, el CLI levanta `functions/` en local para descubrir
+las funciones y le da 10 s. Normalmente tarda menos de 1 s, pero a veces
+se pasa del límite (visto en Windows) aunque el código no tenga nada mal.
+Reintenta con un límite mayor (en **segundos**):
+
+```bash
+FUNCTIONS_DISCOVERY_TIMEOUT=60 firebase deploy --only functions   # Git Bash
+```
+
+```powershell
+$env:FUNCTIONS_DISCOVERY_TIMEOUT=60; firebase deploy --only functions
+```
+
+### "Pass the --force option to deploy functions with a failure policy"
+
+Una función pasa a tener reintentos (`retry: true`) y el CLI pide
+confirmarlo. En una terminal interactiva responde que sí. Sin terminal
+(scripts, agentes) agrega `--force`. Ojo: `--force` también borra sin
+preguntar las funciones desplegadas que ya no estén en el código.
 
 ### Queries fallan con "The query requires an index"
 

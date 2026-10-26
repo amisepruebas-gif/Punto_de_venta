@@ -41,7 +41,7 @@ El sistema tiene **dos apps web** compartiendo el mismo backend Firebase:
   ┌─────────────┐           ┌──────────────┐
   │  Firestore  │           │  Cloud       │
   │  + Storage  │           │  Functions   │
-  │  + Auth     │           │  (Node 20)   │
+  │  + Auth     │           │  (Node 22)   │
   └─────────────┘           └──────────────┘
 ```
 
@@ -136,7 +136,7 @@ Paquete local de TypeScript (path alias `@shared`). Contiene:
 
 ### `functions/`
 
-Node 20 Cloud Functions. Lista completa en
+Node 22 Cloud Functions. Lista completa en
 [`03-cloud-functions.md`](03-cloud-functions.md).
 
 ---
@@ -293,10 +293,10 @@ Function `migrarDataLegacy` que copia datos si se necesitan.
 
 ### Backend
 
-- **Cloud Functions v2** (trigger) + **v1** (callable) — Node 20.
+- **Cloud Functions v2** (trigger) + **v1** (callable) — Node 22.
 - **Firestore** con reglas multi-tenant (ver
   [`02-firestore-schema.md`](02-firestore-schema.md)).
 - **Storage** con cap 5 MB para imágenes de artículos.
-- **firebase-functions ^5.1.1**, **firebase-admin ^12.6.0**.
+- **firebase-functions ^7.4.0**, **firebase-admin ^12.6.0**.
 
 Ver decisiones más finas en cada doc específico.
