@@ -297,6 +297,6 @@ Function `migrarDataLegacy` que copia datos si se necesitan.
 - **Firestore** con reglas multi-tenant (ver
   [`02-firestore-schema.md`](02-firestore-schema.md)).
 - **Storage** con cap 5 MB para imágenes de artículos.
-- **firebase-functions ^5.1.1**, **firebase-admin ^12.6.0**.
+- **firebase-functions ^7.4.0**, **firebase-admin ^12.6.0**.
 
 Ver decisiones más finas en cada doc específico.
