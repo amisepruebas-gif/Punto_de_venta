@@ -34,7 +34,13 @@ import { usePinVentas } from "@/features/ventas/historial/usePinVentas";
 import { useCarrito, subtotalItem } from "@/features/ventas/carritoStore";
 import { useArticulos } from "@/features/articulos/useArticulos";
 import { crearVenta } from "@/features/ventas/ventaService";
-import { codigoErrorPuntos, ean13Ok, generarID } from "@shared";
+import {
+  codigoErrorPuntos,
+  ean13Ok,
+  generarID,
+  pendienteVigente,
+  telefonosIguales,
+} from "@shared";
 import { formatearTicketEscPos } from "@/features/ventas/ticketEscPos";
 import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
 import { useBackHandler } from "@/lib/back-handler";
@@ -61,7 +67,10 @@ import {
 } from "@/features/puntos/GiftEmitidaModal";
 import { VinculacionClienteModal } from "@/features/puntos/VinculacionClienteModal";
 import { ColaPuntosAviso } from "@/features/puntos/ColaPuntosAviso";
-import { useClientePuntos } from "@/features/puntos/clientePuntosStore";
+import {
+  useClientePuntos,
+  type ClientePendiente,
+} from "@/features/puntos/clientePuntosStore";
 import {
   enviarPuntosAhora,
   usePuntosColaFlush,
@@ -143,6 +152,18 @@ export function Ventas() {
     marcarCajaOcupada("vinculacion", vinculacionOpen);
     return () => marcarCajaOcupada("vinculacion", false);
   }, [vinculacionOpen]);
+  // El cliente en espera vence a la hora aunque no haya ventas.
+  useEffect(() => {
+    const revisar = () => {
+      const p = useClientePuntos.getState().pendiente;
+      if (p && !pendienteVigente(p, Date.now())) {
+        useClientePuntos.getState().limpiarPendiente();
+      }
+    };
+    revisar();
+    const iv = window.setInterval(revisar, 60_000);
+    return () => window.clearInterval(iv);
+  }, []);
   const [salidaOpen, setSalidaOpen] = useState(false);
   const [varPickerPadre, setVarPickerPadre] = useState<Articulo | null>(null);
   const [senaPadre, setSenaPadre] = useState<Articulo | null>(null);
@@ -718,14 +739,37 @@ export function Ventas() {
           puntosMsg = "Sin cashback en esta venta (monto mínimo no alcanzado).";
         }
       }
+      // El cliente de la venta es el que está en espera (mismo teléfono): se le
+      // imprime su contraseña temporal y sale de la espera.
+      const pendTel = useClientePuntos.getState().pendiente;
+      if (
+        pendTel &&
+        pendienteVigente(pendTel, Date.now()) &&
+        telefonosIguales(pendTel.telefono, puntosTel)
+      ) {
+        ventaFinal = { ...ventaFinal, codigoPuntos: pendTel.code };
+        void updateDoc(doc(db, result.path), { puntosClienteEmail: pendTel.correo }).catch(
+          () => {},
+        );
+        useClientePuntos.getState().limpiarPendiente();
+      }
       finalizarVenta(ventaFinal, puntosMsg);
       return;
     }
 
-    // Si hay un cliente pre-registrado pendiente, ofrecer vincular ANTES del
-    // ticket. Si no, finalizar (imprimir) directo.
-    if (useClientePuntos.getState().pendiente) {
-      setVentaParaVincular({ venta: result.venta, monto, path: result.path });
+    // Cliente pre-registrado en espera: vence a la hora (antes se quedaba
+    // pegado). Si en esta venta se cobró SU tarjeta, es él: se acumula sin
+    // preguntar. Si no, se pregunta ANTES del ticket.
+    const pend = useClientePuntos.getState().pendiente;
+    if (pend && !pendienteVigente(pend, Date.now())) {
+      useClientePuntos.getState().limpiarPendiente();
+    } else if (pend) {
+      const sel = { venta: result.venta, monto, path: result.path };
+      if (tarjetaCobrada && tarjPend && telefonosIguales(tarjPend.telefono, pend.telefono)) {
+        await vincularPendiente(sel, pend);
+        return;
+      }
+      setVentaParaVincular(sel);
       setVinculacionOpen(true);
       return;
     }
@@ -844,15 +888,14 @@ export function Ventas() {
     }
   }
 
-  // "Sí": acreditar los puntos de esta venta + imprimir el ticket con la
-  // contraseña temporal + limpiar el pendiente.
-  async function handleVincularSi() {
-    const sel = ventaParaVincular;
-    const pend = useClientePuntos.getState().pendiente;
-    setVinculacionOpen(false);
-    setVentaParaVincular(null);
-    if (!sel || !pend || !sucursalId || !nodoId) {
-      if (sel) finalizarVenta(sel.venta);
+  // Acreditar el cashback de la venta al cliente en espera + imprimir el ticket
+  // con su contraseña temporal + sacarlo de la espera.
+  async function vincularPendiente(
+    sel: { venta: Venta; monto: string; path: string },
+    pend: ClientePendiente,
+  ) {
+    if (!sucursalId || !nodoId) {
+      finalizarVenta(sel.venta);
       return;
     }
     let venta: Venta = { ...sel.venta, codigoPuntos: pend.code };
@@ -911,9 +954,32 @@ export function Ventas() {
     finalizarVenta(venta, puntosMsg);
   }
 
+  // "Sí": acreditar esta venta al cliente en espera.
+  async function handleVincularSi() {
+    const sel = ventaParaVincular;
+    const pend = useClientePuntos.getState().pendiente;
+    setVinculacionOpen(false);
+    setVentaParaVincular(null);
+    if (!sel) return;
+    if (!pend) {
+      finalizarVenta(sel.venta);
+      return;
+    }
+    await vincularPendiente(sel, pend);
+  }
+
   // "No": no acreditar esta venta; el pendiente se mantiene para la correcta.
   function handleVincularNo() {
     const sel = ventaParaVincular;
+    setVinculacionOpen(false);
+    setVentaParaVincular(null);
+    if (sel) finalizarVenta(sel.venta);
+  }
+
+  // "Quitar pre-registro": sale de la espera; esta venta sigue sin cashback.
+  function handleVincularQuitar() {
+    const sel = ventaParaVincular;
+    useClientePuntos.getState().limpiarPendiente();
     setVinculacionOpen(false);
     setVentaParaVincular(null);
     if (sel) finalizarVenta(sel.venta);
@@ -1086,6 +1152,12 @@ export function Ventas() {
               onPreRegistro={() => setPreRegOpen(true)}
               onVenderRegalo={() => setGiftOpen(true)}
               onRecargarRegalo={() => setRecargaOpen(true)}
+              pendienteCorreo={pendientePuntos?.correo ?? null}
+              onQuitarPendiente={() => {
+                useClientePuntos.getState().limpiarPendiente();
+                setToast("Se quitó al cliente en espera.");
+                window.setTimeout(() => setToast(null), 3000);
+              }}
             />
           </PilaBotonesFlotantes>
         </div>
@@ -1131,9 +1203,10 @@ export function Ventas() {
       <GiftEmitidaModal info={giftEmitida} onClose={() => setGiftEmitida(null)} />
       <VinculacionClienteModal
         open={vinculacionOpen}
-        correo={pendientePuntos?.correo ?? ""}
+        cliente={pendientePuntos}
         onSi={handleVincularSi}
         onNo={handleVincularNo}
+        onQuitar={handleVincularQuitar}
       />
 
       <VentaRealizadaOverlay

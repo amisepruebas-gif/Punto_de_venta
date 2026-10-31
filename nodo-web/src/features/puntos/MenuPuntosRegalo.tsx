@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Gift, UserPlus, WalletCards } from "lucide-react";
+import { Gift, UserPlus, UserX, WalletCards } from "lucide-react";
 
 type Props = {
   onPreRegistro: () => void;
   onVenderRegalo: () => void;
   onRecargarRegalo: () => void;
+  /** Correo del cliente pre-registrado en espera, si hay. */
+  pendienteCorreo?: string | null;
+  onQuitarPendiente?: () => void;
 };
 
 /**
  * Botón flotante "Cashback y regalo". Junta en un menú las acciones de lealtad
  * que no se usan en cada venta (pre-registrar cliente, vender y recargar
  * tarjeta de regalo), para que la pila de Ventas quepa en tablets chicas.
+ * Con un cliente en espera lleva un punto y permite quitarlo.
  * El menú abre a la izquierda y hacia abajo del botón: hacia arriba lo
  * recortaría el área del carrito cuando el botón queda hasta arriba.
  */
@@ -18,6 +22,8 @@ export function MenuPuntosRegalo({
   onPreRegistro,
   onVenderRegalo,
   onRecargarRegalo,
+  pendienteCorreo,
+  onQuitarPendiente,
 }: Props) {
   const [abierto, setAbierto] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -57,6 +63,16 @@ export function MenuPuntosRegalo({
       color: "bg-amber-700",
       onClick: onRecargarRegalo,
     },
+    ...(pendienteCorreo && onQuitarPendiente
+      ? [
+          {
+            label: `Quitar cliente en espera (${pendienteCorreo})`,
+            Icono: UserX,
+            color: "bg-rose-600",
+            onClick: onQuitarPendiente,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -67,9 +83,15 @@ export function MenuPuntosRegalo({
         aria-label="Cashback y tarjetas de regalo"
         aria-haspopup="menu"
         aria-expanded={abierto}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-black/20 transition-transform hover:scale-105 hover:bg-amber-600 active:scale-95"
+        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-black/20 transition-transform hover:scale-105 hover:bg-amber-600 active:scale-95"
       >
         <Gift className="h-6 w-6" />
+        {pendienteCorreo && (
+          <span
+            className="absolute right-0.5 top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-indigo-600"
+            aria-label="Hay un cliente en espera"
+          />
+        )}
       </button>
       {abierto && (
         <div

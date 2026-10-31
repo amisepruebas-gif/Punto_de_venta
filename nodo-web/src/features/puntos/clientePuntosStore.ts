@@ -11,6 +11,9 @@ export type ClientePendiente = {
   telefono: string;
   nombre?: string;
   code: string;
+  /** Cuándo se pre-registró (ms): vence a la hora (`pendienteVigente`).
+   *  Opcional: uno guardado por la versión anterior se fecha al abrir la app. */
+  creadoEn?: number;
 };
 
 /**
@@ -128,7 +131,8 @@ export const useClientePuntos = create<State>()(
       giftPendiente: null,
       cola: [],
       fallidos: [],
-      setPendiente: (c) => set({ pendiente: c }),
+      setPendiente: (c) =>
+        set({ pendiente: c ? { ...c, creadoEn: c.creadoEn ?? Date.now() } : null }),
       limpiarPendiente: () => set({ pendiente: null }),
       setTarjetaPendiente: (t) => set({ tarjetaPendiente: t }),
       limpiarTarjetaPendiente: () => set({ tarjetaPendiente: null }),
@@ -198,6 +202,13 @@ export const useClientePuntos = create<State>()(
       // perdería la cola). Solo se agregan campos opcionales.
       name: "amise_nodo_puntos",
       version: 1,
+      // Un cliente en espera guardado sin fecha (versión anterior) se toma
+      // como creado ahora: vence en una hora, no se pierde uno de recién.
+      onRehydrateStorage: () => (st) => {
+        if (st?.pendiente && st.pendiente.creadoEn == null) {
+          st.setPendiente({ ...st.pendiente, creadoEn: Date.now() });
+        }
+      },
     },
   ),
 );

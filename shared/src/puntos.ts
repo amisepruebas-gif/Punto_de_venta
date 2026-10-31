@@ -216,3 +216,17 @@ export function enmascararCorreo(correo: unknown): string {
   if (at < 1) return "•••";
   return `${s.slice(0, Math.min(2, at))}•••${s.slice(at)}`;
 }
+
+// ── Cliente pre-registrado en espera ──
+
+/** El cliente en espera vence a la hora: antes se quedaba "pegado" hasta que
+ *  otra venta dijera "Sí". */
+export const VIGENCIA_PENDIENTE_MS = 60 * 60_000;
+
+/** ¿Sigue vigente? Sin fecha o con fecha futura (reloj movido) cuenta como
+ *  vencido. */
+export function pendienteVigente(p: { creadoEn?: number } | null | undefined, ahora: number): boolean {
+  if (!p || p.creadoEn == null) return false;
+  const edad = ahora - p.creadoEn;
+  return edad >= 0 && edad < VIGENCIA_PENDIENTE_MS;
+}

@@ -10,6 +10,7 @@ import {
   esperaRegistroPuntos,
   esperaReintentoMs,
   necesitaAtencionPuntos,
+  pendienteVigente,
   recortarColaPuntos,
   telefonosIguales,
   MAX_INTENTOS_CANDADO,
@@ -217,5 +218,20 @@ describe("tarjeta y correo", () => {
     expect(enmascararCorreo("ju•••@gmail.com")).toBe("ju•••@gmail.com");
     expect(enmascararCorreo("sin-arroba")).toBe("•••");
     expect(enmascararCorreo(undefined)).toBe("");
+  });
+});
+
+describe("pendienteVigente", () => {
+  const ahora = 1_800_000_000_000;
+  it("vigente menos de una hora", () => {
+    expect(pendienteVigente({ creadoEn: ahora }, ahora)).toBe(true);
+    expect(pendienteVigente({ creadoEn: ahora - 59 * 60_000 }, ahora)).toBe(true);
+  });
+  it("vencido a la hora, sin fecha o con fecha futura (reloj movido)", () => {
+    expect(pendienteVigente({ creadoEn: ahora - 60 * 60_000 }, ahora)).toBe(false);
+    expect(pendienteVigente({ creadoEn: ahora - 2 * 3600_000 }, ahora)).toBe(false);
+    expect(pendienteVigente({}, ahora)).toBe(false);
+    expect(pendienteVigente(null, ahora)).toBe(false);
+    expect(pendienteVigente({ creadoEn: ahora + 60_000 }, ahora)).toBe(false);
   });
 });
