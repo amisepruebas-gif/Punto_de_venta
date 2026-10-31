@@ -22,7 +22,8 @@ const LOYALTY_POS_SECRET = defineSecret("LOYALTY_POS_SECRET");
 // Dominio CANÓNICO: amise.mx (apex) hace 308 → www y se pierde el header
 // Authorization. Hay que llamar directo a www para que el Bearer llegue.
 const AMISE_API_BASE = "https://www.amise.mx";
-const ROLES_PUNTOS = ["nodo", "vendedor", "admin", "superadmin"];
+// Lealtad: exige sesión con rol permitido (ver lib/rolesPuntos.js).
+const {requireRolPuntos} = require("./lib/rolesPuntos");
 const admin = require("firebase-admin");
 const express = require("express");
 const cors = require("cors");
@@ -2209,10 +2210,7 @@ exports.registrarClientePuntos = onCall(
       // POS sin login fijo (Firestore abierto; la callable llega con auth MISSING):
       // auth best-effort — si viene rol se valida, si no, se procede. La seguridad
       // real es LOYALTY_POS_SECRET server-side hacia amise.mx (hardening: App Check).
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {email, phone, nombre, code} = request.data || {};
       if (!email || typeof email !== "string") {
         throw new HttpsError("invalid-argument", "email requerido");
@@ -2233,11 +2231,7 @@ exports.registrarClientePuntos = onCall(
 exports.acreditarPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      // auth best-effort (POS sin login fijo). Seguridad real: secreto server-side.
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      const t = requireRolPuntos(request.auth);
       const {email, phone, amount, ventaId} = request.data || {};
       if (!ventaId || typeof ventaId !== "string") {
         throw new HttpsError("invalid-argument", "ventaId requerido");
@@ -2271,11 +2265,7 @@ exports.acreditarPuntos = onCall(
 exports.consultarSaldoPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      // auth best-effort (POS sin login fijo). Seguridad real: secreto server-side.
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {email, phone, codigo} = request.data || {};
       if (!email && !phone && !codigo) {
         throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
@@ -2289,11 +2279,7 @@ exports.consultarSaldoPuntos = onCall(
 exports.canjearPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      // auth best-effort (POS sin login fijo). Seguridad real: secreto server-side.
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      const t = requireRolPuntos(request.auth);
       const {email, phone, money, idempotencyKey} = request.data || {};
       if (!idempotencyKey || typeof idempotencyKey !== "string") {
         throw new HttpsError("invalid-argument", "idempotencyKey requerido");
@@ -2325,10 +2311,7 @@ exports.canjearPuntos = onCall(
 exports.cerrarCanje = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {email, phone, cobroId} = request.data || {};
       if (!cobroId || typeof cobroId !== "string") {
         throw new HttpsError("invalid-argument", "cobroId requerido");
@@ -2349,11 +2332,7 @@ exports.cerrarCanje = onCall(
 exports.recuperarCodigoPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      // auth best-effort (POS sin login fijo). Seguridad real: secreto server-side.
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {phone, email} = request.data || {};
       if (!phone && !email) {
         throw new HttpsError("invalid-argument", "phone o email requerido");
@@ -2370,10 +2349,7 @@ exports.recuperarCodigoPuntos = onCall(
 exports.activarTarjeta = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {email, phone, codigo, ventaId} = request.data || {};
       if (!email && !phone) {
         throw new HttpsError("invalid-argument", "email o phone requerido");
@@ -2391,10 +2367,7 @@ exports.activarTarjeta = onCall(
 exports.reponerTarjeta = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {email, phone, codigoAnterior, codigoNuevo, ventaId} = request.data || {};
       if (!email && !phone && !codigoAnterior) {
         throw new HttpsError("invalid-argument", "email, phone o codigoAnterior requerido");
@@ -2413,10 +2386,7 @@ exports.reponerTarjeta = onCall(
 exports.desbloquearTarjeta = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {email, phone, codigo} = request.data || {};
       if (!email && !phone && !codigo) {
         throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
@@ -2464,11 +2434,7 @@ async function llamarAmiseGet(path) {
 exports.emitirTarjetaRegalo = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      // auth best-effort (POS sin login fijo). Seguridad real: secreto server-side.
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      const t = requireRolPuntos(request.auth);
       const d = request.data || {};
       const {email, phone, nombre, denominacion, barcode, ventaId} = d;
       if (!email || typeof email !== "string") {
@@ -2514,10 +2480,7 @@ exports.emitirTarjetaRegalo = onCall(
 exports.recargarTarjetaRegalo = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      const t = requireRolPuntos(request.auth);
       const {email, phone, codigo, amount, ventaId} = request.data || {};
       if (!email && !phone && !codigo) {
         throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
@@ -2552,10 +2515,7 @@ exports.recargarTarjetaRegalo = onCall(
 exports.consultarSaldoTarjetaRegalo = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {email, phone, codigo} = request.data || {};
       if (!email && !phone && !codigo) {
         throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
@@ -2583,10 +2543,7 @@ exports.consultarSaldoTarjetaRegalo = onCall(
 exports.redimirCreditoRegalo = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      const t = requireRolPuntos(request.auth);
       const {email, phone, codigo, money, idempotencyKey} = request.data || {};
       if (!idempotencyKey || typeof idempotencyKey !== "string") {
         throw new HttpsError("invalid-argument", "idempotencyKey requerido");
@@ -2620,10 +2577,7 @@ exports.redimirCreditoRegalo = onCall(
 exports.cerrarCreditoRegalo = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      const t = (request.auth && request.auth.token) || {};
-      if (t.role && !ROLES_PUNTOS.includes(t.role)) {
-        throw new HttpsError("permission-denied", "Sin permiso");
-      }
+      requireRolPuntos(request.auth);
       const {email, phone, codigo, cobroId} = request.data || {};
       if (!cobroId || typeof cobroId !== "string") {
         throw new HttpsError("invalid-argument", "cobroId requerido");
