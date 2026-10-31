@@ -16,6 +16,10 @@ export type CrearSucursalOutput = { success: boolean; sucursalId: string };
 export type RevocarNodoInput = { negocioId: string; nodoId: string };
 export type RevocarNodoOutput = { success: boolean };
 
+/** Código de un solo uso para registrar o re-vincular una tablet. */
+export type GenerarCodigoCajaInput = { negocioId: string };
+export type GenerarCodigoCajaOutput = { codigo: string; expiraEn: string };
+
 export type ListarSucursalesInput = { negocioId: string };
 export type ListarSucursalesOutput = {
   sucursales: Array<{ sucursalId: string; nombre: string; direccion: string }>;
@@ -54,6 +58,10 @@ export const fnCrearSucursal = callable<CrearSucursalInput, CrearSucursalOutput>
 export const fnRevocarNodo = callable<RevocarNodoInput, RevocarNodoOutput>(
   "revocarNodo",
 );
+export const fnGenerarCodigoCaja = callable<
+  GenerarCodigoCajaInput,
+  GenerarCodigoCajaOutput
+>("generarCodigoCaja");
 export const fnListarSucursales = callable<
   ListarSucursalesInput,
   ListarSucursalesOutput

@@ -12,6 +12,8 @@ export type RegistrarNodoInput = {
   nombreNodo: string;
   registradoPor: string;
   userAgent?: string;
+  /** Código de alta de un solo uso (admin → Nodos). */
+  codigo?: string;
 };
 export type RegistrarNodoOutput = {
   success: boolean;
@@ -19,6 +21,8 @@ export type RegistrarNodoOutput = {
   sucursalId: string;
   negocioId: string;
   customToken: string;
+  /** Llave de re-auth de la tablet; null si conserva la que ya tenía. */
+  llave?: string | null;
 };
 
 export type RebindNodoInput = {
@@ -26,15 +30,23 @@ export type RebindNodoInput = {
   nodoId: string;
   userAgent?: string;
   registradoPor?: string;
+  /** Re-auth automático: la llave guardada en la tablet. */
+  llave?: string;
+  /** Re-vinculación manual: código de alta (admin → Nodos). */
+  codigo?: string;
 };
 export type RebindNodoOutput = RegistrarNodoOutput;
 
-export type ListarSucursalesInput = { negocioId: string };
+export type ListarSucursalesInput = { negocioId: string; codigo?: string };
 export type ListarSucursalesOutput = {
   sucursales: Array<{ sucursalId: string; nombre: string; direccion: string }>;
 };
 
-export type ListarNodosInput = { negocioId: string; sucursalId: string };
+export type ListarNodosInput = {
+  negocioId: string;
+  sucursalId: string;
+  codigo?: string;
+};
 export type ListarNodosOutput = {
   nodos: Array<{
     nodoId: string;
@@ -65,6 +77,11 @@ export const fnListarSucursales = callable<
 export const fnListarNodos = callable<ListarNodosInput, ListarNodosOutput>(
   "listarNodos",
 );
+/** Tablets dadas de alta antes de la llave: la piden con su sesión. */
+export const fnAsegurarLlaveNodo = callable<
+  Record<string, never>,
+  { llave: string | null }
+>("asegurarLlaveNodo");
 
 // ---- Chat ----
 export type AsegurarChatGrupoNodoInput = {

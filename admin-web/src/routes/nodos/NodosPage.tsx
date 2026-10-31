@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Ban, Smartphone, History, RefreshCw } from "lucide-react";
+import { Ban, Smartphone, History, RefreshCw, KeyRound } from "lucide-react";
 import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useAuth } from "@/hooks/useAuth";
 import { useNodos } from "@/features/nodos/useNodos";
 import { useSucursales } from "@/features/sucursales/useSucursales";
-import { fnRevocarNodo } from "@/firebase/callables";
+import {
+  fnGenerarCodigoCaja,
+  fnRevocarNodo,
+  type GenerarCodigoCajaOutput,
+} from "@/firebase/callables";
 import { Button } from "@/components/ui/button";
 import { db } from "@/firebase/config";
 import {
@@ -26,6 +30,10 @@ export function NodosPage() {
   const [detalle, setDetalle] = useState<Nodo | null>(null);
   const [revocando, setRevocando] = useState<string | null>(null);
   const [forzando, setForzando] = useState(false);
+  const [generandoCodigo, setGenerandoCodigo] = useState(false);
+  const [codigoCaja, setCodigoCaja] = useState<GenerarCodigoCajaOutput | null>(
+    null,
+  );
   const [ultimoRefresco, setUltimoRefresco] = useState<{
     fecha?: string;
     by?: string;
@@ -86,6 +94,21 @@ export function NodosPage() {
     }
   }
 
+  // Registrar o re-vincular una tablet exige este código (vale 30 min, un
+  // solo uso): así nadie se da de alta como caja solo con la URL del POS.
+  async function onGenerarCodigo() {
+    if (!negocioId || generandoCodigo) return;
+    setGenerandoCodigo(true);
+    try {
+      const r = await fnGenerarCodigoCaja({ negocioId });
+      setCodigoCaja(r.data);
+    } catch (err) {
+      alert("Error al generar el código: " + (err as Error).message);
+    } finally {
+      setGenerandoCodigo(false);
+    }
+  }
+
   const filtrados = useMemo(() => {
     return filtroSucursal
       ? nodos.filter((n) => n.sucursalId === filtroSucursal)
@@ -125,16 +148,25 @@ export function NodosPage() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <Button
-            variant="outline"
-            onClick={onForzarRecarga}
-            disabled={forzando || !negocioId}
-          >
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${forzando ? "animate-spin" : ""}`}
-            />
-            {forzando ? "Forzando…" : "Forzar recarga de nodos"}
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              onClick={onGenerarCodigo}
+              disabled={generandoCodigo || !negocioId}
+            >
+              <KeyRound className="mr-2 h-4 w-4" />
+              {generandoCodigo ? "Generando…" : "Código para registrar caja"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onForzarRecarga}
+              disabled={forzando || !negocioId}
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${forzando ? "animate-spin" : ""}`}
+              />
+              {forzando ? "Forzando…" : "Forzar recarga de nodos"}
+            </Button>
+          </div>
           {ultimoRefresco?.fecha && (
             <p className="text-[11px] text-muted-foreground">
               Última: {ultimoRefresco.fecha}
@@ -240,6 +272,46 @@ export function NodosPage() {
       )}
 
       {detalle && <NodoDetalleModal nodo={detalle} onClose={() => setDetalle(null)} />}
+      {codigoCaja && (
+        <CodigoCajaModal {...codigoCaja} onClose={() => setCodigoCaja(null)} />
+      )}
+    </div>
+  );
+}
+
+function CodigoCajaModal({
+  codigo,
+  expiraEn,
+  onClose,
+}: GenerarCodigoCajaOutput & { onClose: () => void }) {
+  const vence = new Date(expiraEn).toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal
+    >
+      <div
+        className="w-full max-w-sm space-y-4 rounded-lg bg-card p-5 text-center shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold">Código para registrar caja</h2>
+        <p className="select-all font-mono text-3xl font-bold tracking-widest">
+          {codigo}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Escríbelo en la tablet, en la pantalla de registro (sirve para una
+          caja nueva o para “Tablet recuperada”). Se usa una sola vez y vence
+          a las {vence}.
+        </p>
+        <Button onClick={onClose} className="w-full">
+          Cerrar
+        </Button>
+      </div>
     </div>
   );
 }

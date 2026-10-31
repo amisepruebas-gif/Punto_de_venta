@@ -55,6 +55,11 @@ service cloud.firestore {
         allow write: if false; // los crea la CF (Admin SDK)
       }
 
+      // Códigos de alta de cajas (solo su hash): solo las CF (Admin SDK).
+      match /codigos_caja_web_new_version/{codigoHash} {
+        allow read, write: if false;
+      }
+
       // Artículos: el nodo SOLO ajusta stock; mercancia CRUD; admin full.
       match /articulos_n_web_new_version/{artId} {
         allow read: if miembro(nid);

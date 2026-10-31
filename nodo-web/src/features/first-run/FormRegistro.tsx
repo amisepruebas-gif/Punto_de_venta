@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,14 +9,17 @@ import {
   type NodoItem,
 } from "./useRegistroNodo";
 
-type Step = "loading" | "elegir-sucursal" | "nueva-sucursal" | "datos-nodo" | "rebind";
+type Step = "codigo" | "elegir-sucursal" | "nueva-sucursal" | "datos-nodo" | "rebind";
 
 export function FormRegistro() {
   const navigate = useNavigate();
   const { setSession } = useNodoSession();
   const r = useRegistroNodo();
 
-  const [step, setStep] = useState<Step>("loading");
+  // Registrar o vincular una tablet requiere el código de un solo uso que el
+  // admin genera en admin-web (Nodos).
+  const [step, setStep] = useState<Step>("codigo");
+  const [codigo, setCodigo] = useState("");
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [sucursalElegida, setSucursalElegida] = useState<string | null>(null);
 
@@ -34,19 +37,17 @@ export function FormRegistro() {
   const [nodos, setNodos] = useState<NodoItem[]>([]);
   const [nodoElegido, setNodoElegido] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const s = await r.listarSucursales();
-      setSucursales(s);
-      setStep(s.length > 0 ? "elegir-sucursal" : "nueva-sucursal");
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  async function onValidarCodigo() {
+    const s = await r.listarSucursales(codigo);
+    if (!s) return; // r.error dice por qué
+    setSucursales(s);
+    setStep(s.length > 0 ? "elegir-sucursal" : "nueva-sucursal");
+  }
 
   async function onElegirSucursal(sid: string) {
     setSucursalElegida(sid);
     if (modoRebind) {
-      const ns = await r.listarNodos(sid);
+      const ns = await r.listarNodos(sid, codigo);
       setNodos(ns);
       setStep("rebind");
     } else {
@@ -76,6 +77,7 @@ export function FormRegistro() {
           },
       nombreNodo: nombreNodo.trim(),
       registradoPor: registradoPor.trim(),
+      codigo,
     });
     if (session) {
       setSession(session);
@@ -91,19 +93,12 @@ export function FormRegistro() {
       nodoId: nodoElegido,
       registradoPor: registradoPor.trim(),
       nombreNodo: elegido.nombre,
+      codigo,
     });
     if (session) {
       setSession(session);
       navigate("/", { replace: true });
     }
-  }
-
-  if (step === "loading") {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        Cargando sucursales…
-      </div>
-    );
   }
 
   return (
@@ -117,6 +112,45 @@ export function FormRegistro() {
               : "Registra esta tablet como nuevo nodo"}
           </p>
         </header>
+
+        {/* ---------- Código del admin ---------- */}
+        {step === "codigo" && (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onValidarCodigo();
+            }}
+          >
+            <label className="text-sm font-medium" htmlFor="codigo-alta">
+              Código del administrador
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Pídelo al administrador: en admin, Nodos → “Código para registrar
+              caja”. Vale 30 minutos y sirve una sola vez.
+            </p>
+            <Input
+              id="codigo-alta"
+              placeholder="XXXX-XXXX"
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              className="text-center font-mono text-lg tracking-widest"
+            />
+            {r.error && (
+              <p className="text-sm text-destructive" role="alert">{r.error}</p>
+            )}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={r.loading || codigo.replace(/[\s-]/g, "").length < 8}
+            >
+              {r.loading ? "Verificando…" : "Continuar"}
+            </Button>
+          </form>
+        )}
 
         {/* ---------- Elegir sucursal ---------- */}
         {step === "elegir-sucursal" && (

@@ -4,6 +4,7 @@ import {
   fnListarSucursales,
   fnRebindNodo,
   fnListarNodos,
+  fnAsegurarLlaveNodo,
   type RegistrarNodoInput,
 } from "@/firebase/callable";
 import { loginConCustomToken } from "@/firebase/auth";
@@ -24,29 +25,50 @@ export type NodoItem = {
   fechaRegistro: string | null;
 };
 
+/**
+ * Llave de re-auth de la tablet. Un servidor anterior a la llave no la
+ * devuelve: se pide con la sesión de caja recién abierta.
+ */
+async function llaveDe(llave?: string | null): Promise<string | undefined> {
+  if (llave) return llave;
+  try {
+    return (await fnAsegurarLlaveNodo({})).data.llave ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function useRegistroNodo() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function listarSucursales(): Promise<Sucursal[]> {
+  /** Valida el código de alta; null si el servidor lo rechazó. */
+  async function listarSucursales(codigo: string): Promise<Sucursal[] | null> {
     setLoading(true);
     setError(null);
     try {
-      const res = await fnListarSucursales({ negocioId: NEGOCIO_ID });
+      const res = await fnListarSucursales({ negocioId: NEGOCIO_ID, codigo });
       return res.data.sucursales;
     } catch (e) {
       setError((e as Error).message);
-      return [];
+      return null;
     } finally {
       setLoading(false);
     }
   }
 
-  async function listarNodos(sucursalId: string): Promise<NodoItem[]> {
+  async function listarNodos(
+    sucursalId: string,
+    codigo: string,
+  ): Promise<NodoItem[]> {
     setLoading(true);
     setError(null);
     try {
-      const res = await fnListarNodos({ negocioId: NEGOCIO_ID, sucursalId });
+      const res = await fnListarNodos({
+        negocioId: NEGOCIO_ID,
+        sucursalId,
+        codigo,
+      });
       return res.data.nodos;
     } catch (e) {
       setError((e as Error).message);
@@ -61,6 +83,7 @@ export function useRegistroNodo() {
     nuevaSucursal?: { nombre: string; direccion: string; telefono?: string };
     nombreNodo: string;
     registradoPor: string;
+    codigo: string;
   }): Promise<NodoSession | null> {
     setLoading(true);
     setError(null);
@@ -80,6 +103,7 @@ export function useRegistroNodo() {
         sucursalId,
         negocioId,
         nombreNodo: params.nombreNodo,
+        llave: await llaveDe(res.data.llave),
       };
       saveSession(session);
       return session;
@@ -95,6 +119,7 @@ export function useRegistroNodo() {
     nodoId: string;
     registradoPor: string;
     nombreNodo: string;
+    codigo: string;
   }): Promise<NodoSession | null> {
     setLoading(true);
     setError(null);
@@ -104,6 +129,7 @@ export function useRegistroNodo() {
         nodoId: params.nodoId,
         userAgent: navigator.userAgent,
         registradoPor: params.registradoPor,
+        codigo: params.codigo,
       });
       const { nodoId, sucursalId, negocioId, customToken } = res.data;
       await loginConCustomToken(customToken);
@@ -114,6 +140,7 @@ export function useRegistroNodo() {
         sucursalId,
         negocioId,
         nombreNodo: params.nombreNodo,
+        llave: await llaveDe(res.data.llave),
       };
       saveSession(session);
       return session;

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { create } from "zustand";
 import { auth } from "../firebase/config";
-import { fnRebindNodo } from "../firebase/callable";
+import { fnAsegurarLlaveNodo, fnRebindNodo } from "../firebase/callable";
 import { loginConCustomToken } from "../firebase/auth";
 
 const LS_KEY = "amise_nodo_session";
@@ -12,6 +12,8 @@ export type NodoSession = {
   sucursalId: string;
   negocioId: string;
   nombreNodo: string;
+  /** Llave de re-auth de esta tablet (el servidor solo guarda su hash). */
+  llave?: string;
 };
 
 export function loadSession(): NodoSession | null {
@@ -69,6 +71,7 @@ export function useNodoSession() {
     // docs/auditoria-cashback/05): si hay sesión LOCAL pero NO sesión de Firebase
     // (token perdido, p.ej. IndexedDB limpiado), la caja escribiría sin request.auth
     // → con reglas cerradas, caja caída. Rebind silencioso con el nodoId guardado.
+    // El servidor solo acepta el rebind silencioso con la llave de la tablet.
     onAuthStateChanged(auth, async (user) => {
       const s = loadSession();
       if (!user && s) {
@@ -78,13 +81,29 @@ export function useNodoSession() {
             nodoId: s.nodoId,
             userAgent: navigator.userAgent,
             registradoPor: "reauth",
+            ...(s.llave ? { llave: s.llave } : {}),
           });
           await loginConCustomToken(r.data.customToken);
           // signIn re-dispara onAuthStateChanged con user != null → no re-rebinda.
         } catch {
-          // Rebind falló (nodo revocado/borrado) → forzar first-run.
+          // Rebind falló (nodo revocado/borrado o sin llave válida) → forzar
+          // first-run, que pide el código del admin.
           useSessionStore.getState().setSession(null);
         }
+      } else if (user && s && !s.llave) {
+        // Tablet dada de alta antes de la llave: pedirla con la sesión vigente
+        // para que el rebind silencioso siga funcionando. En segundo plano:
+        // sin red no debe frenar el arranque (la caja vende offline).
+        void fnAsegurarLlaveNodo({})
+          .then((r) => {
+            const actual = useSessionStore.getState().session;
+            if (r.data.llave && actual?.nodoId === s.nodoId) {
+              useSessionStore.getState().setSession({ ...actual, llave: r.data.llave });
+            }
+          })
+          .catch(() => {
+            // Sin red: se reintenta en el próximo arranque.
+          });
       }
       setLoading(false);
     });

@@ -52,6 +52,7 @@ const P = {
   lote: `${N}/produccion_web_new_version/L1`,
   ajuste: `${N}/ajustes_inventario_web_new_version/A1`,
   contadorFab: `${N}/datos_web_new_version/_contadorFabricacion`,
+  codigoCaja: `${N}/codigos_caja_web_new_version/HASH1`,
   huellaArt: `${N}/datos_web_new_version/articulos_ac`,
   sysDoc: `system/auth_kick_switch`,
   // --- RAIZ legacy (debe quedar ABIERTA como hoy) ---
@@ -81,6 +82,7 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(db, P.lote), { folio: "FAB-000001", cantidad: 30 });
   await setDoc(doc(db, P.ajuste), { delta: -2, motivo: "danado" });
   await setDoc(doc(db, P.contadorFab), { ultimo: 1 });
+  await setDoc(doc(db, P.codigoCaja), { usado: false, creadoPor: "a@x.com" });
   // raiz legacy sembrada
   await setDoc(doc(db, P.raizMensajes), { m: 1 });
   await setDoc(doc(db, P.raizVentas), { total: 9 });
@@ -194,6 +196,18 @@ await check("FAB nodo NO avanza folio", "fail", updateDoc(doc(nodo1, P.contadorF
 await check("FAB mercancia NO avanza folio", "fail", updateDoc(doc(merc, P.contadorFab), { ultimo: 99 }));
 await check("FAB nodo sigue escribiendo huella articulos_ac", "ok", setDoc(doc(nodo1, P.huellaArt), { huella: "h1" }));
 await check("FAB mercancia sigue escribiendo huella articulos_ac", "ok", setDoc(doc(merc, P.huellaArt), { huella: "h2" }));
+
+// ============ ALTA DE CAJAS: códigos de un solo uso y llave del nodo ============
+// Solo las CF (Admin SDK) tocan los códigos; la llave vive en el doc del nodo,
+// que ningún cliente escribe.
+await check("CAJA anon NO lee codigo de alta", "fail", getDoc(doc(anon, P.codigoCaja)));
+await check("CAJA anon NO crea codigo de alta", "fail", setDoc(doc(anon, `${N}/codigos_caja_web_new_version/HASH2`), { usado: false }));
+await check("CAJA nodo NO lee codigo de alta", "fail", getDoc(doc(nodo1, P.codigoCaja)));
+await check("CAJA nodo NO libera codigo usado", "fail", updateDoc(doc(nodo1, P.codigoCaja), { usado: false }));
+await check("CAJA admin NO lee codigo de alta (solo CF)", "fail", getDoc(doc(adminC, P.codigoCaja)));
+await check("CAJA superadmin NO escribe codigo de alta", "fail", setDoc(doc(supera, P.codigoCaja), { usado: false }));
+await check("CAJA nodo NO cambia la llave de su nodo", "fail", updateDoc(doc(nodo1, P.nodoDoc), { llaveHash: "x" }));
+await check("CAJA admin NO cambia la llave de un nodo", "fail", updateDoc(doc(adminC, P.nodoDoc), { llaveHash: "x" }));
 
 let ok = true;
 for (const [pass, name] of res) { console.log((pass ? "PASS" : "FALLA") + "  " + name); if (!pass) ok = false; }

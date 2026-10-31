@@ -24,6 +24,11 @@ const LOYALTY_POS_SECRET = defineSecret("LOYALTY_POS_SECRET");
 const AMISE_API_BASE = "https://www.amise.mx";
 // Lealtad: exige sesión con rol permitido (ver lib/rolesPuntos.js).
 const {requireRolPuntos} = require("./lib/rolesPuntos");
+// Alta de cajas: código de un solo uso y llave de la tablet (lib/accesoCaja.js).
+const acceso = require("./lib/accesoCaja");
+// Código nuevo: FieldValue/Timestamp modulares. En el emulador de functions
+// admin.firestore.FieldValue es undefined (el código viejo aún lo usa).
+const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 const admin = require("firebase-admin");
 const express = require("express");
 const cors = require("cors");
@@ -35,6 +40,7 @@ const SUFFIX = "_web_new_version";
 const COL_NEGOCIOS = `negocios${SUFFIX}`;
 const COL_SUCURSALES = `sucursales${SUFFIX}`;
 const COL_NODOS = `nodos${SUFFIX}`;
+const COL_CODIGOS_CAJA = `codigos_caja${SUFFIX}`;
 
 // ============================================================
 // Helpers de autorización (v2 — recibe `auth` del request)
@@ -282,8 +288,82 @@ exports.crearSucursal = onCall(async (request) => {
 });
 
 // ============================================================
-// registrarNodo — first-run del nodo (público).
+// Alta de cajas — admin con sesión o código de un solo uso
+// ============================================================
+
+const codigoInvalido = () => new HttpsError(
+    "permission-denied", "Código inválido, vencido o ya usado");
+
+/**
+ * Autoriza dar de alta o re-vincular una caja: admin del negocio con sesión,
+ * o el código de un solo uso que el admin generó en admin-web (Nodos).
+ * Con `consumir`, lo marca usado en una transacción y devuelve su ref para
+ * liberarlo si el alta falla después.
+ */
+async function autorizarAltaCaja(request, negocioId, {consumir}) {
+  const t = request.auth && request.auth.token;
+  if (t && (t.role === "superadmin" ||
+      (t.role === "admin" && t.negocioId === negocioId))) {
+    return {codigoRef: null};
+  }
+  const codigo = acceso.normalizarCodigo(request.data && request.data.codigo);
+  if (!codigo) {
+    throw new HttpsError("permission-denied",
+        "Se requiere el código de un administrador (admin → Nodos)");
+  }
+  const ref = db.collection(COL_NEGOCIOS).doc(negocioId)
+      .collection(COL_CODIGOS_CAJA).doc(acceso.hashSecreto(codigo));
+  const estado = (snap) => acceso.estadoCodigo(snap.exists ? {
+    usado: snap.get("usado"),
+    expiraEnMs: snap.get("expiraEn") ? snap.get("expiraEn").toMillis() : 0,
+  } : null, Date.now());
+  if (!consumir) {
+    if (estado(await ref.get()) !== "valido") throw codigoInvalido();
+    return {codigoRef: null};
+  }
+  await db.runTransaction(async (tx) => {
+    if (estado(await tx.get(ref)) !== "valido") throw codigoInvalido();
+    tx.update(ref, {usado: true, usadoEn: FieldValue.serverTimestamp()});
+  });
+  return {codigoRef: ref};
+}
+
+/** El alta falló después de consumir el código: que se pueda reintentar. */
+async function liberarCodigo(ref) {
+  if (!ref) return;
+  await ref.update({usado: false, usadoEn: FieldValue.delete()})
+      .catch((e) => console.warn("liberar código de caja:", e.message));
+}
+
+// ============================================================
+// generarCodigoCaja — el admin pide un código para dar de alta o
+// re-vincular una tablet (lo teclea en el first-run del nodo).
+// ============================================================
+exports.generarCodigoCaja = onCall(async (request) => {
+  const {negocioId} = request.data || {};
+  if (!negocioId) {
+    throw new HttpsError("invalid-argument", "Se requiere negocioId");
+  }
+  const t = requireAdminOrSuper(request.auth, negocioId);
+  const codigo = acceso.generarCodigo();
+  const expiraEn = Timestamp.fromMillis(Date.now() + acceso.VIGENCIA_CODIGO_MS);
+  await db.collection(COL_NEGOCIOS).doc(negocioId)
+      .collection(COL_CODIGOS_CAJA).doc(acceso.hashSecreto(codigo)).create({
+        creadoPor: t.email || request.auth.uid,
+        creadoEn: FieldValue.serverTimestamp(),
+        expiraEn,
+        usado: false,
+      });
+  return {
+    codigo: acceso.formatearCodigo(codigo),
+    expiraEn: expiraEn.toDate().toISOString(),
+  };
+});
+
+// ============================================================
+// registrarNodo — first-run del nodo. Requiere admin o código de alta.
 // Crea usuario Anonymous + claims + doc del nodo. Puede crear sucursal.
+// Devuelve la llave con la que la tablet se re-autentica sola.
 //
 // FIX: rollback en caso de error. Si alguna op falla a mitad de camino,
 // se limpia lo ya creado para no dejar huérfanos en Auth/Firestore.
@@ -315,6 +395,10 @@ exports.registrarNodo = onCall(async (request) => {
   if (!negocioSnap.exists) {
     throw new HttpsError("not-found", "Negocio no existe");
   }
+
+  // Antes de crear nada: admin con sesión o código de alta (se consume).
+  const {codigoRef} =
+    await autorizarAltaCaja(request, negocioId, {consumir: true});
 
   // Trackeamos lo creado para rollback en caso de error
   let createdSucursalRef = null;
@@ -365,7 +449,8 @@ exports.registrarNodo = onCall(async (request) => {
       role: "nodo", negocioId, sucursalId, nodoId,
     });
 
-    // Crear doc del nodo
+    // Crear doc del nodo. De la llave de re-auth solo se guarda el hash.
+    const llave = acceso.generarLlave();
     const nodoRef = negocioRef.collection(COL_NODOS).doc(nodoId);
     await nodoRef.set({
       nodoId,
@@ -377,11 +462,13 @@ exports.registrarNodo = onCall(async (request) => {
       ultimoAcceso: admin.firestore.FieldValue.serverTimestamp(),
       estado: "activo",
       authUid: authUser.uid,
+      llaveHash: acceso.hashSecreto(llave),
       historial: [{
         tipo: "registro",
         fecha: new Date().toISOString(),
         userAgent: userAgent || "",
         detalle: registradoPor,
+        via: codigoRef ? "codigo" : "admin",
       }],
     });
     createdNodoRef = nodoRef;
@@ -401,10 +488,15 @@ exports.registrarNodo = onCall(async (request) => {
       role: "nodo", negocioId, sucursalId, nodoId,
     });
 
-    return {success: true, nodoId, sucursalId, negocioId, customToken};
+    if (codigoRef) {
+      await codigoRef.update({nodoId})
+          .catch((e) => console.warn("registrarNodo: código:", e.message));
+    }
+    return {success: true, nodoId, sucursalId, negocioId, customToken, llave};
   } catch (err) {
     // Rollback en orden inverso. Best-effort.
     console.error("registrarNodo failed, rolling back:", err.message);
+    await liberarCodigo(codigoRef);
     if (createdChatGrupoRef) {
       await createdChatGrupoRef.delete()
           .catch((e) => console.warn("rollback chat grupo:", e.message));
@@ -437,61 +529,118 @@ exports.registrarNodo = onCall(async (request) => {
 // rebindNodo — re-vincular tablet a nodo existente
 // ============================================================
 exports.rebindNodo = onCall(async (request) => {
-  const {negocioId, nodoId, userAgent, registradoPor} = request.data;
+  const {negocioId, nodoId, userAgent, registradoPor, llave} = request.data;
   if (!negocioId || !nodoId) {
     throw new HttpsError(
         "invalid-argument", "Se requiere negocioId y nodoId");
   }
 
-  const nodoRef = db.collection(COL_NEGOCIOS).doc(negocioId)
-      .collection(COL_NODOS).doc(nodoId);
-  const nodoSnap = await nodoRef.get();
-  if (!nodoSnap.exists) {
-    throw new HttpsError("not-found", "Nodo no existe");
-  }
-  const nodo = nodoSnap.data();
-  if (nodo.estado === "revocado") {
-    throw new HttpsError(
-        "permission-denied", "Nodo revocado — pide al admin uno nuevo");
-  }
-  const sucursalId = nodo.sucursalId;
+  // Re-auth automático: la tablet trae su llave. Re-vinculación manual
+  // (tablet nueva o recuperada): admin con sesión o código de alta, y la
+  // tablet recibe llave nueva (la anterior deja de servir).
+  const {codigoRef} = llave ? {codigoRef: null} :
+    await autorizarAltaCaja(request, negocioId, {consumir: true});
+  const llaveNueva = llave ? null : acceso.generarLlave();
 
-  // Crear NUEVO user anonymous
-  const authUser = await admin.auth().createUser({});
-  await admin.auth().setCustomUserClaims(authUser.uid, {
-    role: "nodo", negocioId, sucursalId, nodoId,
-  });
-
-  // FIX A4: revoke + delete del authUid antiguo
-  if (nodo.authUid && nodo.authUid !== authUser.uid) {
-    try {
-      await admin.auth().revokeRefreshTokens(nodo.authUid);
-      await admin.auth().deleteUser(nodo.authUid);
-    } catch (e) {
-      console.warn("No se pudo limpiar authUid anterior:", nodo.authUid, e.message);
+  try {
+    const nodoRef = db.collection(COL_NEGOCIOS).doc(negocioId)
+        .collection(COL_NODOS).doc(nodoId);
+    const nodoSnap = await nodoRef.get();
+    if (!nodoSnap.exists) {
+      throw new HttpsError("not-found", "Nodo no existe");
     }
+    const nodo = nodoSnap.data();
+    if (llave && !acceso.llaveCoincide(llave, nodo.llaveHash)) {
+      throw new HttpsError("permission-denied", "Llave de la caja inválida");
+    }
+    if (nodo.estado === "revocado") {
+      throw new HttpsError(
+          "permission-denied", "Nodo revocado — pide al admin uno nuevo");
+    }
+    const sucursalId = nodo.sucursalId;
+
+    // Crear NUEVO user anonymous
+    const authUser = await admin.auth().createUser({});
+    await admin.auth().setCustomUserClaims(authUser.uid, {
+      role: "nodo", negocioId, sucursalId, nodoId,
+    });
+
+    // FIX A4: revoke + delete del authUid antiguo
+    if (nodo.authUid && nodo.authUid !== authUser.uid) {
+      try {
+        await admin.auth().revokeRefreshTokens(nodo.authUid);
+        await admin.auth().deleteUser(nodo.authUid);
+      } catch (e) {
+        console.warn("No se pudo limpiar authUid anterior:", nodo.authUid, e.message);
+      }
+    }
+
+    const historial = Array.isArray(nodo.historial) ? nodo.historial : [];
+    historial.push({
+      tipo: "rebind",
+      fecha: new Date().toISOString(),
+      userAgent: userAgent || "",
+      detalle: registradoPor || "",
+      via: llave ? "llave" : codigoRef ? "codigo" : "admin",
+    });
+
+    await nodoRef.update({
+      authUid: authUser.uid,
+      ultimoAcceso: admin.firestore.FieldValue.serverTimestamp(),
+      userAgent: userAgent || nodo.userAgent || "",
+      historial,
+      ...(llaveNueva ? {llaveHash: acceso.hashSecreto(llaveNueva)} : {}),
+    });
+
+    const customToken = await admin.auth().createCustomToken(authUser.uid, {
+      role: "nodo", negocioId, sucursalId, nodoId,
+    });
+
+    if (codigoRef) {
+      await codigoRef.update({nodoId})
+          .catch((e) => console.warn("rebindNodo: código:", e.message));
+    }
+    return {
+      success: true, nodoId, sucursalId, negocioId, customToken,
+      llave: llaveNueva,
+    };
+  } catch (err) {
+    await liberarCodigo(codigoRef);
+    throw err;
   }
+});
 
-  const historial = Array.isArray(nodo.historial) ? nodo.historial : [];
-  historial.push({
-    tipo: "rebind",
-    fecha: new Date().toISOString(),
-    userAgent: userAgent || "",
-    detalle: registradoPor || "",
+// ============================================================
+// asegurarLlaveNodo — tablets dadas de alta antes de que existiera la llave
+// ============================================================
+// Con su sesión de caja vigente piden una, solo si su nodo aún no tiene.
+// Las altas nuevas ya la reciben de registrarNodo / rebindNodo.
+exports.asegurarLlaveNodo = onCall(async (request) => {
+  const t = request.auth && request.auth.token;
+  if (!t || t.role !== "nodo" || !t.negocioId || !t.nodoId) {
+    throw new HttpsError("permission-denied", "Solo la sesión de una caja");
+  }
+  const nodoRef = db.collection(COL_NEGOCIOS).doc(t.negocioId)
+      .collection(COL_NODOS).doc(t.nodoId);
+  const llave = acceso.generarLlave();
+  const creada = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(nodoRef);
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Nodo no existe");
+    }
+    const nodo = snap.data();
+    if (nodo.estado === "revocado") {
+      throw new HttpsError("permission-denied", "Nodo revocado");
+    }
+    // Una sesión vieja (de antes de un rebind) no puede pedir la llave.
+    if (nodo.authUid && nodo.authUid !== request.auth.uid) {
+      throw new HttpsError("permission-denied", "Sesión de caja reemplazada");
+    }
+    if (nodo.llaveHash) return false;
+    tx.update(nodoRef, {llaveHash: acceso.hashSecreto(llave)});
+    return true;
   });
-
-  await nodoRef.update({
-    authUid: authUser.uid,
-    ultimoAcceso: admin.firestore.FieldValue.serverTimestamp(),
-    userAgent: userAgent || nodo.userAgent || "",
-    historial,
-  });
-
-  const customToken = await admin.auth().createCustomToken(authUser.uid, {
-    role: "nodo", negocioId, sucursalId, nodoId,
-  });
-
-  return {success: true, nodoId, sucursalId, negocioId, customToken};
+  return {llave: creada ? llave : null};
 });
 
 // ============================================================
@@ -986,13 +1135,15 @@ exports.migrarDataLegacy = onCall(
     });
 
 // ============================================================
-// listarSucursales — público (requiere negocioId)
+// listarSucursales — first-run del nodo: admin o código de alta vigente
+// (no lo consume; sirve para validar el código antes del formulario).
 // ============================================================
 exports.listarSucursales = onCall(async (request) => {
   const {negocioId} = request.data;
   if (!negocioId) {
     throw new HttpsError("invalid-argument", "Se requiere negocioId");
   }
+  await autorizarAltaCaja(request, negocioId, {consumir: false});
   const snap = await db.collection(COL_NEGOCIOS).doc(negocioId)
       .collection(COL_SUCURSALES).where("activa", "==", true).get();
   const sucursales = [];
@@ -1008,7 +1159,7 @@ exports.listarSucursales = onCall(async (request) => {
 });
 
 // ============================================================
-// listarNodos — público. Lista nodos activos para re-bind
+// listarNodos — nodos activos para re-bind: admin o código de alta vigente
 // ============================================================
 exports.listarNodos = onCall(async (request) => {
   const {negocioId, sucursalId} = request.data;
@@ -1016,6 +1167,7 @@ exports.listarNodos = onCall(async (request) => {
     throw new HttpsError(
         "invalid-argument", "Se requiere negocioId y sucursalId");
   }
+  await autorizarAltaCaja(request, negocioId, {consumir: false});
   const snap = await db.collection(COL_NEGOCIOS).doc(negocioId)
       .collection(COL_NODOS)
       .where("sucursalId", "==", sucursalId)
