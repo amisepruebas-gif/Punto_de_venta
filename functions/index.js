@@ -24,6 +24,9 @@ const LOYALTY_POS_SECRET = defineSecret("LOYALTY_POS_SECRET");
 const AMISE_API_BASE = "https://www.amise.mx";
 // Lealtad: exige sesión con rol permitido (ver lib/rolesPuntos.js).
 const {requireRolPuntos} = require("./lib/rolesPuntos");
+// Lealtad: identidad del cliente (tarjeta o correo) y datos hacia la caja.
+const puntosSeg = require("./lib/puntosSeguridad");
+const logger = require("firebase-functions/logger");
 // Alta de cajas: código de un solo uso y llave de la tablet (lib/accesoCaja.js).
 const acceso = require("./lib/accesoCaja");
 // Código nuevo: FieldValue/Timestamp modulares. En el emulador de functions
@@ -2338,20 +2341,43 @@ async function llamarAmise(path, payload) {
       body: JSON.stringify(payload),
     });
   } catch (e) {
-    throw new HttpsError("unavailable", `No se pudo contactar a amise.mx: ${e.message}`);
+    throw new HttpsError("unavailable", `No se pudo contactar a amise.mx: ${e.message}`,
+        {amiseStatus: 0, retriable: true});
   }
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    // 5xx = fallo TRANSITORIO server-side → 'unavailable' para que el POS lo
-    // reintente (todas las ops de lealtad son idempotentes: earn/card por
-    // ventaId, canje por key, gift por ventaId → reintentar no duplica). 409 =
-    // idempotencia/conflicto; 4xx = terminal → 'internal' (no reintentar).
-    const code = resp.status >= 500 ?
-        "unavailable" :
-        resp.status === 409 ? "already-exists" : "internal";
-    throw new HttpsError(code, (data && data.error) || `amise.mx ${resp.status}`);
-  }
+  if (!resp.ok) throw errorAmise(resp.status, data);
   return data;
+}
+
+/**
+ * Error de amise para la caja. 5xx = fallo TRANSITORIO → 'unavailable' (todas
+ * las ops de lealtad son idempotentes: earn/card por ventaId, canje por key,
+ * gift por ventaId → reintentar no duplica). 409 = idempotencia/conflicto;
+ * otro 4xx = terminal → 'internal'. `details.retriable` le dice a la cola de
+ * la caja si reintentar: del lado del navegador una red caída TAMBIÉN llega
+ * como 'internal' (sin details), así que el código solo no alcanza.
+ */
+function errorAmise(status, data) {
+  const code = status >= 500 ?
+      "unavailable" :
+      status === 409 ? "already-exists" : "internal";
+  return new HttpsError(code, (data && data.error) || `amise.mx ${status}`,
+      {amiseStatus: status, retriable: status >= 500});
+}
+
+/** /balance de amise sin filtrar: solo para verificar del lado del servidor. */
+const consultarBalance = (payload) => llamarAmise("/api/loyalty/balance", payload);
+
+/**
+ * Deja rastro de cada verificación de identidad (modo observar: así se ve qué
+ * se rechazaría antes de exigir). Sin datos personales: teléfono con 4 dígitos.
+ */
+function registrarVerificacion(fn, v, t, phone) {
+  const datos = {fn, motivo: v.motivo, exigir: puntosSeg.EXIGIR_IDENTIDAD,
+    nodoId: t.nodoId || null, sucursalId: t.sucursalId || null,
+    tel: puntosSeg.ultimos4(phone)};
+  if (v.ok) logger.info("puntos_verificacion", datos);
+  else logger.warn("puntos_verificacion", datos);
 }
 
 // Pre-registro del cliente de puntos (correo + teléfono + nombre + contraseña
@@ -2359,9 +2385,8 @@ async function llamarAmise(path, payload) {
 exports.registrarClientePuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      // POS sin login fijo (Firestore abierto; la callable llega con auth MISSING):
-      // auth best-effort — si viene rol se valida, si no, se procede. La seguridad
-      // real es LOYALTY_POS_SECRET server-side hacia amise.mx (hardening: App Check).
+      // Exige la sesión de la caja (lib/rolesPuntos.js). LOYALTY_POS_SECRET solo
+      // autentica a esta function ante amise.mx, no a quien la llama.
       requireRolPuntos(request.auth);
       const {email, phone, nombre, code} = request.data || {};
       if (!email || typeof email !== "string") {
@@ -2412,8 +2437,11 @@ exports.acreditarPuntos = onCall(
     },
 );
 
-// Consulta el saldo de cashback del cliente (por teléfono o correo) al cobrar.
-// Input: { email?, phone? } → { exists, saldoDinero, saldoUsable, valorPorPeso }.
+// Consulta el saldo de cashback del cliente (por teléfono, correo o tarjeta).
+// Input: { email?, phone?, codigo? } → { exists, saldoDinero, saldoUsable,
+// valorPorPeso, telefono, tarjeta }. Solo lo que la caja usa (sin correo ni
+// datos internos); al exigir, si no se consultó escaneando la tarjeta, esta va
+// con sus últimos 4 dígitos (el código completo solo lo tiene quien la trae).
 exports.consultarSaldoPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
@@ -2422,17 +2450,20 @@ exports.consultarSaldoPuntos = onCall(
       if (!email && !phone && !codigo) {
         throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
       }
-      return await llamarAmise("/api/loyalty/balance", {email, phone, codigo});
+      const data = await llamarAmise("/api/loyalty/balance", {email, phone, codigo});
+      return puntosSeg.filtrarSaldo(data,
+          {porCodigo: Boolean(codigo) && !email && !phone});
     },
 );
 
 // Canjea (debita) cashback ($) al cobrar. Idempotente por idempotencyKey (= ventaId).
-// Input: { email?|phone?, money, idempotencyKey } → { ok, redeemed, balance, money }.
+// Input: { phone, codigo, money, idempotencyKey } → { ok, redeemed, balance, money }.
+// `codigo` es la tarjeta escaneada: debe ser del monedero de ese teléfono.
 exports.canjearPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
       const t = requireRolPuntos(request.auth);
-      const {email, phone, money, idempotencyKey} = request.data || {};
+      const {email, phone, codigo, money, idempotencyKey} = request.data || {};
       if (!idempotencyKey || typeof idempotencyKey !== "string") {
         throw new HttpsError("invalid-argument", "idempotencyKey requerido");
       }
@@ -2442,6 +2473,15 @@ exports.canjearPuntos = onCall(
       }
       if (!email && !phone) {
         throw new HttpsError("invalid-argument", "email o phone requerido");
+      }
+      // Usar cashback exige la tarjeta del cliente. Se verifica ANTES de
+      // debitar: un rechazo no mueve dinero.
+      const v = await puntosSeg.verificarIdentidad({phone, codigo}, consultarBalance);
+      registrarVerificacion("canjearPuntos", v, t, phone);
+      if (puntosSeg.rechazar(v)) {
+        throw new HttpsError("permission-denied", v.motivo === "sin_dato" ?
+            "Para usar el cashback escanea la tarjeta del cliente" :
+            "La tarjeta no corresponde al cliente");
       }
       const data = await llamarAmise("/api/loyalty/redeem", {
         email, phone, money: m, idempotencyKey,
@@ -2480,28 +2520,51 @@ exports.cerrarCanje = onCall(
 
 // Recupera la contraseña de puntos (re-emite una NUEVA: la vieja se guarda
 // hasheada y no se puede leer). Solo para cuentas NO activadas.
-// Input: { phone?|email? } → { ok, email, code }.
+// Input: { phone, codigo? | email? } → { ok, email (oculto), code }. Entrega
+// una contraseña: pide la tarjeta escaneada o el correo completo del cliente.
 exports.recuperarCodigoPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      requireRolPuntos(request.auth);
-      const {phone, email} = request.data || {};
+      const t = requireRolPuntos(request.auth);
+      const {phone, email, codigo} = request.data || {};
       if (!phone && !email) {
         throw new HttpsError("invalid-argument", "phone o email requerido");
       }
-      const data = await llamarAmise("/api/loyalty/recover-code", {phone, email});
-      return {ok: true, email: data.email || "", code: data.code || ""};
+      const v = await puntosSeg.verificarIdentidad({phone, codigo, email}, consultarBalance);
+      registrarVerificacion("recuperarCodigoPuntos", v, t, phone);
+      if (puntosSeg.rechazar(v)) {
+        throw new HttpsError("permission-denied", v.motivo === "sin_dato" ?
+            "Escanea la tarjeta del cliente o confirma su correo" :
+            "La tarjeta o el correo no corresponden al cliente");
+      }
+      // A amise solo el teléfono, como siempre (el correo ya se verificó).
+      const data = await llamarAmise("/api/loyalty/recover-code",
+          phone ? {phone} : {email});
+      return {ok: true, email: puntosSeg.enmascararCorreo(data.email), code: data.code || ""};
     },
 );
 
 // ── Tarjeta física (barcode EAN-13) ──────────────────────────
 // Vincula/repone/desbloquea; consultar por barcode va en consultarSaldoPuntos.
 
-// Activar (vincular) una tarjeta física al cobrar. Input: { email?|phone?, codigo, ventaId? }.
+// Identidad para vincular una tarjeta YA COBRADA: el correo que dio el cliente
+// debe ser del monedero de ese teléfono. La caja lo comprueba antes de cobrar;
+// aquí solo se rechaza un dato contradictorio, nunca uno que falte (cajas
+// viejas e ítems en cola): no se cobra una tarjeta que luego no se liga.
+async function identidadTarjeta(fn, t, phone, email) {
+  const v = await puntosSeg.verificarIdentidad({phone, email}, consultarBalance);
+  registrarVerificacion(fn, v, t, phone);
+  if (puntosSeg.rechazar(v, {faltanteOk: true})) {
+    throw new HttpsError("permission-denied", "El correo no corresponde al cliente");
+  }
+}
+
+// Activar (vincular) una tarjeta física al cobrar.
+// Input: { phone, email?, codigo, ventaId? }. A amise va solo el teléfono.
 exports.activarTarjeta = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      requireRolPuntos(request.auth);
+      const t = requireRolPuntos(request.auth);
       const {email, phone, codigo, ventaId} = request.data || {};
       if (!email && !phone) {
         throw new HttpsError("invalid-argument", "email o phone requerido");
@@ -2509,17 +2572,20 @@ exports.activarTarjeta = onCall(
       if (!codigo || typeof codigo !== "string") {
         throw new HttpsError("invalid-argument", "codigo requerido");
       }
-      const data = await llamarAmise("/api/loyalty/card/link", {email, phone, codigo, ventaId});
+      await identidadTarjeta("activarTarjeta", t, phone, email);
+      const data = await llamarAmise("/api/loyalty/card/link",
+          {...(phone ? {phone} : {email}), codigo, ventaId});
       return {ok: true, already: Boolean(data.already)};
     },
 );
 
 // Reposición (deshabilita la anterior, vincula la nueva). También se cobra.
-// Input: { email?|phone?|codigoAnterior, codigoNuevo, ventaId? }.
+// Input: { phone, email?, codigoAnterior?, codigoNuevo, ventaId? }. La tarjeta
+// anterior la busca el servidor: la caja puede tener solo sus últimos 4.
 exports.reponerTarjeta = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      requireRolPuntos(request.auth);
+      const t = requireRolPuntos(request.auth);
       const {email, phone, codigoAnterior, codigoNuevo, ventaId} = request.data || {};
       if (!email && !phone && !codigoAnterior) {
         throw new HttpsError("invalid-argument", "email, phone o codigoAnterior requerido");
@@ -2527,23 +2593,55 @@ exports.reponerTarjeta = onCall(
       if (!codigoNuevo || typeof codigoNuevo !== "string") {
         throw new HttpsError("invalid-argument", "codigoNuevo requerido");
       }
+      await identidadTarjeta("reponerTarjeta", t, phone, email);
+      let anterior = puntosSeg.esEan13(codigoAnterior) ? codigoAnterior : undefined;
+      if (phone) {
+        const actual = await consultarBalance({phone});
+        if (actual && actual.exists && actual.tarjeta &&
+            puntosSeg.esEan13(actual.tarjeta.codigo)) {
+          anterior = String(actual.tarjeta.codigo);
+        }
+      }
+      const ident = phone ? {phone} : email ? {email} : {};
       const data = await llamarAmise("/api/loyalty/card/replace", {
-        email, phone, codigoAnterior, codigoNuevo, ventaId,
+        ...ident, codigoAnterior: anterior, codigoNuevo, ventaId,
       });
       return {ok: true, already: Boolean(data.already)};
     },
 );
 
-// Desbloqueo SOLO en sucursal. Input: { email?|phone?|codigo }.
+// Desbloqueo SOLO en sucursal. Input: { phone, codigo, email }: la tarjeta
+// bloqueada escaneada y el correo del cliente, ambos de ese monedero.
 exports.desbloquearTarjeta = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
-      requireRolPuntos(request.auth);
+      const t = requireRolPuntos(request.auth);
       const {email, phone, codigo} = request.data || {};
-      if (!email && !phone && !codigo) {
-        throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
+      if (!phone || !codigo || !email) {
+        throw new HttpsError("invalid-argument",
+            "Se requieren el teléfono, la tarjeta y el correo del cliente");
       }
-      await llamarAmise("/api/loyalty/card/unblock", {email, phone, codigo});
+      if (!puntosSeg.esEan13(codigo)) {
+        throw new HttpsError("invalid-argument", "Código de tarjeta inválido");
+      }
+      const actual = await consultarBalance({phone});
+      if (!actual || !actual.exists) {
+        throw new HttpsError("not-found", "Cliente no encontrado");
+      }
+      if (!actual.tarjeta || String(actual.tarjeta.codigo) !== String(codigo)) {
+        registrarVerificacion("desbloquearTarjeta",
+            {ok: false, motivo: "no_coincide"}, t, phone);
+        throw new HttpsError("permission-denied", "La tarjeta no corresponde al cliente");
+      }
+      if (actual.tarjeta.estado !== "bloqueada") {
+        throw new HttpsError("failed-precondition", "La tarjeta no está bloqueada");
+      }
+      const v = await puntosSeg.verificarIdentidad({phone, email}, consultarBalance);
+      registrarVerificacion("desbloquearTarjeta", v, t, phone);
+      if (!v.ok) {
+        throw new HttpsError("permission-denied", "El correo no corresponde al cliente");
+      }
+      await llamarAmise("/api/loyalty/card/unblock", {phone});
       return {ok: true};
     },
 );
@@ -2562,19 +2660,11 @@ async function llamarAmiseGet(path) {
       headers: {"Authorization": `Bearer ${LOYALTY_POS_SECRET.value()}`},
     });
   } catch (e) {
-    throw new HttpsError("unavailable", `No se pudo contactar a amise.mx: ${e.message}`);
+    throw new HttpsError("unavailable", `No se pudo contactar a amise.mx: ${e.message}`,
+        {amiseStatus: 0, retriable: true});
   }
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    // 5xx = fallo TRANSITORIO server-side → 'unavailable' para que el POS lo
-    // reintente (todas las ops de lealtad son idempotentes: earn/card por
-    // ventaId, canje por key, gift por ventaId → reintentar no duplica). 409 =
-    // idempotencia/conflicto; 4xx = terminal → 'internal' (no reintentar).
-    const code = resp.status >= 500 ?
-        "unavailable" :
-        resp.status === 409 ? "already-exists" : "internal";
-    throw new HttpsError(code, (data && data.error) || `amise.mx ${resp.status}`);
-  }
+  if (!resp.ok) throw errorAmise(resp.status, data);
   return data;
 }
 
@@ -2689,9 +2779,10 @@ exports.consultarSaldoTarjetaRegalo = onCall(
 // Fase 3 — REDIME (debita) crédito de regalo al cobrar (se aplica como DESCUENTO,
 // no como ingreso). Idempotente por idempotencyKey (= ventaId). El candado
 // (pendingLock) previene el doble-débito si el POS reintenta/reconecta.
-// Input: { email?|phone?|codigo, money, idempotencyKey } →
-//   { ok, used, balance, money, cobroId }. Rechazos (vencido/insuficiente/en curso)
-//   llegan como error (llamarAmise mapea el 409 a already-exists con el mensaje).
+// Input: { codigo | phone + email, money, idempotencyKey } →
+//   { ok, used, balance, money, cobroId }. Se usa con la tarjeta de regalo, o
+//   con teléfono + correo del mismo monedero. Rechazos (vencido/insuficiente/en
+//   curso) llegan como error (llamarAmise mapea el 409 a already-exists).
 exports.redimirCreditoRegalo = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
@@ -2707,8 +2798,22 @@ exports.redimirCreditoRegalo = onCall(
       if (!email && !phone && !codigo) {
         throw new HttpsError("invalid-argument", "email, phone o codigo requerido");
       }
+      // La tarjeta de regalo escaneada identifica sola su crédito; sin ella,
+      // el correo debe ser del monedero de ese teléfono. Antes de debitar.
+      const v = codigo ?
+        {ok: puntosSeg.esEan13(codigo),
+          motivo: puntosSeg.esEan13(codigo) ? "ok_tarjeta" : "codigo_invalido"} :
+        await puntosSeg.verificarIdentidad({phone, email}, consultarBalance);
+      registrarVerificacion("redimirCreditoRegalo", v, t, phone);
+      if (puntosSeg.rechazar(v)) {
+        throw new HttpsError("permission-denied", v.motivo === "sin_dato" ?
+            "Para usar el crédito escanea la tarjeta de regalo o confirma el correo del cliente" :
+            "La tarjeta o el correo no corresponden al cliente");
+      }
+      // A amise: la tarjeta, o el teléfono (el correo ya se verificó).
+      const ident = codigo ? {codigo, phone} : phone ? {phone} : {email};
       const data = await llamarAmise("/api/loyalty/gift/redeem", {
-        email, phone, codigo, money: m, idempotencyKey,
+        ...ident, money: m, idempotencyKey,
         pendingLock: request.data.pendingLock === true,
         sucursalId: t.sucursalId || request.data.sucursalId || null,
         nodoId: t.nodoId || request.data.nodoId || null,
