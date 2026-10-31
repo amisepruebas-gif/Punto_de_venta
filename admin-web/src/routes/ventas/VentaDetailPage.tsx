@@ -35,6 +35,13 @@ type ItemLegacy = {
 
 const ID_NO_REGISTRADO = new Set(["00000000", "0", ""]);
 
+const NOMBRES_LEALTAD: Record<string, string> = {
+  earn: "Acumular cashback",
+  card: "Ligar tarjeta de cashback",
+  gift: "Activar tarjeta de regalo",
+  giftRecarga: "Recargar tarjeta de regalo",
+};
+
 function precioEfectivo(it: ItemLegacy): number {
   if (it.descuento) return Number(it.descuento) || 0;
   if (it.precio) return Number(it.precio) || 0;
@@ -155,6 +162,23 @@ export function VentaDetailPage() {
           ))}
         </ul>
       </section>
+
+      {venta.lealtadErrores && venta.lealtadErrores.length > 0 && (
+        <section className="rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
+          <h2 className="mb-1 font-semibold">Cashback o tarjeta sin aplicar</h2>
+          <p className="mb-2 text-xs">
+            amise rechazó esto; la caja lo conserva en “Por enviar” para reintentarlo.
+          </p>
+          <ul className="space-y-1">
+            {venta.lealtadErrores.map((e, i) => (
+              <li key={i}>
+                <span className="font-medium">{NOMBRES_LEALTAD[e.tipo] ?? e.tipo}:</span>{" "}
+                {e.error}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="rounded-lg border bg-card p-5">
         <h2 className="mb-2 text-base font-semibold">Totales</h2>

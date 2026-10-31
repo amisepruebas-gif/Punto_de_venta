@@ -451,6 +451,9 @@ export type Venta = {
    *  contraseña temporal — es credencial. Se escriben vía updateDoc post-venta. */
   puntosClienteEmail?: string;
   puntosClienteTelefono?: string;
+  /** Cashback, tarjeta o regalo de esta venta que amise rechazó (la caja lo
+   *  conserva en "Por enviar"). Se agrega vía updateDoc post-venta. */
+  lealtadErrores?: { tipo: string; error: string; fecha: string }[];
 };
 
 // ---------- Corte de caja ----------

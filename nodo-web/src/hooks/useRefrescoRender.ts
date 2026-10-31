@@ -7,6 +7,7 @@ import {
   DOC_REFRESCO_RENDER,
 } from "@shared";
 import { limpiarRender, recargarConCacheBust } from "@/lib/limpiarRender";
+import { cajaOcupada } from "@/lib/cajaOcupada";
 import { useNodoSession } from "@/hooks/useNodoSession";
 
 const LS_KEY = "amise_nodo_refresco_render_huella";
@@ -23,6 +24,9 @@ const LS_KEY = "amise_nodo_refresco_render_huella";
  *     evitar un loop infinito o un refresh espurio cuando una tablet
  *     entra fresca al sistema.
  *   - Cambio detectado: limpia SW + workbox + reload con cache-bust.
+ *     Si hay un cobro en curso (o la pregunta de cashback tras cobrar),
+ *     espera a que termine: recargar a media venta podía dejar un débito
+ *     de cashback sin venta.
  *
  * Se monta a nivel de App, así está activo desde que el usuario tiene
  * sesión (negocioId) en adelante.
@@ -60,6 +64,9 @@ export function useRefrescoRender(): void {
           localStorage.setItem(LS_KEY, huellaRemota);
           // Disparar limpieza + reload sin bloquear el listener.
           (async () => {
+            while (cajaOcupada()) {
+              await new Promise((r) => window.setTimeout(r, 2000));
+            }
             try {
               await limpiarRender();
             } catch (e) {

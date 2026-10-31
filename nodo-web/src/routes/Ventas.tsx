@@ -60,27 +60,29 @@ import {
   type GiftEmitidaInfo,
 } from "@/features/puntos/GiftEmitidaModal";
 import { VinculacionClienteModal } from "@/features/puntos/VinculacionClienteModal";
+import { ColaPuntosAviso } from "@/features/puntos/ColaPuntosAviso";
 import { useClientePuntos } from "@/features/puntos/clientePuntosStore";
-import { usePuntosColaFlush } from "@/features/puntos/usePuntosColaFlush";
+import {
+  enviarPuntosAhora,
+  usePuntosColaFlush,
+} from "@/features/puntos/usePuntosColaFlush";
 import { generarCodigoPuntos } from "@/features/puntos/codigoPuntos";
 import { CARD_ARTICLE_ID } from "@/features/puntos/tarjeta";
 import {
-  fnRegistrarClientePuntos,
-  fnAcreditarPuntos,
   fnCanjearPuntos,
   fnCerrarCanje,
-  fnActivarTarjeta,
-  fnReponerTarjeta,
-  fnEmitirTarjetaRegalo,
-  fnRecargarTarjetaRegalo,
   fnConsultarSaldoTarjetaRegalo,
   fnRedimirCreditoRegalo,
   fnCerrarCreditoRegalo,
+  type AcreditarPuntosOutput,
   type CerrarCanjeInput,
   type CerrarCreditoRegaloInput,
+  type EmitirTarjetaRegaloOutput,
+  type RecargarTarjetaRegaloOutput,
 } from "@/firebase/callable";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
+import { marcarCajaOcupada } from "@/lib/cajaOcupada";
 
 export function Ventas() {
   const navigate = useNavigate();
@@ -135,6 +137,11 @@ export function Ventas() {
     monto: string;
     path: string;
   } | null>(null);
+  // La pregunta "¿sumar cashback?" va después de cobrar: tampoco recargar ahí.
+  useEffect(() => {
+    marcarCajaOcupada("vinculacion", vinculacionOpen);
+    return () => marcarCajaOcupada("vinculacion", false);
+  }, [vinculacionOpen]);
   const [salidaOpen, setSalidaOpen] = useState(false);
   const [varPickerPadre, setVarPickerPadre] = useState<Articulo | null>(null);
   const [senaPadre, setSenaPadre] = useState<Articulo | null>(null);
@@ -316,9 +323,12 @@ export function Ventas() {
   // acreditación) y lo apaga en cualquier salida (éxito, vinculación o error).
   async function confirmarVenta() {
     setProcesando(true);
+    // La recarga forzada remota espera a que termine (débito → venta → envíos).
+    marcarCajaOcupada("cobro", true);
     try {
       await ejecutarVenta();
     } finally {
+      marcarCajaOcupada("cobro", false);
       setProcesando(false);
     }
   }
@@ -355,6 +365,27 @@ export function Ventas() {
     // y aquí se aborta). NO se reusa el cobro entre recargas (eso requeriría verificar
     // si la venta ya existe → deferido); el residual es el huérfano raro (detectable).
     const cobroId = preview.idempotencyKey;
+    // Cashback y crédito de regalo juntos: revisar el regalo ANTES del primer
+    // débito. Si no alcanza (o venció), el cobro se detiene sin debitar el
+    // cashback; antes el cashback quedaba debitado sin venta.
+    if (puntosTel && cashbackUsar > 0 && regaloUsar > 0 && regaloIdent) {
+      let saldoRegalo: { saldo: number; vencido: boolean };
+      try {
+        const res = await fnConsultarSaldoTarjetaRegalo({
+          ...(regaloIdent.codigo ? { codigo: regaloIdent.codigo } : {}),
+          ...(regaloIdent.phone ? { phone: regaloIdent.phone } : {}),
+        });
+        saldoRegalo = { saldo: Number(res.data.saldo) || 0, vencido: Boolean(res.data.vencido) };
+      } catch {
+        throw new Error("No se pudo revisar el crédito de regalo (sin conexión). Quítalo o reintenta.");
+      }
+      if (saldoRegalo.vencido) {
+        throw new Error("El crédito de regalo venció. Quítalo y reintenta.");
+      }
+      if (saldoRegalo.saldo < regaloUsar) {
+        throw new Error("Crédito de regalo insuficiente. Ajusta el monto y reintenta.");
+      }
+    }
     if (puntosTel && cashbackUsar > 0) {
       // Drenar un 'cerrar' encolado de ESTE cliente antes del nuevo canje: un cierre
       // previo que falló dejaría el candado abierto y rechazaría este cobro (409).
@@ -459,6 +490,89 @@ export function Ventas() {
     const giftTotal = (result.venta.articulos ?? [])
       .filter((a) => a.giftCard === true)
       .reduce((s, a) => s + subtotalItem(a), 0);
+    // Monto de la gift = lo REALMENTE cobrado por su línea (crédito == dinero
+    // recibido, sin importar edición).
+    const giftMonto = giftLine ? subtotalItem(giftLine) : 0;
+    // "Vinculado ⟺ pagado": solo vincular si el ARTÍCULO de la tarjeta realmente
+    // se cobró en ESTA venta. Blinda contra un pendiente arrastrado (carrito
+    // cancelado/vaciado sin cobrar) que vincularía la tarjeta sin haberse pagado.
+    const tarjetaCobrada = (result.venta.articulos ?? []).some(
+      (a) => a.id === CARD_ARTICLE_ID,
+    );
+
+    // Todo lo que se debe por esta venta (ligar tarjeta, emitir o recargar
+    // regalo, acumular cashback) se ANOTA EN LA COLA AQUÍ, antes de cualquier
+    // await: si la app se recarga o se cierra a media llamada, la cola lo envía
+    // después. Todo es idempotente (por ventaId o tarjeta+monedero), así que
+    // repetirlo no duplica. Antes se borraba el pendiente y se llamaba, y solo
+    // se encolaba ante 'unavailable'; una red caída llega como 'internal' y la
+    // gift quedaba cobrada sin emitir. Los pendientes se limpian siempre: uno
+    // cuya línea no se cobró se descarta sin vincular/emitir.
+    const { encolar } = useClientePuntos.getState();
+    const anotar = { ventaPath: result.path };
+    const anotarEnCurso = result.offline
+      ? anotar
+      : { ...anotar, enCursoHasta: Date.now() + 90_000 };
+    if (tarjPend) useClientePuntos.getState().limpiarTarjetaPendiente();
+    if (giftPend) useClientePuntos.getState().limpiarGiftPendiente();
+    const idCard =
+      tarjPend && tarjPend.telefono && tarjPend.codigo && tarjetaCobrada
+        ? encolar(
+            "card",
+            {
+              modo: tarjPend.codigoAnterior ? "reponer" : "activar",
+              phone: tarjPend.telefono,
+              codigo: tarjPend.codigo,
+              ...(tarjPend.codigoAnterior ? { codigoAnterior: tarjPend.codigoAnterior } : {}),
+              ventaId: result.venta.ventaId,
+            },
+            anotarEnCurso,
+          )
+        : null;
+    const idGift =
+      giftPend && giftLine && giftPend.modo === "emitir"
+        ? encolar(
+            "gift",
+            {
+              email: giftPend.email,
+              phone: giftPend.phone,
+              nombre: giftPend.nombre,
+              barcode: giftPend.barcode,
+              denominacion: giftMonto,
+              ventaId: result.venta.ventaId,
+            },
+            anotarEnCurso,
+          )
+        : null;
+    const idRecarga =
+      giftPend && giftLine && giftPend.modo === "recargar"
+        ? encolar(
+            "giftRecarga",
+            {
+              email: giftPend.email,
+              phone: giftPend.phone,
+              codigo: giftPend.codigo,
+              amount: giftMonto,
+              ventaId: result.venta.ventaId,
+            },
+            anotarEnCurso,
+          )
+        : null;
+    // PT-10: se ACREDITA sobre lo pagado (montoCobro neto), EXCLUYENDO la
+    // denominación de gift cards: adquirir una NO genera cashback.
+    const idEarn = puntosTel
+      ? encolar(
+          "earn",
+          {
+            phone: puntosTel,
+            amount: Math.max(0, (Number(monto) || 0) - giftTotal),
+            ventaId: result.venta.ventaId,
+            sucursalId,
+            nodoId,
+          },
+          anotarEnCurso,
+        )
+      : null;
 
     // Fase 5: canje debitado y venta creada → cerrar el pendiente (idempotente).
     // Best-effort + encolado durable.
@@ -494,169 +608,75 @@ export function Ventas() {
       window.setTimeout(() => setToast(null), 4000);
     }
 
-    // F4/F6: si se compró/repuso una tarjeta en esta venta, vincularla AHORA que la
-    // venta se creó → "pagó → se vincula". La vinculación (linkCard/replaceCard) es
-    // idempotente por (código de barras + monedero), NO por ventaId (el ventaId solo
-    // se guarda como metadato). Best-effort: la venta YA existe, un fallo no la
-    // revierte. Limpiamos el pendiente antes para que NUNCA se arrastre a otra venta.
-    // Offline: se omite (la vinculación necesita red). `tarjPend` viene del snapshot
-    // de arriba (inmune a la higiene cart-empty, igual que `giftPend`).
-    // "Vinculado ⟺ pagado": solo vincular si el ARTÍCULO de la tarjeta realmente se
-    // cobró en ESTA venta. Blinda contra un pendiente arrastrado (carrito cancelado
-    // /vaciado sin cobrar) que vincularía la tarjeta sin haberse pagado.
-    const tarjetaCobrada = (result.venta.articulos ?? []).some(
-      (a) => a.id === CARD_ARTICLE_ID,
-    );
-    if (tarjPend && tarjPend.telefono && tarjPend.codigo && !tarjetaCobrada) {
-      // Había pendiente pero la tarjeta NO se cobró → descartar sin vincular.
-      useClientePuntos.getState().limpiarTarjetaPendiente();
-    } else if (tarjPend && tarjPend.telefono && tarjPend.codigo) {
-      useClientePuntos.getState().limpiarTarjetaPendiente();
-      const cardPayload = {
-        modo: (tarjPend.codigoAnterior ? "reponer" : "activar") as "activar" | "reponer",
-        phone: tarjPend.telefono,
-        codigo: tarjPend.codigo,
-        ...(tarjPend.codigoAnterior ? { codigoAnterior: tarjPend.codigoAnterior } : {}),
-        ventaId: result.venta.ventaId,
-      };
-      if (result.offline) {
-        // Sin conexión: encolar el vínculo → se reintenta solo al reconectar
-        // (idempotente por código+monedero; NO re-cobra: la venta ya existe).
-        useClientePuntos.getState().encolar("card", cardPayload);
-        setToast("Sin conexión: la tarjeta se vinculará automáticamente al reconectar.");
-        window.setTimeout(() => setToast(null), 6000);
-      } else {
-        try {
-          if (tarjPend.codigoAnterior) {
-            await fnReponerTarjeta({
-              phone: tarjPend.telefono,
-              codigoAnterior: tarjPend.codigoAnterior,
-              codigoNuevo: tarjPend.codigo,
-              ventaId: result.venta.ventaId,
-            });
-          } else {
-            await fnActivarTarjeta({
-              phone: tarjPend.telefono,
-              codigo: tarjPend.codigo,
-              ventaId: result.venta.ventaId,
-            });
-          }
-        } catch (e) {
-          const err = e as { code?: string; message?: string };
-          // Solo se reintenta un fallo de RED (el proxy lanza 'unavailable' al no
-          // contactar amise). Otro error (rechazo definitivo o del server) conserva
-          // el mensaje accionable y NO se encola (evita reintentos vacíos que se
-          // descartarían en silencio).
-          if (String(err?.code || "").includes("unavailable")) {
-            useClientePuntos.getState().encolar("card", cardPayload);
-            setToast("La tarjeta se vinculará automáticamente al reconectar. La venta sí se cobró.");
-          } else {
-            setToast(`Tarjeta NO vinculada (${err?.message || "revisa el código"}). La venta sí se cobró.`);
-          }
-          window.setTimeout(() => setToast(null), 6000);
+    // Envío inmediato de lo anotado (con red). Si falla, el ítem sigue en la cola
+    // (red caída: se reintenta solo) o pasa a fallidos (rechazo: queda a la
+    // vista en "Por enviar"); la venta YA existe y nunca se revierte.
+    const avisar = (msg: string) => {
+      setToast(msg);
+      window.setTimeout(() => setToast(null), 7000);
+    };
+    if (result.offline) {
+      if (idCard || idGift || idRecarga) {
+        avisar("Sin conexión: tarjeta y regalo se aplicarán solos al reconectar. La venta sí se cobró.");
+      }
+    } else {
+      if (idCard) {
+        const r = await enviarPuntosAhora(idCard);
+        if (!r.ok) {
+          avisar(
+            r.clase === "reintentar"
+              ? "La tarjeta se vinculará sola al reconectar. La venta sí se cobró."
+              : `Tarjeta NO vinculada (${r.mensaje}). Quedó en "Por enviar". La venta sí se cobró.`,
+          );
         }
       }
-    }
-
-    // Feature 5 · Fase 2 — EMITIR (venta nueva) o RECARGAR (tarjeta existente) la
-    // gift card tras crear la venta ("pagó → se emite/recarga"). El monto = lo
-    // REALMENTE cobrado por la línea gift (money-safety: crédito == dinero recibido,
-    // sin importar edición). Guard "hecha ⟺ cobrada": solo si la línea gift está en
-    // la venta. Idempotente por ventaId. Offline: se encola (necesita red).
-    // `giftPend`/`giftLine`/`giftTotal` vienen del SNAPSHOT de arriba (inmunes a la
-    // carrera con el effect de higiene cart-empty).
-    const giftMonto = giftLine ? subtotalItem(giftLine) : 0;
-    if (giftPend && !giftLine) {
-      // Pendiente pero la línea NO se cobró → descartar sin emitir/recargar.
-      useClientePuntos.getState().limpiarGiftPendiente();
-    } else if (giftPend && giftLine && giftPend.modo === "emitir") {
-      useClientePuntos.getState().limpiarGiftPendiente();
-      const giftPayload = {
-        email: giftPend.email,
-        phone: giftPend.phone,
-        nombre: giftPend.nombre,
-        barcode: giftPend.barcode,
-        denominacion: giftMonto,
-        ventaId: result.venta.ventaId,
-      };
-      if (result.offline) {
-        useClientePuntos.getState().encolar("gift", giftPayload);
-        setToast("Sin conexión: la tarjeta de regalo se activará al reconectar. La venta sí se cobró.");
-        window.setTimeout(() => setToast(null), 6000);
-      } else {
-        try {
-          const res = await fnEmitirTarjetaRegalo(giftPayload);
+      if (idGift) {
+        const r = await enviarPuntosAhora(idGift);
+        if (r.ok) {
+          const d = r.data as EmitirTarjetaRegaloOutput;
           setGiftEmitida({
-            balance: Number(res.data.balance) || giftPayload.denominacion,
-            accessCode: res.data.accessCode ?? null,
-            cardLinked: Boolean(res.data.cardLinked),
+            balance: Number(d.balance) || giftMonto,
+            accessCode: d.accessCode ?? null,
+            cardLinked: Boolean(d.cardLinked),
           });
-        } catch (e) {
-          const err = e as { code?: string; message?: string };
-          // Solo un fallo de RED ('unavailable') se reintenta (idempotente por
-          // ventaId). Un rechazo definitivo conserva el mensaje y NO se encola.
-          if (String(err?.code || "").includes("unavailable")) {
-            useClientePuntos.getState().encolar("gift", giftPayload);
-            setToast("La tarjeta de regalo se activará al reconectar. La venta sí se cobró.");
-          } else {
-            setToast(`Tarjeta de regalo NO activada (${err?.message || "revisa los datos"}). La venta sí se cobró.`);
-          }
-          window.setTimeout(() => setToast(null), 7000);
+        } else {
+          avisar(
+            r.clase === "reintentar"
+              ? "La tarjeta de regalo se activará sola al reconectar. La venta sí se cobró."
+              : `Tarjeta de regalo NO activada (${r.mensaje}). Quedó en "Por enviar". La venta sí se cobró.`,
+          );
         }
       }
-    } else if (giftPend && giftLine && giftPend.modo === "recargar") {
-      useClientePuntos.getState().limpiarGiftPendiente();
-      const recargaPayload = {
-        email: giftPend.email,
-        phone: giftPend.phone,
-        codigo: giftPend.codigo,
-        amount: giftMonto,
-        ventaId: result.venta.ventaId,
-      };
-      if (result.offline) {
-        useClientePuntos.getState().encolar("giftRecarga", recargaPayload);
-        setToast("Sin conexión: la recarga se aplicará al reconectar. La venta sí se cobró.");
-        window.setTimeout(() => setToast(null), 6000);
-      } else {
-        try {
-          const res = await fnRecargarTarjetaRegalo(recargaPayload);
-          const bal = Number(res.data.balance) || 0;
-          setToast(`Recarga aplicada. Nuevo saldo de crédito: $${bal.toLocaleString("es-MX")}.`);
-        } catch (e) {
-          const err = e as { code?: string; message?: string };
-          if (String(err?.code || "").includes("unavailable")) {
-            useClientePuntos.getState().encolar("giftRecarga", recargaPayload);
-            setToast("La recarga se aplicará al reconectar. La venta sí se cobró.");
-          } else {
-            setToast(`Recarga NO aplicada (${err?.message || "revisa la tarjeta"}). La venta sí se cobró.`);
-          }
-          window.setTimeout(() => setToast(null), 7000);
+      if (idRecarga) {
+        const r = await enviarPuntosAhora(idRecarga);
+        if (r.ok) {
+          const bal = Number((r.data as RecargarTarjetaRegaloOutput).balance) || 0;
+          avisar(`Recarga aplicada. Nuevo saldo de crédito: $${bal.toLocaleString("es-MX")}.`);
+        } else {
+          avisar(
+            r.clase === "reintentar"
+              ? "La recarga se aplicará sola al reconectar. La venta sí se cobró."
+              : `Recarga NO aplicada (${r.mensaje}). Quedó en "Por enviar". La venta sí se cobró.`,
+          );
         }
       }
     }
 
     // PT-10: cliente EXISTENTE. El canje (débito) ya ocurrió en línea arriba; aquí
-    // solo se ACREDITA sobre lo pagado por método (= montoCobro neto, EXCLUYENDO
-    // la denominación de gift cards). La acreditación es best-effort y puede
-    // encolarse offline (idempotente por ventaId).
-    if (puntosTel) {
+    // se ACREDITA (anotado arriba en la cola). Esperamos la respuesta para el
+    // ticket; si falla, la cola la reintenta — la venta NO se bloquea.
+    if (idEarn) {
       let ventaFinal: Venta =
         descPuntos && Number(descPuntos) > 0
           ? { ...result.venta, descuentoPuntos: descPuntos }
           : result.venta;
-      const earnPayload = {
-        phone: puntosTel,
-        // Excluir la denominación de gift cards: adquirir una NO genera cashback.
-        amount: Math.max(0, (Number(monto) || 0) - giftTotal),
-        ventaId: result.venta.ventaId,
-        sucursalId,
-        nodoId
-      };
-      // Esperamos la acreditación para dar FEEDBACK (toast unificado en el ticket).
-      // Si falla (sin red), se encola y reintenta — la venta NO se bloquea.
-      let puntosMsg = "";
-      try {
-        const res = await fnAcreditarPuntos(earnPayload);
+      let puntosMsg = "Cashback: se acreditará al reconectar.";
+      const r = result.offline ? null : await enviarPuntosAhora(idEarn);
+      if (r && !r.ok && r.clase !== "reintentar") {
+        puntosMsg = `Cashback NO acreditado (${r.mensaje}). Quedó en "Por enviar".`;
+      }
+      if (r && r.ok) {
+        const res = { data: r.data as AcreditarPuntosOutput };
         const added = Number(res.data.added) || 0; // cashback $ acumulado
         const balance = Number(res.data.balance) || 0; // saldo $ resultante
         if (added > 0) {
@@ -676,9 +696,6 @@ export function Ventas() {
         } else {
           puntosMsg = "Sin cashback en esta venta (monto mínimo no alcanzado).";
         }
-      } catch {
-        useClientePuntos.getState().encolar("earn", earnPayload);
-        puntosMsg = "Cashback: se acreditará al reconectar.";
       }
       finalizarVenta(ventaFinal, puntosMsg);
       return;
@@ -705,10 +722,20 @@ export function Ventas() {
       code,
     });
     const payload = { email: data.correo, phone: data.telefono, nombre: data.nombre, code };
-    fnRegistrarClientePuntos(payload).catch(() => {
-      useClientePuntos.getState().encolar("register", payload);
-      setToast(`Registrado sin conexión (se sincroniza). Código: ${code}`);
-      window.setTimeout(() => setToast(null), 6000);
+    // Anotado antes de llamar (vale dinero: sin registro no hay cashback).
+    const idRegistro = useClientePuntos.getState().encolar("register", payload, {
+      enCursoHasta: Date.now() + 90_000,
+    });
+    void enviarPuntosAhora(idRegistro).then((r) => {
+      if (r.ok) return;
+      setToast(
+        r.clase === "reintentar"
+          ? `Registrado sin conexión (se sincroniza). Código: ${code}`
+          : r.clase === "hecho"
+            ? "El cliente ya existía: la contraseña impresa no sirve. Usa Recuperar contraseña."
+            : `Registro NO hecho (${r.mensaje}). Quedó en "Por enviar".`,
+      );
+      window.setTimeout(() => setToast(null), 7000);
     });
 
     // F5: si adquirió tarjeta al registrarse, agregar el ARTÍCULO al carrito y dejar
@@ -808,13 +835,20 @@ export function Ventas() {
       sucursalId,
       nodoId,
     };
-    // Esperar la acreditación para feedback + reflejarla en el ticket; si falla,
-    // encolar (no bloquea el ticket con la contraseña temporal).
-    let puntosMsg = "";
-    try {
-      const res = await fnAcreditarPuntos(payload);
+    // Se anota en la cola y se envía; esperamos la respuesta para el ticket. Si
+    // falla (o espera el registro del cliente), la cola lo reintenta: no bloquea
+    // el ticket con la contraseña temporal.
+    const idEarn = useClientePuntos.getState().encolar("earn", payload, {
+      ventaPath: sel.path,
+      enCursoHasta: Date.now() + 90_000,
+    });
+    let puntosMsg = "Cashback: se acreditará al reconectar.";
+    const r = await enviarPuntosAhora(idEarn);
+    if (r.ok) {
+      const res = { data: r.data as AcreditarPuntosOutput };
       const added = Number(res.data.added) || 0; // cashback $ acumulado
       const balance = Number(res.data.balance) || 0; // saldo $ resultante
+      puntosMsg = "";
       if (added > 0) {
         venta = {
           ...venta,
@@ -825,9 +859,8 @@ export function Ventas() {
       } else if (res.data.already) {
         puntosMsg = "Cashback ya acreditado (reintento).";
       }
-    } catch {
-      useClientePuntos.getState().encolar("earn", payload);
-      puntosMsg = "Cashback: se acreditará al reconectar (sin conexión).";
+    } else if (r.clase !== "reintentar") {
+      puntosMsg = `Cashback NO acreditado (${r.mensaje}). Quedó en "Por enviar".`;
     }
     // Auditoría en la venta: correo/teléfono (NO la contraseña, es credencial)
     // + puntos ganados. Best-effort, no bloquea.
@@ -921,6 +954,8 @@ export function Ventas() {
               </span>
             )}
           </Button>
+          {/* Solo aparece si hay cashback/tarjetas/regalos sin enviar. */}
+          <ColaPuntosAviso />
           <Button
             size="sm"
             onClick={() => setCorteOpen(true)}

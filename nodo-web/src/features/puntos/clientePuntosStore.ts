@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { recortarColaPuntos, type TipoLlamadaPuntos } from "@shared";
 
 /**
  * Cliente pre-registrado en el POS, pendiente de vincular a su próxima venta.
@@ -12,20 +13,26 @@ export type ClientePendiente = {
   code: string;
 };
 
-/** Operación de puntos encolada para reintento (offline-robusto). */
+/**
+ * Operación de lealtad en la cola (offline-robusta). Los campos opcionales son
+ * nuevos: los ítems guardados por la versión anterior no los traen, y esa
+ * versión los ignora si se regresa a ella (el store sigue en `version: 1`).
+ */
 export type LlamadaPuntos = {
   id: string;
-  tipo:
-    | "register"
-    | "earn"
-    | "canje"
-    | "card"
-    | "cerrar"
-    | "gift"
-    | "giftRecarga"
-    | "cerrarRegalo";
+  tipo: TipoLlamadaPuntos;
   payload: Record<string, unknown>;
   intentos: number;
+  /** Cuándo se anotó (ms). */
+  creadoEn?: number;
+  /** No reintentar antes de esto (espera creciente entre intentos). */
+  proximoIntento?: number;
+  /** Mensaje del último error, para el aviso de la caja. */
+  ultimoError?: string;
+  /** La venta la está enviando ahora mismo: la cola no la toca hasta aquí. */
+  enCursoHasta?: number;
+  /** Doc de la venta, para dejar rastro si falla sin remedio. */
+  ventaPath?: string;
 };
 
 /**
@@ -76,17 +83,32 @@ type State = {
   tarjetaPendiente: TarjetaPendiente | null;
   /** Tarjeta de regalo a EMITIR al cobrar la venta actual (una a la vez). */
   giftPendiente: GiftPendiente | null;
-  /** Cola de llamadas a amise.mx que fallaron (offline) para reintentar. */
+  /** Llamadas a amise.mx por enviar (se anotan antes de llamar). */
   cola: LlamadaPuntos[];
+  /** Las que el servidor rechazó: a la vista del cajero, nunca se borran solas. */
+  fallidos: LlamadaPuntos[];
   setPendiente: (c: ClientePendiente | null) => void;
   limpiarPendiente: () => void;
   setTarjetaPendiente: (t: TarjetaPendiente | null) => void;
   limpiarTarjetaPendiente: () => void;
   setGiftPendiente: (g: GiftPendiente | null) => void;
   limpiarGiftPendiente: () => void;
-  encolar: (tipo: LlamadaPuntos["tipo"], payload: Record<string, unknown>) => void;
+  /** Anota una llamada y devuelve su id. */
+  encolar: (
+    tipo: LlamadaPuntos["tipo"],
+    payload: Record<string, unknown>,
+    extra?: Pick<LlamadaPuntos, "ventaPath" | "enCursoHasta">,
+  ) => string;
   quitarDeCola: (id: string) => void;
-  incrementarIntento: (id: string) => void;
+  /** Cuenta un intento fallido: libera el ítem y fija cuándo reintentar. */
+  anotarFallo: (id: string, ultimoError: string, proximoIntento: number) => void;
+  /** Pasa un ítem de la cola a fallidos. */
+  moverAFallidos: (id: string, ultimoError: string) => void;
+  /** Regresa un fallido a la cola (el cajero pidió reintentar). */
+  reintentarFallido: (id: string) => void;
+  quitarFallido: (id: string) => void;
+  /** Quita las esperas de todos los ítems (Reintentar ahora). */
+  adelantarCola: () => void;
 };
 
 function nuevoId(tipo: string): string {
@@ -100,29 +122,75 @@ export const useClientePuntos = create<State>()(
       tarjetaPendiente: null,
       giftPendiente: null,
       cola: [],
+      fallidos: [],
       setPendiente: (c) => set({ pendiente: c }),
       limpiarPendiente: () => set({ pendiente: null }),
       setTarjetaPendiente: (t) => set({ tarjetaPendiente: t }),
       limpiarTarjetaPendiente: () => set({ tarjetaPendiente: null }),
       setGiftPendiente: (g) => set({ giftPendiente: g }),
       limpiarGiftPendiente: () => set({ giftPendiente: null }),
-      encolar: (tipo, payload) =>
-        set((st) => {
-          const cola = [...st.cola, { id: nuevoId(tipo), tipo, payload, intentos: 0 }];
-          // Cap defensivo: si crece demasiado, descarta los más antiguos (FIFO).
-          return { cola: cola.length > 100 ? cola.slice(cola.length - 100) : cola };
-        }),
+      encolar: (tipo, payload, extra) => {
+        const item: LlamadaPuntos = {
+          id: nuevoId(tipo),
+          tipo,
+          payload,
+          intentos: 0,
+          creadoEn: Date.now(),
+          ...extra,
+        };
+        // Tope defensivo: solo recorta candados; lo que vale dinero no.
+        set((st) => ({ cola: recortarColaPuntos([...st.cola, item]) }));
+        return item.id;
+      },
       quitarDeCola: (id) =>
         set((st) => ({ cola: st.cola.filter((x) => x.id !== id) })),
-      incrementarIntento: (id) =>
+      anotarFallo: (id, ultimoError, proximoIntento) =>
         set((st) => ({
           cola: st.cola.map((x) =>
-            x.id === id ? { ...x, intentos: x.intentos + 1 } : x,
+            x.id === id
+              ? {
+                  ...x,
+                  intentos: x.intentos + 1,
+                  ultimoError,
+                  proximoIntento,
+                  enCursoHasta: undefined,
+                }
+              : x,
           ),
+        })),
+      moverAFallidos: (id, ultimoError) =>
+        set((st) => {
+          const item = st.cola.find((x) => x.id === id);
+          if (!item) return {};
+          return {
+            cola: st.cola.filter((x) => x.id !== id),
+            fallidos: [
+              ...st.fallidos,
+              { ...item, intentos: item.intentos + 1, ultimoError, enCursoHasta: undefined },
+            ],
+          };
+        }),
+      reintentarFallido: (id) =>
+        set((st) => {
+          const item = st.fallidos.find((x) => x.id === id);
+          if (!item) return {};
+          return {
+            fallidos: st.fallidos.filter((x) => x.id !== id),
+            cola: [...st.cola, { ...item, proximoIntento: undefined }],
+          };
+        }),
+      quitarFallido: (id) =>
+        set((st) => ({ fallidos: st.fallidos.filter((x) => x.id !== id) })),
+      adelantarCola: () =>
+        set((st) => ({
+          cola: st.cola.map((x) => ({ ...x, proximoIntento: undefined })),
         })),
     }),
     {
       // Persiste cliente pendiente + cola en localStorage (sobreviven recargas).
+      // NO subir `version`: zustand borra el estado guardado si cambia sin
+      // `migrate`, y al regresar a la versión anterior pasaría lo mismo (se
+      // perdería la cola). Solo se agregan campos opcionales.
       name: "amise_nodo_puntos",
       version: 1,
     },

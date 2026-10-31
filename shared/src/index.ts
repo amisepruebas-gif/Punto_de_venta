@@ -10,3 +10,4 @@ export * from "./date";
 export * from "./pinHash";
 export * from "./passwordHash";
 export * from "./storageUrl";
+export * from "./puntos";
