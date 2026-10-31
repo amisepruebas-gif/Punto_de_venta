@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   clasificarErrorPuntos,
+  correoValido,
   desgloseVenta,
+  ean13Ok,
+  enmascararCorreo,
   descartarTrasFallo,
   esValorPuntos,
   esperaRegistroPuntos,
@@ -188,5 +191,31 @@ describe("desgloseVenta", () => {
       descuentoPuntos: "10" }, 100);
     expect(d.articulos).toBe(100);
     expect(cuadra(d)).toBe(true);
+  });
+});
+
+describe("tarjeta y correo", () => {
+  it("ean13Ok valida el dígito verificador", () => {
+    for (const ok of ["4006381333931", "9780306406157", "7501000000012", "7502000000019"]) {
+      expect(ean13Ok(ok)).toBe(true);
+    }
+    for (const mal of ["4006381333932", "750100000001", "75010000000120", "750100000001a", ""]) {
+      expect(ean13Ok(mal)).toBe(false);
+    }
+  });
+
+  it("correoValido", () => {
+    expect(correoValido("ana@demo.test")).toBe(true);
+    expect(correoValido("  ana@demo.test ")).toBe(true);
+    expect(correoValido("ana@demo")).toBe(false);
+    expect(correoValido("ana demo@x.mx")).toBe(false);
+  });
+
+  it("enmascararCorreo oculta y es idempotente (igual que el servidor)", () => {
+    expect(enmascararCorreo("juan@gmail.com")).toBe("ju•••@gmail.com");
+    expect(enmascararCorreo("a@x.com")).toBe("a•••@x.com");
+    expect(enmascararCorreo("ju•••@gmail.com")).toBe("ju•••@gmail.com");
+    expect(enmascararCorreo("sin-arroba")).toBe("•••");
+    expect(enmascararCorreo(undefined)).toBe("");
   });
 });

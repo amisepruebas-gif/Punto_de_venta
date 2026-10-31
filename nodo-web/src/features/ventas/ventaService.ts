@@ -43,8 +43,10 @@ export type NuevaVentaInput = {
   datosPagoDividido?: Record<string, unknown>;
   comicion?: string;
   statusComision?: string;
-  /** Descuento aplicado por canje de puntos (pesos). Se persiste para auditoría. */
+  /** Descuento aplicado por canje de cashback (pesos). Se persiste para auditoría. */
   descuentoPuntos?: string;
+  /** Cliente de cashback de la venta (acumula o usa saldo). Auditoría. */
+  puntosTelefono?: string;
   /** Crédito de regalo USADO (pesos) como descuento. NO es ingreso. Auditoría. */
   descuentoRegalo?: string;
   /**
@@ -233,6 +235,7 @@ function buildVenta(p: NuevaVentaInput & {
   if (p.descuentoPuntos && Number(p.descuentoPuntos) > 0) {
     v.descuentoPuntos = p.descuentoPuntos;
   }
+  if (p.puntosTelefono) v.puntosClienteTelefono = p.puntosTelefono;
   if (p.descuentoRegalo && Number(p.descuentoRegalo) > 0) {
     v.descuentoRegalo = p.descuentoRegalo;
   }

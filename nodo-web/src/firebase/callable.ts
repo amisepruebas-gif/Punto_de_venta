@@ -168,6 +168,9 @@ export const fnConsultarSaldoPuntos = callable<
 export type CanjearPuntosInput = {
   email?: string;
   phone?: string;
+  /** Tarjeta escaneada: usar cashback la exige (el servidor verifica que sea
+   *  del monedero de ese teléfono). */
+  codigo?: string;
   /** $ de cashback a canjear. */
   money: number;
   idempotencyKey: string;
@@ -196,7 +199,9 @@ export const fnCerrarCanje = callable<CerrarCanjeInput, CerrarCanjeOutput>(
   "cerrarCanje",
 );
 
-export type RecuperarCodigoInput = { phone?: string; email?: string };
+/** Recuperar entrega una contraseña: con la tarjeta escaneada (`codigo`) o el
+ *  correo completo del cliente, además del teléfono. */
+export type RecuperarCodigoInput = { phone?: string; email?: string; codigo?: string };
 export type RecuperarCodigoOutput = { ok: boolean; email: string; code: string };
 export const fnRecuperarCodigoPuntos = callable<
   RecuperarCodigoInput,

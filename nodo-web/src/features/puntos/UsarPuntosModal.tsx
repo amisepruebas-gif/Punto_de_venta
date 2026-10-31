@@ -1,11 +1,18 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  codigoErrorPuntos,
+  correoValido,
+  ean13Ok,
+  enmascararCorreo,
+  telefonosIguales,
+} from "@shared";
+import {
   fnConsultarSaldoPuntos,
+  fnDesbloquearTarjeta,
   fnRecuperarCodigoPuntos,
-  type ConsultarSaldoOutput,
   type TarjetaInfo,
 } from "@/firebase/callable";
 import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
@@ -18,8 +25,13 @@ import { formatearTicketRecuperacion } from "./ticketRecuperacion";
 
 export type AplicarPuntos = {
   telefono: string;
+  /** Tarjeta escaneada con la que se consultó: usar saldo la exige. */
+  codigo?: string;
   /** Cashback en pesos a usar como descuento (0 = solo acumular). */
   descuento: number;
+  /** Solo ligar al cliente a la venta (al activar o reponer su tarjeta): si ya
+   *  era el cliente de la venta, su descuento se conserva. */
+  soloLigar?: boolean;
 };
 
 type Props = {
@@ -32,42 +44,82 @@ type Props = {
 
 const money = (n: number) =>
   "$" + n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-/** Valida el dígito verificador EAN-13 (mismo criterio que amise `validarEAN13`). */
-function ean13Ok(c: string): boolean {
-  if (!/^\d{13}$/.test(c)) return false;
-  const n = c.split("").map(Number);
-  const sum = n.slice(0, 12).reduce((a, d, i) => a + d * (i % 2 === 0 ? 1 : 3), 0);
-  return (10 - (sum % 10)) % 10 === n[12];
-}
+const digitos = (s: string) => s.replace(/\D/g, "");
 
 /**
- * Modal de canje en el POS. El cajero ingresa el teléfono del cliente, consulta
- * su saldo (siempre se muestra el EQUIVALENTE EN DINERO, redondeado a $0.50 desde
- * el server) y decide cuánto usar en esta venta o solo acumular.
+ * Cliente consultado. TODAS las acciones operan sobre esto y no sobre lo que
+ * diga la casilla: antes se podía corregir el teléfono después de consultar y
+ * se operaba otro número con el saldo del primero.
+ */
+type Consultado = {
+  telefono: string;
+  /** Por dónde se consultó: solo con la tarjeta se puede usar el saldo. */
+  via: "telefono" | "tarjeta";
+  /** Tarjeta escaneada (solo si via === "tarjeta"). */
+  codigo?: string;
+  saldoUsable: number;
+  saldoDinero: number;
+  /** Con el servidor exigiendo, por teléfono llega solo con sus últimos 4. */
+  tarjeta: TarjetaInfo | null;
+};
+
+/**
+ * Cashback en el POS. El cajero consulta al cliente por teléfono o escaneando
+ * su tarjeta (siempre se muestra el EQUIVALENTE EN DINERO).
+ *  - Usar saldo exige haber escaneado la tarjeta; por teléfono solo se acumula.
+ *  - Activar, reponer o desbloquear la tarjeta y recuperar la contraseña piden
+ *    el correo completo del cliente: debe ser del mismo monedero que el
+ *    teléfono (para recuperar también basta la tarjeta escaneada).
  */
 export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   const { byId } = useArticulos();
+  const { sucursal } = useSucursal();
   const [telefono, setTelefono] = useState("");
   const [codigo, setCodigo] = useState(""); // barcode de tarjeta (escaneo)
   const [consultando, setConsultando] = useState(false);
-  const [saldo, setSaldo] = useState<{
-    saldoUsable: number;
-    saldoDinero: number;
-    tarjeta: TarjetaInfo | null;
-  } | null>(null);
+  const [consultado, setConsultado] = useState<Consultado | null>(null);
+  // Cada consulta lleva un número: la respuesta de una consulta anterior (o de
+  // antes de editar la casilla) se ignora.
+  const consultaId = useRef(0);
+  const [monto, setMonto] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [exito, setExito] = useState<string | null>(null);
   // Activar/reponer tarjeta física.
   const [modoTarjeta, setModoTarjeta] = useState(false);
   const [nuevoBarcode, setNuevoBarcode] = useState("");
+  const [correoTarjeta, setCorreoTarjeta] = useState("");
   const [tarjetaMsg, setTarjetaMsg] = useState<string | null>(null);
   const [procesandoTarjeta, setProcesandoTarjeta] = useState(false);
-  const [monto, setMonto] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  // Desbloquear tarjeta.
+  const [modoDesbloqueo, setModoDesbloqueo] = useState(false);
+  const [codigoDesbloqueo, setCodigoDesbloqueo] = useState("");
+  const [correoDesbloqueo, setCorreoDesbloqueo] = useState("");
+  const [desbloqueoMsg, setDesbloqueoMsg] = useState<string | null>(null);
+  const [desbloqueando, setDesbloqueando] = useState(false);
   // Recuperación de contraseña (re-emite una nueva; la vieja va hasheada).
-  const { sucursal } = useSucursal();
+  const [modoRecuperar, setModoRecuperar] = useState(false);
+  const [correoRecuperar, setCorreoRecuperar] = useState("");
   const [recuperando, setRecuperando] = useState(false);
   const [recovered, setRecovered] = useState<{ email: string; code: string } | null>(null);
   const [printMsg, setPrintMsg] = useState<string | null>(null);
+
+  function limpiarConsulta() {
+    consultaId.current += 1;
+    setConsultando(false);
+    setConsultado(null);
+    setMonto("");
+    setExito(null);
+    setModoTarjeta(false);
+    setNuevoBarcode("");
+    setCorreoTarjeta("");
+    setTarjetaMsg(null);
+    setModoDesbloqueo(false);
+    setCodigoDesbloqueo("");
+    setCorreoDesbloqueo("");
+    setDesbloqueoMsg(null);
+    setModoRecuperar(false);
+    setCorreoRecuperar("");
+  }
 
   // El componente queda montado (return null abajo) → el estado local persiste.
   // Limpiar al ABRIR para no arrastrar el teléfono/saldo del cliente anterior.
@@ -75,14 +127,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     if (open) {
       setTelefono("");
       setCodigo("");
-      setSaldo(null);
-      setMonto("");
       setError(null);
       setRecovered(null);
       setPrintMsg(null);
-      setModoTarjeta(false);
-      setNuevoBarcode("");
-      setTarjetaMsg(null);
+      limpiarConsulta();
     }
   }, [open]);
 
@@ -90,140 +138,144 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
   // Pesos enteros: los totales de la caja y del ticket no llevan centavos (los
   // centavos del saldo quedan para después).
-  const usable = saldo ? Math.floor(saldo.saldoUsable) : 0;
-  const tope = saldo ? Math.floor(Math.min(maxTotal, saldo.saldoUsable)) : 0;
+  const usable = consultado ? Math.floor(consultado.saldoUsable) : 0;
+  const tope = consultado ? Math.floor(Math.min(maxTotal, consultado.saldoUsable)) : 0;
   // Cashback 1:1 en $: el descuento es el monto pedido, tope incluido.
   const pedido = Math.floor(Math.min(Number(monto) || 0, tope));
+  const porTarjeta = consultado?.via === "tarjeta" && !!consultado.codigo;
+  const puedeUsar = porTarjeta && tope > 0;
+  // Motivo JUNTO a los botones (no arriba del modal): si algo impide usar el
+  // saldo, el cajero lo lee donde está mirando.
+  const motivoBloqueo =
+    !consultado || usable < 1
+      ? null
+      : !porTarjeta
+        ? "Para usar el saldo, escanea la tarjeta del cliente. Con el teléfono solo se acumula."
+        : tope <= 0
+          ? `Tope disponible ${money(tope)}: esta venta no tiene subtotal de productos al que aplicar el descuento. Las tarjetas de regalo se pagan con dinero real.`
+          : null;
 
-  // Estados en los que el canje/acumulación NO puede prosperar. Se derivan aquí
-  // para que los BOTONES los reflejen (deshabilitados + motivo junto a ellos) en
-  // vez de aceptar el click y salir por un `return` silencioso: ese era el "botón
-  // congelado" reportado — el `setError` se pinta arriba del modal (sobre los
-  // formularios de consulta), fuera de donde mira el cajero al presionar.
-  // Las guardas de `aplicarUsar`/`soloAcumular` se CONSERVAN a propósito
-  // (defensa en profundidad, FIX-MONEDERO-POS.md Fase 1 · A).
-  //  - sin teléfono: el monedero no se puede operar (earn y redeem van por
-  //    teléfono). Pasa al consultar por barcode un monedero sin `telefono`.
-  //  - tope 0: no hay subtotal de productos al que aplicar el descuento (el
-  //    `maxTotal` que manda PagoFooter excluye líneas de tarjeta de regalo y lo
-  //    ya cubierto por crédito de regalo).
-  const sinTelefono = !telefono.trim();
-  const puedeAcumular = !sinTelefono;
-  const puedeUsar = !sinTelefono && tope > 0;
-  // El caso "saldo del cliente < $1" NO entra aquí: tiene su propio aviso
-  // (abajo) y ahí el botón de usar ni se renderiza. Este motivo es sólo para
-  // cuando SÍ hay saldo usable pero la venta no da tope.
-  const motivoBloqueo = sinTelefono
-    ? "Este monedero no trae teléfono, y sin teléfono no se puede debitar ni acumular cashback. Consulta al cliente por teléfono (o por correo) para operarlo."
-    : tope <= 0 && usable >= 1
-      ? `Tope disponible ${money(tope)}: esta venta no tiene subtotal de productos al que aplicar el descuento. Las tarjetas de regalo se pagan con dinero real.`
-      : null;
-
-  // Aplica la respuesta de saldo (compartido por teléfono y por barcode). Al
-  // consultar por barcode, toma el teléfono del monedero para operar (earn/canje
-  // en el POS trabajan por teléfono). Existe: se puede ACUMULAR aunque tenga 0.
-  function aplicarSaldoResp(d: ConsultarSaldoOutput, telFallback: string) {
-    const tel = d.telefono || telFallback;
-    if (tel) setTelefono(tel);
-    else setError("El cliente no tiene teléfono; usa teléfono o correo para operar.");
-    setSaldo({
-      saldoUsable: d.saldoUsable ?? 0,
-      saldoDinero: d.saldoDinero ?? 0,
-      tarjeta: d.tarjeta ?? null,
-    });
-  }
-
-  async function consultar(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSaldo(null);
-    const tel = telefono.trim();
-    if (tel.replace(/\D/g, "").length < 10) {
-      setError("Teléfono inválido.");
-      return;
-    }
+  async function consultarTelefono(tel: string) {
+    limpiarConsulta();
+    const id = consultaId.current;
     setConsultando(true);
     try {
       const res = await fnConsultarSaldoPuntos({ phone: tel });
+      if (id !== consultaId.current) return;
       if (!res.data.exists) {
         setError("Este cliente no tiene monedero. Regístralo primero.");
-        setSaldo(null);
-      } else {
-        aplicarSaldoResp(res.data, tel);
+        return;
       }
+      setConsultado({
+        telefono: res.data.telefono || tel,
+        via: "telefono",
+        saldoUsable: res.data.saldoUsable ?? 0,
+        saldoDinero: res.data.saldoDinero ?? 0,
+        tarjeta: res.data.tarjeta ?? null,
+      });
     } catch {
-      setError("No se pudo consultar el saldo. Revisa la conexión.");
+      if (id === consultaId.current) setError("No se pudo consultar el saldo. Revisa la conexión.");
     } finally {
-      setConsultando(false);
+      if (id === consultaId.current) setConsultando(false);
     }
   }
 
-  // Consulta por barcode de tarjeta (el lector teclea los dígitos + Enter).
-  async function consultarPorCodigo() {
-    const c = codigo.replace(/\D/g, "");
-    if (c.length !== 13) {
-      setError("Código de tarjeta inválido (13 dígitos).");
-      return;
-    }
-    setError(null);
-    setSaldo(null);
+  async function consultarCodigo(c: string) {
+    limpiarConsulta();
+    const id = consultaId.current;
     setConsultando(true);
     try {
       const res = await fnConsultarSaldoPuntos({ codigo: c });
+      if (id !== consultaId.current) return;
       if (!res.data.exists) {
         // Una tarjeta bloqueada/repuesta no resuelve (solo 'activa').
-        setError("Tarjeta no encontrada, bloqueada o dada de baja.");
-        setSaldo(null);
-      } else {
-        aplicarSaldoResp(res.data, "");
+        setError("Tarjeta no encontrada, bloqueada o dada de baja. Consulta por teléfono.");
+        return;
       }
+      if (!res.data.telefono) {
+        // earn y redeem van por teléfono: sin él no se puede operar en caja.
+        setError("Este monedero no trae teléfono; no se puede operar en caja.");
+        return;
+      }
+      setTelefono(res.data.telefono);
+      setConsultado({
+        telefono: res.data.telefono,
+        via: "tarjeta",
+        codigo: c,
+        saldoUsable: res.data.saldoUsable ?? 0,
+        saldoDinero: res.data.saldoDinero ?? 0,
+        tarjeta: res.data.tarjeta ?? null,
+      });
     } catch {
-      setError("No se pudo consultar la tarjeta. Revisa la conexión.");
+      if (id === consultaId.current) setError("No se pudo consultar la tarjeta. Revisa la conexión.");
     } finally {
-      setConsultando(false);
+      if (id === consultaId.current) setConsultando(false);
     }
   }
 
+  function consultar(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const tel = telefono.trim();
+    if (digitos(tel).length < 10) {
+      setError("Teléfono inválido.");
+      return;
+    }
+    void consultarTelefono(tel);
+  }
+
+  // Consulta por barcode de tarjeta (el lector teclea los dígitos + Enter).
+  function consultarPorCodigo(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const c = digitos(codigo);
+    if (!ean13Ok(c)) {
+      setError("Código de tarjeta inválido (13 dígitos).");
+      return;
+    }
+    void consultarCodigo(c);
+  }
+
+  /** ¿El correo que da el cliente es del monedero de este teléfono? */
+  async function correoDelCliente(correo: string, tel: string): Promise<boolean> {
+    const r = await fnConsultarSaldoPuntos({ email: correo });
+    return Boolean(r.data.exists) && telefonosIguales(r.data.telefono, tel);
+  }
+
   function aplicarUsar() {
-    if (!saldo) return;
-    if (!telefono.trim()) {
-      setError("Sin teléfono no se puede debitar el cashback. Consulta por teléfono o correo.");
+    if (!consultado || !porTarjeta || !consultado.codigo) {
+      setError("Para usar el saldo, escanea la tarjeta del cliente.");
       return;
     }
     if (pedido <= 0) {
       setError("Indica cuánto usar (mayor a 0).");
       return;
     }
-    onAplicar({ telefono: telefono.trim(), descuento: pedido });
+    onAplicar({ telefono: consultado.telefono, codigo: consultado.codigo, descuento: pedido });
     reset();
   }
 
   function soloAcumular() {
-    if (!telefono.trim()) {
-      setError("Sin teléfono no se puede acumular cashback. Consulta por teléfono o correo.");
-      return;
-    }
-    onAplicar({ telefono: telefono.trim(), descuento: 0 });
+    if (!consultado) return;
+    onAplicar({ telefono: consultado.telefono, descuento: 0 });
     reset();
   }
 
-  // Activar (o reponer) una tarjeta física: valida, verifica que el barcode NO esté
-  // en uso, agrega el ARTÍCULO tarjeta al carrito y deja el barcode PENDIENTE de
-  // vincular al cobrar (pagó → se vincula). Si el cliente ya tiene tarjeta activa,
-  // es reposición (deshabilita la anterior).
+  // Activar (o reponer) una tarjeta física. Todo se valida ANTES de agregar la
+  // tarjeta al carrito (no se cobra una tarjeta que luego no se puede ligar):
+  // el correo debe ser del cliente y el barcode no debe estar en uso. Luego la
+  // venta queda ligada al cliente, así acumula (antes no).
   async function agregarTarjeta() {
-    const nuevo = nuevoBarcode.replace(/\D/g, "");
-    if (nuevo.length !== 13) {
-      setTarjetaMsg("Código inválido (13 dígitos).");
-      return;
-    }
+    if (!consultado) return;
+    const cliente = consultado;
+    const nuevo = digitos(nuevoBarcode);
     if (!ean13Ok(nuevo)) {
-      setTarjetaMsg("Código inválido (dígito verificador). Revisa el barcode.");
+      setTarjetaMsg("Código inválido. Revisa el barcode (13 dígitos).");
       return;
     }
-    const tel = telefono.trim();
-    if (!tel) {
-      setTarjetaMsg("Primero consulta al cliente.");
+    const correo = correoTarjeta.trim().toLowerCase();
+    if (!correoValido(correo)) {
+      setTarjetaMsg("Escribe el correo completo del cliente.");
       return;
     }
     const art = byId.get(CARD_ARTICLE_ID);
@@ -234,45 +286,111 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     setTarjetaMsg(null);
     setProcesandoTarjeta(true);
     try {
-      // El barcode no debe estar ya en uso (activo en otra cuenta).
+      if (!(await correoDelCliente(correo, cliente.telefono))) {
+        setTarjetaMsg("El correo no corresponde a este cliente.");
+        return;
+      }
       const chk = await fnConsultarSaldoPuntos({ codigo: nuevo });
       if (chk.data.exists) {
         setTarjetaMsg("Esa tarjeta ya está en uso.");
         return;
       }
     } catch {
-      setTarjetaMsg("No se pudo validar la tarjeta (sin conexión).");
+      setTarjetaMsg("No se pudo validar (sin conexión).");
       return;
     } finally {
       setProcesandoTarjeta(false);
     }
-    // Tiene tarjeta (activa o bloqueada) → reposición: la anterior se marca 'repuesta'.
-    const esReposicion = !!saldo?.tarjeta;
+    // Tiene tarjeta (activa o bloqueada) → reposición: la anterior se marca
+    // 'repuesta'. El código anterior solo marca que es reposición: el
+    // servidor busca la tarjeta real (aquí puede venir con sus últimos 4).
     useCarrito.getState().agregar(art);
     useClientePuntos.getState().setTarjetaPendiente({
       codigo: nuevo,
-      telefono: tel,
-      ...(esReposicion && saldo?.tarjeta ? { codigoAnterior: saldo.tarjeta.codigo } : {}),
+      telefono: cliente.telefono,
+      correo,
+      ...(cliente.tarjeta ? { codigoAnterior: cliente.tarjeta.codigo } : {}),
     });
+    onAplicar({ telefono: cliente.telefono, descuento: 0, soloLigar: true });
     reset(); // cierra el modal; se cobra + vincula al pagar
   }
 
+  // Desbloquear: la tarjeta bloqueada escaneada + el correo del cliente. El
+  // servidor vuelve a comprobar ambos.
+  async function desbloquear() {
+    if (!consultado?.tarjeta) return;
+    const tel = consultado.telefono;
+    const c = digitos(codigoDesbloqueo);
+    if (!ean13Ok(c)) {
+      setDesbloqueoMsg("Código inválido (13 dígitos).");
+      return;
+    }
+    const fin = consultado.tarjeta.codigo.slice(-4);
+    if (c.slice(-4) !== fin) {
+      setDesbloqueoMsg(`Esa no es la tarjeta del cliente (la suya termina en ${fin}).`);
+      return;
+    }
+    const correo = correoDesbloqueo.trim().toLowerCase();
+    if (!correoValido(correo)) {
+      setDesbloqueoMsg("Escribe el correo completo del cliente.");
+      return;
+    }
+    setDesbloqueoMsg(null);
+    setDesbloqueando(true);
+    try {
+      if (!(await correoDelCliente(correo, tel))) {
+        setDesbloqueoMsg("El correo no corresponde a este cliente.");
+        return;
+      }
+      await fnDesbloquearTarjeta({ phone: tel, codigo: c, email: correo });
+    } catch (e) {
+      const code = codigoErrorPuntos(e);
+      setDesbloqueoMsg(
+        code === "permission-denied"
+          ? "El correo o la tarjeta no corresponden a este cliente."
+          : code === "failed-precondition"
+            ? "La tarjeta no está bloqueada."
+            : "No se pudo desbloquear (sin conexión).",
+      );
+      return;
+    } finally {
+      setDesbloqueando(false);
+    }
+    // Ya activa: se vuelve a consultar con la tarjeta escaneada, así ya puede
+    // usar su saldo.
+    setCodigo(c);
+    await consultarCodigo(c);
+    setExito("Tarjeta desbloqueada.");
+  }
+
   async function recuperar() {
+    if (!consultado) return;
+    const tel = consultado.telefono;
+    const correo = correoRecuperar.trim().toLowerCase();
+    if (!porTarjeta && !correoValido(correo)) {
+      setError("Escribe el correo completo del cliente.");
+      return;
+    }
     setError(null);
     setRecovered(null);
     setPrintMsg(null);
-    const tel = telefono.trim();
-    if (tel.replace(/\D/g, "").length < 10) {
-      setError("Teléfono inválido.");
-      return;
-    }
     setRecuperando(true);
     try {
-      const res = await fnRecuperarCodigoPuntos({ phone: tel });
-      setRecovered({ email: res.data.email, code: res.data.code });
-      setSaldo(null);
+      if (!porTarjeta && !(await correoDelCliente(correo, tel))) {
+        setError("El correo no corresponde a este cliente.");
+        return;
+      }
+      const res = await fnRecuperarCodigoPuntos(
+        porTarjeta ? { phone: tel, codigo: consultado.codigo } : { phone: tel, email: correo },
+      );
+      // Oculto también aquí: un servidor sin actualizar lo manda completo.
+      setRecovered({ email: enmascararCorreo(res.data.email), code: res.data.code });
     } catch (e) {
-      setError((e as Error)?.message || "No se pudo recuperar la contraseña.");
+      setError(
+        codigoErrorPuntos(e) === "permission-denied"
+          ? "La tarjeta o el correo no corresponden a este cliente."
+          : (e as Error)?.message || "No se pudo recuperar la contraseña.",
+      );
     } finally {
       setRecuperando(false);
     }
@@ -298,14 +416,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   function reset() {
     setTelefono("");
     setCodigo("");
-    setSaldo(null);
-    setMonto("");
     setError(null);
     setRecovered(null);
     setPrintMsg(null);
-    setModoTarjeta(false);
-    setNuevoBarcode("");
-    setTarjetaMsg(null);
+    limpiarConsulta();
     onClose();
   }
 
@@ -331,7 +445,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
             inputMode="numeric"
             placeholder="Teléfono del cliente"
             value={telefono}
-            onChange={(e) => setTelefono(e.target.value)}
+            onChange={(e) => {
+              setTelefono(e.target.value);
+              if (consultado || consultando) limpiarConsulta();
+            }}
             autoFocus
           />
           <Button type="submit" variant="secondary" disabled={consultando}>
@@ -339,36 +456,23 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
           </Button>
         </form>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            consultarPorCodigo();
-          }}
-          className="flex gap-2"
-        >
+        <form onSubmit={consultarPorCodigo} className="flex gap-2">
           <Input
             inputMode="numeric"
             placeholder="o escanea la tarjeta…"
             value={codigo}
-            onChange={(e) => setCodigo(e.target.value)}
+            onChange={(e) => {
+              setCodigo(e.target.value);
+              if (consultado || consultando) limpiarConsulta();
+            }}
           />
           <Button type="submit" variant="secondary" disabled={consultando}>
             {consultando ? "…" : "Tarjeta"}
           </Button>
         </form>
 
-        {!recovered && (
-          <button
-            type="button"
-            onClick={recuperar}
-            disabled={recuperando}
-            className="text-sm font-semibold text-indigo-600 underline disabled:opacity-50"
-          >
-            {recuperando ? "Recuperando…" : "Recuperar contraseña"}
-          </button>
-        )}
-
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {exito && <p className="text-sm font-medium text-emerald-700">{exito}</p>}
 
         {recovered && (
           <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">
@@ -390,62 +494,57 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
           </div>
         )}
 
-        {saldo && !recovered && (
+        {consultado && !recovered && (
           <div className="space-y-3">
-            {usable >= 1 ? (
-              <>
-                <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
-                  Saldo de cashback:{" "}
-                  <strong className="text-base">{money(saldo.saldoDinero)}</strong>
-                  <span className="block text-[12px] text-text-soft">
-                    Disponible para usar (pesos enteros):{" "}
-                    <strong>{money(usable)}</strong>
-                  </span>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">¿Cuánto usar en esta venta?</label>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder={`Máximo ${money(tope)}`}
-                    value={monto}
-                    onChange={(e) => setMonto(e.target.value)}
-                  />
-                  <p className="text-[12px] text-text-soft">
-                    Tope: {money(tope)} (lo menor entre el total y su saldo).
+            <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
+              Saldo de cashback:{" "}
+              <strong className="text-base">{money(consultado.saldoDinero)}</strong>
+              {usable >= 1 ? (
+                <span className="block text-[12px] text-text-soft">
+                  Disponible para usar (pesos enteros): <strong>{money(usable)}</strong>
+                </span>
+              ) : (
+                <span className="block text-[12px] text-text-soft">
+                  Aún no alcanza el mínimo para usar ($1). Puede acumular en esta venta.
+                </span>
+              )}
+              <span className="block text-[12px] text-text-soft">
+                {porTarjeta
+                  ? `Consultado con su tarjeta ••••${consultado.codigo!.slice(-4)}.`
+                  : "Consultado por teléfono."}
+              </span>
+            </div>
+
+            {usable >= 1 && porTarjeta && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">¿Cuánto usar en esta venta?</label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder={`Máximo ${money(tope)}`}
+                  value={monto}
+                  onChange={(e) => setMonto(e.target.value)}
+                />
+                <p className="text-[12px] text-text-soft">
+                  Tope: {money(tope)} (lo menor entre el total y su saldo).
+                </p>
+                {pedido > 0 && (
+                  <p className="text-[13px] font-semibold text-indigo-600">
+                    Se aplicarán: {money(pedido)}
                   </p>
-                  {pedido > 0 && (
-                    <p className="text-[13px] font-semibold text-indigo-600">
-                      Se aplicarán: {money(pedido)}
-                    </p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
-                Saldo de cashback: <strong>{money(saldo.saldoDinero)}</strong> — aún no
-                alcanza el mínimo para usar ($1). Puedes <strong>acumular</strong> en
-                esta venta.
+                )}
               </div>
             )}
-            {/* Motivo JUNTO a los botones (no arriba del modal): si algo impide
-                operar, el cajero lo lee donde está mirando y con la salida clara. */}
             {motivoBloqueo && (
               <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-900">
                 {motivoBloqueo}
               </p>
             )}
             <div className="flex gap-2 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                disabled={!puedeAcumular}
-                onClick={soloAcumular}
-              >
+              <Button type="button" variant="outline" className="flex-1" onClick={soloAcumular}>
                 Acumular en esta venta
               </Button>
-              {saldo.saldoUsable > 0 && (
+              {usable >= 1 && (
                 <Button
                   type="button"
                   className="flex-1"
@@ -457,16 +556,62 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
               )}
             </div>
 
-            {/* Tarjeta física: activar (sin tarjeta) o reponer (con tarjeta activa) */}
-            <div className="rounded-md border border-border px-3 py-2.5 text-sm">
-              {saldo.tarjeta ? (
-                <p className="mb-2">
-                  Tarjeta {saldo.tarjeta.estado}:{" "}
-                  <strong>••••{saldo.tarjeta.codigo.slice(-4)}</strong>
+            {/* Tarjeta física: activar (sin tarjeta), reponer o desbloquear */}
+            <div className="space-y-2 rounded-md border border-border px-3 py-2.5 text-sm">
+              {consultado.tarjeta ? (
+                <p>
+                  Tarjeta {consultado.tarjeta.estado}:{" "}
+                  <strong>••••{consultado.tarjeta.codigo.slice(-4)}</strong>
                 </p>
               ) : (
-                <p className="mb-2 text-text-soft">Sin tarjeta física.</p>
+                <p className="text-text-soft">Sin tarjeta física.</p>
               )}
+
+              {consultado.tarjeta?.estado === "bloqueada" &&
+                (!modoDesbloqueo ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setModoDesbloqueo(true);
+                      setModoTarjeta(false);
+                      setDesbloqueoMsg(null);
+                    }}
+                  >
+                    Desbloquear tarjeta
+                  </Button>
+                ) : (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void desbloquear();
+                    }}
+                    className="space-y-2"
+                  >
+                    <Input
+                      inputMode="numeric"
+                      placeholder="Escanea la tarjeta bloqueada…"
+                      value={codigoDesbloqueo}
+                      onChange={(e) => setCodigoDesbloqueo(e.target.value)}
+                      autoFocus
+                    />
+                    <Input
+                      type="email"
+                      placeholder="Correo completo del cliente"
+                      value={correoDesbloqueo}
+                      onChange={(e) => setCorreoDesbloqueo(e.target.value)}
+                    />
+                    <p className="text-[12px] text-text-soft">
+                      Si el cliente la perdió, mejor usa Reponer tarjeta.
+                    </p>
+                    <Button type="submit" className="w-full" disabled={desbloqueando}>
+                      {desbloqueando ? "Desbloqueando…" : "Desbloquear"}
+                    </Button>
+                  </form>
+                ))}
+              {desbloqueoMsg && <p className="text-[13px] text-destructive">{desbloqueoMsg}</p>}
+
               {!modoTarjeta ? (
                 <Button
                   type="button"
@@ -474,17 +619,18 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                   className="w-full"
                   onClick={() => {
                     setModoTarjeta(true);
+                    setModoDesbloqueo(false);
                     setNuevoBarcode("");
                     setTarjetaMsg(null);
                   }}
                 >
-                  {saldo.tarjeta ? "Reponer tarjeta" : "Activar tarjeta"}
+                  {consultado.tarjeta ? "Reponer tarjeta" : "Activar tarjeta"}
                 </Button>
               ) : (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    agregarTarjeta();
+                    void agregarTarjeta();
                   }}
                   className="space-y-2"
                 >
@@ -495,6 +641,12 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                     onChange={(e) => setNuevoBarcode(e.target.value)}
                     autoFocus
                   />
+                  <Input
+                    type="email"
+                    placeholder="Correo completo del cliente"
+                    value={correoTarjeta}
+                    onChange={(e) => setCorreoTarjeta(e.target.value)}
+                  />
                   <p className="text-[12px] text-text-soft">
                     Se cobra el artículo de la tarjeta y se vincula al pagar.
                   </p>
@@ -503,14 +655,51 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                   </Button>
                 </form>
               )}
-              {tarjetaMsg && (
-                <p className="mt-1 text-[13px] text-destructive">{tarjetaMsg}</p>
-              )}
+              {tarjetaMsg && <p className="text-[13px] text-destructive">{tarjetaMsg}</p>}
             </div>
+
+            {/* Recuperar contraseña: con la tarjeta escaneada, o con su correo. */}
+            {porTarjeta ? (
+              <button
+                type="button"
+                onClick={() => void recuperar()}
+                disabled={recuperando}
+                className="text-sm font-semibold text-indigo-600 underline disabled:opacity-50"
+              >
+                {recuperando ? "Recuperando…" : "Recuperar contraseña"}
+              </button>
+            ) : !modoRecuperar ? (
+              <button
+                type="button"
+                onClick={() => setModoRecuperar(true)}
+                className="text-sm font-semibold text-indigo-600 underline"
+              >
+                Recuperar contraseña
+              </button>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void recuperar();
+                }}
+                className="flex gap-2"
+              >
+                <Input
+                  type="email"
+                  placeholder="Correo completo del cliente"
+                  value={correoRecuperar}
+                  onChange={(e) => setCorreoRecuperar(e.target.value)}
+                  autoFocus
+                />
+                <Button type="submit" variant="secondary" disabled={recuperando}>
+                  {recuperando ? "…" : "Recuperar"}
+                </Button>
+              </form>
+            )}
           </div>
         )}
 
-        {!saldo && !recovered && (
+        {!consultado && !recovered && (
           <Button type="button" variant="ghost" className="w-full" onClick={onClose}>
             Cancelar
           </Button>

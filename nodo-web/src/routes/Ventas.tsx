@@ -34,7 +34,7 @@ import { usePinVentas } from "@/features/ventas/historial/usePinVentas";
 import { useCarrito, subtotalItem } from "@/features/ventas/carritoStore";
 import { useArticulos } from "@/features/articulos/useArticulos";
 import { crearVenta } from "@/features/ventas/ventaService";
-import { generarID } from "@shared";
+import { codigoErrorPuntos, ean13Ok, generarID } from "@shared";
 import { formatearTicketEscPos } from "@/features/ventas/ticketEscPos";
 import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
 import { useBackHandler } from "@/lib/back-handler";
@@ -70,6 +70,7 @@ import { generarCodigoPuntos } from "@/features/puntos/codigoPuntos";
 import { CARD_ARTICLE_ID } from "@/features/puntos/tarjeta";
 import {
   fnCanjearPuntos,
+  fnConsultarSaldoPuntos,
   fnCerrarCanje,
   fnConsultarSaldoTarjetaRegalo,
   fnRedimirCreditoRegalo,
@@ -347,7 +348,11 @@ export function Ventas() {
     const regaloUsar = Number(preview.descuentoRegalo) || 0;
     const regaloIdent =
       regaloUsar > 0
-        ? { codigo: preview.regaloCodigo, phone: preview.regaloPhone }
+        ? {
+            codigo: preview.regaloCodigo,
+            phone: preview.regaloPhone,
+            email: preview.regaloEmail,
+          }
         : null;
 
     // USAR cashback REQUIERE conexión: se debita EN LÍNEA *antes* de crear la venta.
@@ -359,6 +364,13 @@ export function Ventas() {
     // debitarse → se estaría regalando saldo. Aborta el cobro (no crea la venta).
     if (cashbackUsar > 0 && !puntosTel) {
       throw new Error("No se puede aplicar cashback sin teléfono del cliente. Quítalo y reintenta.");
+    }
+    // Usar cashback exige la tarjeta del cliente escaneada (el servidor
+    // verifica que sea de ese monedero). Sin ella, se detiene sin debitar.
+    if (cashbackUsar > 0 && !preview.puntosCodigo) {
+      throw new Error(
+        "Para usar cashback hay que escanear la tarjeta del cliente. Quita el descuento y aplícalo con la tarjeta.",
+      );
     }
     // Fase 5 (mínima-segura) — candado de canje: el servidor previene el DOBLE
     // DÉBITO (pendingLock → si hay un canje en curso del mismo cliente devuelve 409
@@ -407,6 +419,7 @@ export function Ventas() {
       try {
         await fnCanjearPuntos({
           phone: puntosTel,
+          codigo: preview.puntosCodigo,
           money: cashbackUsar,
           idempotencyKey: cobroId,
           pendingLock: true, // activa el candado del servidor (anti doble-débito)
@@ -416,9 +429,11 @@ export function Ventas() {
         // venta con descuento sin débito. Otro error (red/saldo) → abortar genérico.
         const msg = e instanceof Error ? e.message : "";
         throw new Error(
-          msg.includes("canje en curso")
-            ? "Ya hay un canje en curso para este cliente. Espera unos minutos y reintenta."
-            : "No se pudo usar el cashback (sin conexión o saldo). Quítalo o reintenta.",
+          codigoErrorPuntos(e) === "permission-denied"
+            ? "La tarjeta no corresponde al cliente. Quita el descuento y vuelve a escanear."
+            : msg.includes("canje en curso")
+              ? "Ya hay un canje en curso para este cliente. Espera unos minutos y reintenta."
+              : "No se pudo usar el cashback (sin conexión o saldo). Quítalo o reintenta.",
         );
       }
     }
@@ -446,9 +461,12 @@ export function Ventas() {
         }
       }
       try {
+        // Con la tarjeta, o con teléfono + correo (el servidor verifica que el
+        // correo sea de ese monedero).
         await fnRedimirCreditoRegalo({
           codigo: regaloIdent.codigo,
           phone: regaloIdent.phone,
+          ...(regaloIdent.codigo ? {} : { email: regaloIdent.email }),
           money: regaloUsar,
           idempotencyKey: cobroId,
           pendingLock: true,
@@ -456,7 +474,9 @@ export function Ventas() {
       } catch (e) {
         const msg = e instanceof Error ? e.message : "";
         throw new Error(
-          msg.includes("en curso")
+          codigoErrorPuntos(e) === "permission-denied"
+            ? "La tarjeta o el correo no corresponden al cliente. Quita el crédito y vuelve a aplicarlo."
+            : msg.includes("en curso")
             ? "Ya hay un uso de crédito en curso para esta tarjeta. Espera unos minutos y reintenta."
             : msg.includes("vencido")
             ? "El crédito de regalo venció. Quítalo y reintenta."
@@ -522,6 +542,7 @@ export function Ventas() {
             {
               modo: tarjPend.codigoAnterior ? "reponer" : "activar",
               phone: tarjPend.telefono,
+              ...(tarjPend.correo ? { email: tarjPend.correo } : {}),
               codigo: tarjPend.codigo,
               ...(tarjPend.codigoAnterior ? { codigoAnterior: tarjPend.codigoAnterior } : {}),
               ventaId: result.venta.ventaId,
@@ -711,51 +732,63 @@ export function Ventas() {
     finalizarVenta(result.venta);
   }
 
-  // Pre-registro de cliente (FAB): genera la contraseña temporal local, guarda
-  // el pendiente y llama a la CF (encola si offline — el código ya está local).
-  function handlePreRegistrar(data: PreRegistroData) {
+  // Pre-registro de cliente (FAB). Devuelve el error para el modal, o null si
+  // quedó registrado (o anotado para cuando vuelva la red: la contraseña
+  // temporal se genera aquí, así sirve aunque no haya conexión).
+  async function handlePreRegistrar(data: PreRegistroData): Promise<string | null> {
+    // La tarjeta se valida ANTES de registrar (dígito verificador y que no esté
+    // en uso): no se cobra una tarjeta que luego no se puede ligar.
+    const art = data.cardBarcode ? articulosById.get(CARD_ARTICLE_ID) : undefined;
+    if (data.cardBarcode) {
+      if (!ean13Ok(data.cardBarcode)) return "Código de tarjeta inválido (dígito verificador).";
+      if (!art) return "No se encontró el artículo de la tarjeta. Avisa al admin.";
+      try {
+        const chk = await fnConsultarSaldoPuntos({ codigo: data.cardBarcode });
+        if (chk.data.exists) return "Esa tarjeta ya está en uso.";
+      } catch {
+        return "No se pudo validar la tarjeta (sin conexión). Regístralo sin tarjeta o reintenta.";
+      }
+    }
     const code = generarCodigoPuntos();
+    const payload = { email: data.correo, phone: data.telefono, nombre: data.nombre, code };
+    // Anotado antes de llamar (vale dinero: sin registro no hay cashback). Con
+    // red se espera la respuesta: un "ya existe" se dice aquí y no deja al
+    // cliente en espera con una contraseña que no sirve.
+    const idRegistro = useClientePuntos.getState().encolar("register", payload, {
+      enCursoHasta: Date.now() + 90_000,
+    });
+    const r = await enviarPuntosAhora(idRegistro);
+    if (!r.ok && r.clase !== "reintentar") {
+      useClientePuntos.getState().quitarFallido(idRegistro);
+      return r.clase === "hecho"
+        ? "Ya existe un cliente con ese correo o teléfono. Búscalo por teléfono en Cashback."
+        : `No se pudo registrar: ${r.mensaje}`;
+    }
     useClientePuntos.getState().setPendiente({
       correo: data.correo,
       telefono: data.telefono,
       nombre: data.nombre,
       code,
     });
-    const payload = { email: data.correo, phone: data.telefono, nombre: data.nombre, code };
-    // Anotado antes de llamar (vale dinero: sin registro no hay cashback).
-    const idRegistro = useClientePuntos.getState().encolar("register", payload, {
-      enCursoHasta: Date.now() + 90_000,
-    });
-    void enviarPuntosAhora(idRegistro).then((r) => {
-      if (r.ok) return;
-      setToast(
-        r.clase === "reintentar"
-          ? `Registrado sin conexión (se sincroniza). Código: ${code}`
-          : r.clase === "hecho"
-            ? "El cliente ya existía: la contraseña impresa no sirve. Usa Recuperar contraseña."
-            : `Registro NO hecho (${r.mensaje}). Quedó en "Por enviar".`,
-      );
-      window.setTimeout(() => setToast(null), 7000);
-    });
-
     // F5: si adquirió tarjeta al registrarse, agregar el ARTÍCULO al carrito y dejar
     // el barcode PENDIENTE de vincular al cobrar (pagó → se vincula, como F4).
     let msgTarjeta = "";
-    if (data.cardBarcode) {
-      const art = articulosById.get(CARD_ARTICLE_ID);
-      if (art) {
-        agregar(art);
-        useClientePuntos.getState().setTarjetaPendiente({
-          codigo: data.cardBarcode,
-          telefono: data.telefono,
-        });
-        msgTarjeta = " + tarjeta agregada";
-      } else {
-        msgTarjeta = " (no se encontró el artículo de tarjeta)";
-      }
+    if (data.cardBarcode && art) {
+      agregar(art);
+      useClientePuntos.getState().setTarjetaPendiente({
+        codigo: data.cardBarcode,
+        telefono: data.telefono,
+        correo: data.correo,
+      });
+      msgTarjeta = " + tarjeta agregada";
     }
-    setToast(`Cliente registrado${msgTarjeta}. Código: ${code}`);
-    window.setTimeout(() => setToast(null), 5000);
+    setToast(
+      r.ok
+        ? `Cliente registrado${msgTarjeta}. Código: ${code}`
+        : `Registrado sin conexión (se sincroniza)${msgTarjeta}. Código: ${code}`,
+    );
+    window.setTimeout(() => setToast(null), 6000);
+    return null;
   }
 
   // Vender tarjeta de regalo (FAB): agrega la denominación como línea de venta
@@ -1082,6 +1115,7 @@ export function Ventas() {
         open={preRegOpen}
         onClose={() => setPreRegOpen(false)}
         onRegistrar={handlePreRegistrar}
+        pendienteCorreo={pendientePuntos?.correo ?? null}
       />
       <VenderRegaloModal
         open={giftOpen}

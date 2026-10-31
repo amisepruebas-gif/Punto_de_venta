@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ean13Ok } from "@shared";
 
 export type VenderRegaloData = {
   email: string;
@@ -21,15 +22,6 @@ type Props = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PRESETS = [200, 300, 500];
-
-/** Valida EAN-13 con dígito verificador (mismo criterio que amise validarEAN13). */
-function ean13Ok(c: string): boolean {
-  if (!/^\d{13}$/.test(c)) return false;
-  const n = c.split("").map(Number);
-  let sum = 0;
-  for (let i = 0; i < 12; i++) sum += n[i] * (i % 2 === 0 ? 1 : 3);
-  return (10 - (sum % 10)) % 10 === n[12];
-}
 
 /**
  * Modal para VENDER/activar una tarjeta de regalo (Feature 5, Fase 2). Captura el

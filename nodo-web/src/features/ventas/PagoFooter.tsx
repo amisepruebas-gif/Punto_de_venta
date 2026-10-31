@@ -7,7 +7,7 @@ import { useNodoSession } from "@/hooks/useNodoSession";
 import { useSucursal } from "@/features/sucursal/useSucursal";
 import { UsarPuntosModal } from "@/features/puntos/UsarPuntosModal";
 import { UsarRegaloModal } from "@/features/puntos/UsarRegaloModal";
-import type { MovimientoPago, VentaArticulo } from "@shared";
+import { telefonosIguales, type MovimientoPago, type VentaArticulo } from "@shared";
 
 /** Billetes con sus imágenes copiadas de `nodo_1/.../drawable/billete*`.
  *  Los nombres reflejan las denominaciones reales del peso mexicano. */
@@ -42,11 +42,14 @@ export type CobrarPayload = {
   /** Canje de cashback (POS): $ descuento aplicado + cliente para acreditar/debitar. */
   descuentoPuntos?: string;
   puntosTelefono?: string;
+  /** Tarjeta escaneada con la que se consultó: usar cashback la exige. */
+  puntosCodigo?: string;
   /** Fase 3 — crédito de regalo usado como descuento (NO es ingreso) +
-   *  identificador de la tarjeta para debitarlo (uno de los dos). */
+   *  identificador para debitarlo: la tarjeta, o teléfono + correo. */
   descuentoRegalo?: string;
   regaloCodigo?: string;
   regaloPhone?: string;
+  regaloEmail?: string;
 };
 
 type Props = {
@@ -103,17 +106,25 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   const [error, setError] = useState<string | null>(null);
   // Canje de puntos: descuento (pesos) + cliente identificado para acreditar.
   const [descuentoPuntos, setDescuentoPuntos] = useState(0);
-  const [clientePuntos, setClientePuntos] = useState<{ telefono: string } | null>(
-    null,
-  );
+  // `codigo`: la tarjeta escaneada con la que se consultó (solo con ella se
+  // puede usar saldo).
+  const [clientePuntos, setClientePuntos] = useState<{
+    telefono: string;
+    codigo?: string;
+  } | null>(null);
+  // Aviso al cambiar de cliente con un descuento puesto: el descuento del
+  // cliente anterior se quita (nunca se debita a uno lo aplicado a otro).
+  const [avisoCliente, setAvisoCliente] = useState<string | null>(null);
   const [usarPuntosOpen, setUsarPuntosOpen] = useState(false);
   // Fase 3 — crédito de regalo usado (pesos) + identificador de la tarjeta para
   // debitarlo. Es un DESCUENTO (reduce el total; NO es ingreso — ya se contó al
   // vender la tarjeta).
   const [descuentoRegalo, setDescuentoRegalo] = useState(0);
-  const [regaloId, setRegaloId] = useState<{ codigo?: string; phone?: string } | null>(
-    null,
-  );
+  const [regaloId, setRegaloId] = useState<{
+    codigo?: string;
+    phone?: string;
+    email?: string;
+  } | null>(null);
   const [usarRegaloOpen, setUsarRegaloOpen] = useState(false);
   // Un descuento (cashback o crédito de regalo) YA aplicado se invalida al editar
   // el carrito — ver el effect de [subtotalBruto]. Sin avisar, el cajero cobraba
@@ -157,6 +168,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     setDescuentoRegalo(0);
     setRegaloId(null);
     setDescuentoInvalidado(false);
+    setAvisoCliente(null);
   }, [resetSignal]);
 
   // Comisión — solo aplica con tarjeta y si la sucursal tiene cobrarComision=true
@@ -199,6 +211,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
       setDescuentoRegalo(0);
       setRegaloId(null);
       setDescuentoInvalidado(false);
+      setAvisoCliente(null);
     }
   }, [items.length]);
 
@@ -269,6 +282,9 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
         ? {
             puntosTelefono: clientePuntos.telefono,
             descuentoPuntos: String(descuentoPuntos),
+            ...(descuentoPuntos > 0 && clientePuntos.codigo
+              ? { puntosCodigo: clientePuntos.codigo }
+              : {}),
           }
         : {}),
       ...(descuentoRegalo > 0 && regaloId
@@ -276,6 +292,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
             descuentoRegalo: String(descuentoRegalo),
             ...(regaloId.codigo ? { regaloCodigo: regaloId.codigo } : {}),
             ...(regaloId.phone ? { regaloPhone: regaloId.phone } : {}),
+            ...(regaloId.email ? { regaloEmail: regaloId.email } : {}),
           }
         : {}),
     });
@@ -301,24 +318,40 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
         open={usarPuntosOpen}
         maxTotal={maxCashbackAplicable}
         onClose={() => setUsarPuntosOpen(false)}
-        onAplicar={({ telefono, descuento }) => {
-          setDescuentoPuntos(descuento);
-          setClientePuntos({ telefono });
-          setDescuentoInvalidado(false);
+        onAplicar={({ telefono, codigo, descuento, soloLigar }) => {
           setUsarPuntosOpen(false);
+          const mismo =
+            !!clientePuntos && telefonosIguales(clientePuntos.telefono, telefono);
+          // Activar/reponer la tarjeta del MISMO cliente no toca su descuento.
+          if (soloLigar && mismo) return;
+          // Otro cliente: su descuento sustituye al del anterior, nunca se
+          // debita a uno lo que se aplicó a otro.
+          setAvisoCliente(
+            !mismo && descuentoPuntos > 0 && descuento === 0
+              ? "Cambió el cliente de cashback: se quitó el descuento del anterior."
+              : null,
+          );
+          setDescuentoPuntos(descuento);
+          setClientePuntos({ telefono, ...(codigo ? { codigo } : {}) });
+          setDescuentoInvalidado(false);
         }}
       />
       <UsarRegaloModal
         open={usarRegaloOpen}
         maxTotal={maxRegaloAplicable}
         onClose={() => setUsarRegaloOpen(false)}
-        onAplicar={({ codigo, phone, monto }) => {
+        onAplicar={({ codigo, phone, email, monto }) => {
           setDescuentoRegalo(monto);
-          setRegaloId({ codigo, phone });
+          setRegaloId({ codigo, phone, email });
           setDescuentoInvalidado(false);
           setUsarRegaloOpen(false);
         }}
       />
+      {avisoCliente && (
+        <p className="pointer-events-auto bg-indigo-100 px-3 py-0.5 text-center text-[11px] font-semibold text-indigo-900">
+          {avisoCliente}
+        </p>
+      )}
       {tieneDesmarcados && !error && (
         <p className="pointer-events-auto bg-amber-100 px-3 py-0.5 text-center text-[11px] font-semibold text-amber-900">
           Hay artículos desmarcados — desliza la fila a la derecha para

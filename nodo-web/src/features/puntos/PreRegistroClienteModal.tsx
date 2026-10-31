@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { correoValido, ean13Ok } from "@shared";
 
 export type PreRegistroData = {
   correo: string;
@@ -13,34 +14,50 @@ export type PreRegistroData = {
 type Props = {
   open: boolean;
   onClose: () => void;
-  /** El caller genera el código, guarda el pendiente y llama a la CF. */
-  onRegistrar: (data: PreRegistroData) => void;
+  /** El caller valida la tarjeta, registra y deja al cliente en espera.
+   *  Devuelve el error a mostrar, o null si quedó registrado. */
+  onRegistrar: (data: PreRegistroData) => Promise<string | null>;
+  /** Correo del cliente que ya está en espera (se reemplazaría). */
+  pendienteCorreo?: string | null;
 };
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /**
- * Modal de PRE-REGISTRO al programa de puntos. Captura correo + teléfono (ambos
- * requeridos) y nombre (opcional). Tras guardar, la siguiente venta ofrecerá
- * vincular a este cliente.
+ * Modal de PRE-REGISTRO al programa de cashback. Captura correo + teléfono
+ * (ambos requeridos) y nombre (opcional). Tras guardar, la siguiente venta
+ * ofrecerá vincular a este cliente. Con red espera la respuesta del servidor:
+ * un "ya existe" se muestra aquí (antes se reportaba como "sin conexión" e
+ * imprimía una contraseña que no servía).
  */
-export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
+export function PreRegistroClienteModal({
+  open,
+  onClose,
+  onRegistrar,
+  pendienteCorreo,
+}: Props) {
   const [correo, setCorreo] = useState("");
   const [telefono, setTelefono] = useState("");
   const [nombre, setNombre] = useState("");
   const [quiereTarjeta, setQuiereTarjeta] = useState(false);
   const [barcode, setBarcode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
   if (!open) return null;
 
-  function onSubmit(e: FormEvent) {
+  function cerrar() {
+    if (enviando) return;
+    setError(null);
+    onClose();
+  }
+
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (enviando) return;
     setError(null);
     const mail = correo.trim().toLowerCase();
     const tel = telefono.trim();
     const digitos = tel.replace(/\D/g, "");
-    if (!EMAIL_RE.test(mail)) {
+    if (!correoValido(mail)) {
       setError("Correo inválido.");
       return;
     }
@@ -51,13 +68,30 @@ export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
     let cardBarcode: string | undefined;
     if (quiereTarjeta) {
       const bc = barcode.replace(/\D/g, "");
-      if (bc.length !== 13) {
+      if (!ean13Ok(bc)) {
         setError("Escanea una tarjeta válida (13 dígitos) o desmarca la opción.");
         return;
       }
       cardBarcode = bc;
     }
-    onRegistrar({ correo: mail, telefono: tel, nombre: nombre.trim() || undefined, cardBarcode });
+    setEnviando(true);
+    let err: string | null;
+    try {
+      err = await onRegistrar({
+        correo: mail,
+        telefono: tel,
+        nombre: nombre.trim() || undefined,
+        cardBarcode,
+      });
+    } catch {
+      err = "No se pudo registrar. Reintenta.";
+    } finally {
+      setEnviando(false);
+    }
+    if (err) {
+      setError(err);
+      return;
+    }
     setCorreo("");
     setTelefono("");
     setNombre("");
@@ -69,7 +103,7 @@ export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
-      onClick={onClose}
+      onClick={cerrar}
       role="dialog"
       aria-modal
     >
@@ -138,14 +172,21 @@ export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
           )}
         </div>
 
+        {pendienteCorreo && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-900">
+            Ya hay un cliente en espera ({pendienteCorreo}). Si registras a este,
+            ese deja de estar en espera.
+          </p>
+        )}
+
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex gap-2 pt-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
+          <Button type="button" variant="outline" className="flex-1" onClick={cerrar}>
             Cancelar
           </Button>
-          <Button type="submit" className="flex-1">
-            Registrar
+          <Button type="submit" className="flex-1" disabled={enviando}>
+            {enviando ? "Registrando…" : pendienteCorreo ? "Reemplazar y registrar" : "Registrar"}
           </Button>
         </div>
       </form>

@@ -2,12 +2,17 @@ import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fnConsultarSaldoTarjetaRegalo } from "@/firebase/callable";
+import { correoValido, ean13Ok, telefonosIguales } from "@shared";
+import {
+  fnConsultarSaldoPuntos,
+  fnConsultarSaldoTarjetaRegalo,
+} from "@/firebase/callable";
 
 export type AplicarRegalo = {
-  /** Identificador de la tarjeta (uno de los dos). */
+  /** La tarjeta escaneada, o teléfono + correo del cliente. */
   codigo?: string;
   phone?: string;
+  email?: string;
   /** Crédito de regalo (pesos) a usar como descuento. */
   monto: number;
 };
@@ -26,18 +31,13 @@ const money = (n: number) =>
 const fmtFecha = (ms: number) =>
   new Date(ms).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 
-function ean13Ok(c: string): boolean {
-  if (!/^\d{13}$/.test(c)) return false;
-  const n = c.split("").map(Number);
-  const sum = n.slice(0, 12).reduce((a, d, i) => a + d * (i % 2 === 0 ? 1 : 3), 0);
-  return (10 - (sum % 10)) % 10 === n[12];
-}
-
 /**
  * Modal para PAGAR con crédito de regalo en el POS (Feature 5, Fase 3). El cajero
  * identifica la tarjeta (escaneo del barcode o teléfono), ve el crédito disponible
  * y elige cuánto usar en esta venta. El crédito se aplica como DESCUENTO (reduce
  * el total a cobrar; NO es ingreso — ya se contó al vender la tarjeta).
+ * Con la tarjeta se usa directo; por teléfono, el cliente da su correo completo
+ * y debe ser del mismo monedero (si perdió la tarjeta no pierde su crédito).
  */
 export function UsarRegaloModal({ open, maxTotal, onClose, onAplicar }: Props) {
   const [telefono, setTelefono] = useState("");
@@ -49,6 +49,8 @@ export function UsarRegaloModal({ open, maxTotal, onClose, onAplicar }: Props) {
     null,
   );
   const [monto, setMonto] = useState("");
+  const [correo, setCorreo] = useState("");
+  const [verificando, setVerificando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,6 +60,7 @@ export function UsarRegaloModal({ open, maxTotal, onClose, onAplicar }: Props) {
       setIdent(null);
       setSaldo(null);
       setMonto("");
+      setCorreo("");
       setError(null);
     }
   }, [open]);
@@ -126,13 +129,39 @@ export function UsarRegaloModal({ open, maxTotal, onClose, onAplicar }: Props) {
     void consultar({ codigo: c });
   }
 
-  function aplicar() {
+  async function aplicar() {
     if (!saldo || !ident) return;
     if (pedido <= 0) {
       setError("Indica cuánto usar (mayor a 0).");
       return;
     }
-    onAplicar({ codigo: ident.codigo, phone: ident.phone, monto: pedido });
+    if (ident.codigo) {
+      onAplicar({ codigo: ident.codigo, monto: pedido });
+      onClose();
+      return;
+    }
+    // Sin tarjeta: el correo debe ser del monedero de ese teléfono. El
+    // servidor lo vuelve a comprobar antes de debitar.
+    const mail = correo.trim().toLowerCase();
+    if (!correoValido(mail)) {
+      setError("Sin tarjeta, escribe el correo completo del cliente.");
+      return;
+    }
+    setError(null);
+    setVerificando(true);
+    try {
+      const r = await fnConsultarSaldoPuntos({ email: mail });
+      if (!r.data.exists || !telefonosIguales(r.data.telefono, ident.phone)) {
+        setError("El correo no corresponde a este cliente.");
+        return;
+      }
+    } catch {
+      setError("No se pudo verificar el correo (sin conexión).");
+      return;
+    } finally {
+      setVerificando(false);
+    }
+    onAplicar({ phone: ident.phone, email: mail, monto: pedido });
     onClose();
   }
 
@@ -208,6 +237,20 @@ export function UsarRegaloModal({ open, maxTotal, onClose, onAplicar }: Props) {
                 </p>
               )}
             </div>
+            {!ident?.codigo && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Correo completo del cliente</label>
+                <Input
+                  type="email"
+                  placeholder="cliente@correo.com"
+                  value={correo}
+                  onChange={(e) => setCorreo(e.target.value)}
+                />
+                <p className="text-[12px] text-text-soft">
+                  Sin la tarjeta, el crédito se usa con su teléfono y su correo.
+                </p>
+              </div>
+            )}
             {!puedeUsar && (
               <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-900">
                 Tope disponible {money(tope)}: esta venta no tiene subtotal de
@@ -222,10 +265,10 @@ export function UsarRegaloModal({ open, maxTotal, onClose, onAplicar }: Props) {
               <Button
                 type="button"
                 className="flex-1"
-                disabled={!puedeUsar}
-                onClick={aplicar}
+                disabled={!puedeUsar || verificando}
+                onClick={() => void aplicar()}
               >
-                Usar crédito
+                {verificando ? "Verificando…" : "Usar crédito"}
               </Button>
             </div>
           </div>

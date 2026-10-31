@@ -189,3 +189,30 @@ export function desgloseVenta(v: VentaDesglosable, sumaArticulos?: number): Desg
     totalConComision: total + comision,
   };
 }
+
+// ── Tarjeta, correo ──
+
+/** EAN-13 con dígito verificador (mismo criterio que amise `validarEAN13`). */
+export function ean13Ok(codigo: string): boolean {
+  if (!/^\d{13}$/.test(codigo)) return false;
+  const n = codigo.split("").map(Number);
+  const suma = n.slice(0, 12).reduce((a, d, i) => a + d * (i % 2 === 0 ? 1 : 3), 0);
+  return (10 - (suma % 10)) % 10 === n[12];
+}
+
+const CORREO_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Correo con forma válida (lo demás lo valida amise). */
+export function correoValido(correo: string): boolean {
+  return CORREO_RE.test(correo.trim());
+}
+
+/** "juan@gmail.com" → "ju•••@gmail.com". Un correo ya oculto queda igual
+ *  (el servidor nuevo ya lo manda oculto; el viejo, completo). */
+export function enmascararCorreo(correo: unknown): string {
+  const s = String(correo ?? "").trim();
+  if (!s || s.includes("•••")) return s;
+  const at = s.indexOf("@");
+  if (at < 1) return "•••";
+  return `${s.slice(0, Math.min(2, at))}•••${s.slice(at)}`;
+}

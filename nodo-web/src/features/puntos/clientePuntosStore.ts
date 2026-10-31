@@ -72,7 +72,12 @@ export type TarjetaPendiente = {
   codigo: string;
   /** Teléfono del monedero (identificador para vincular). */
   telefono: string;
-  /** Reposición: barcode ANTERIOR a deshabilitar (si aplica). */
+  /** Correo que dio el cliente (ya verificado contra el teléfono); el servidor
+   *  lo vuelve a comprobar al vincular. Opcional: pendientes de antes no lo
+   *  traen. */
+  correo?: string;
+  /** Reposición: marca que la hay. El servidor busca la tarjeta anterior real
+   *  (este valor puede traer solo sus últimos 4). */
   codigoAnterior?: string;
 };
 
