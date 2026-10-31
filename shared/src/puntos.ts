@@ -230,3 +230,12 @@ export function pendienteVigente(p: { creadoEn?: number } | null | undefined, ah
   const edad = ahora - p.creadoEn;
   return edad >= 0 && edad < VIGENCIA_PENDIENTE_MS;
 }
+
+/** Nombre para el cajero y admin de cada operación de la cola. */
+export const NOMBRES_OPERACION_PUNTOS: Record<string, string> = {
+  register: "Registrar cliente",
+  earn: "Acumular cashback",
+  card: "Ligar tarjeta de cashback",
+  gift: "Activar tarjeta de regalo",
+  giftRecarga: "Recargar tarjeta de regalo",
+};

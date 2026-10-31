@@ -2,17 +2,13 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { CloudUpload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { esValorPuntos, necesitaAtencionPuntos } from "@shared";
+import {
+  esValorPuntos,
+  necesitaAtencionPuntos,
+  NOMBRES_OPERACION_PUNTOS as NOMBRES,
+} from "@shared";
 import { useClientePuntos, type LlamadaPuntos } from "./clientePuntosStore";
 import { reintentarAhoraPuntos } from "./usePuntosColaFlush";
-
-const NOMBRES: Record<string, string> = {
-  register: "Registrar cliente",
-  earn: "Acumular cashback",
-  card: "Ligar tarjeta de cashback",
-  gift: "Activar tarjeta de regalo",
-  giftRecarga: "Recargar tarjeta de regalo",
-};
 
 function detalle(item: LlamadaPuntos, ahora: number): string {
   const p = item.payload;

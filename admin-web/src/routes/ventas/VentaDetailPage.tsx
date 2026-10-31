@@ -4,7 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { useVentasAdmin } from "@/features/ventas-admin/useVentasAdmin";
 import { useSucursales } from "@/features/sucursales/useSucursales";
 import { Button } from "@/components/ui/button";
-import { desgloseVenta } from "@shared";
+import { desgloseVenta, NOMBRES_OPERACION_PUNTOS as NOMBRES_LEALTAD } from "@shared";
 
 /**
  * Detalle de venta. Replica la lógica de adapterHistorialDos +
@@ -35,13 +35,6 @@ type ItemLegacy = {
 };
 
 const ID_NO_REGISTRADO = new Set(["00000000", "0", ""]);
-
-const NOMBRES_LEALTAD: Record<string, string> = {
-  earn: "Acumular cashback",
-  card: "Ligar tarjeta de cashback",
-  gift: "Activar tarjeta de regalo",
-  giftRecarga: "Recargar tarjeta de regalo",
-};
 
 function precioEfectivo(it: ItemLegacy): number {
   if (it.descuento) return Number(it.descuento) || 0;

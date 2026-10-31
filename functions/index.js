@@ -2593,14 +2593,15 @@ exports.reponerTarjeta = onCall(
       if (!codigoNuevo || typeof codigoNuevo !== "string") {
         throw new HttpsError("invalid-argument", "codigoNuevo requerido");
       }
-      await identidadTarjeta("reponerTarjeta", t, phone, email);
+      // Identidad y tarjeta actual en paralelo (dos consultas independientes).
+      const [, actual] = await Promise.all([
+        identidadTarjeta("reponerTarjeta", t, phone, email),
+        phone ? consultarBalance({phone}) : null,
+      ]);
       let anterior = puntosSeg.esEan13(codigoAnterior) ? codigoAnterior : undefined;
-      if (phone) {
-        const actual = await consultarBalance({phone});
-        if (actual && actual.exists && actual.tarjeta &&
-            puntosSeg.esEan13(actual.tarjeta.codigo)) {
-          anterior = String(actual.tarjeta.codigo);
-        }
+      if (actual && actual.exists && actual.tarjeta &&
+          puntosSeg.esEan13(actual.tarjeta.codigo)) {
+        anterior = String(actual.tarjeta.codigo);
       }
       const ident = phone ? {phone} : email ? {email} : {};
       const data = await llamarAmise("/api/loyalty/card/replace", {

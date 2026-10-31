@@ -171,6 +171,8 @@ export function Ventas() {
   // cerrar VariacionPickerModal o SenaPickerModal. Sin esto, después de
   // cada escaneo que abre modal el siguiente scan se pierde en `body`.
   const buscadorRef = useRef<BuscadorArticuloHandle>(null);
+  // Avisos de la venta en curso (tarjeta, regalo) para el mensaje final.
+  const avisosVentaRef = useRef<string[]>([]);
 
   // Hook del chat del nodo a nivel app — el sonido de notificación y el
   // badge de no-leídos deben funcionar aunque el modal esté cerrado. Si
@@ -328,7 +330,11 @@ export function Ventas() {
   }
 
   // Finaliza la venta: registra como última, muestra overlay e imprime.
-  function finalizarVenta(venta: Venta, puntosMsg?: string) {
+  function finalizarVenta(venta: Venta, mensaje?: string) {
+    // Avisos de tarjeta/regalo de esta venta + el de cashback, en un solo toast.
+    const puntosMsg =
+      [...avisosVentaRef.current, mensaje].filter(Boolean).join(" · ") || undefined;
+    avisosVentaRef.current = [];
     setUltimaVenta(venta);
     setOverlayShow(true);
     const printed = imprimirTicketNativo(venta, puntosMsg);
@@ -653,9 +659,11 @@ export function Ventas() {
     // Envío inmediato de lo anotado (con red). Si falla, el ítem sigue en la cola
     // (red caída: se reintenta solo) o pasa a fallidos (rechazo: queda a la
     // vista en "Por enviar"); la venta YA existe y nunca se revierte.
+    // Los avisos se juntan y salen con el mensaje final de la venta (antes el
+    // de cashback o el del ticket pisaba un "Tarjeta NO vinculada").
+    avisosVentaRef.current = [];
     const avisar = (msg: string) => {
-      setToast(msg);
-      window.setTimeout(() => setToast(null), 7000);
+      avisosVentaRef.current.push(msg);
     };
     if (result.offline) {
       if (idCard || idGift || idRecarga) {

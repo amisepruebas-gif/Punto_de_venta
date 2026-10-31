@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import { arrayUnion, doc, updateDoc } from "firebase/firestore";
+import { arrayRemove, arrayUnion, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
 import {
   clasificarErrorPuntos,
+  esValorPuntos,
   codigoErrorPuntos,
   descartarTrasFallo,
   esperaRegistroPuntos,
@@ -108,17 +109,22 @@ export function procesarFalloPuntos(item: LlamadaPuntos, err: unknown): ClaseErr
   const st = useClientePuntos.getState();
   const clase = clasificarErrorPuntos(item.tipo, err);
   const mensaje = mensajeErrorPuntos(err);
+  if (clase !== "reintentar" && !esValorPuntos(item.tipo)) {
+    // Candado rechazado (ya vencido o cerrado): no vale dinero, se descarta.
+    console.error("[PUNTOS] Candado descartado:", item.tipo, mensaje, item.payload);
+    st.quitarDeCola(item.id);
+    return clase;
+  }
   if (clase !== "reintentar") {
     const motivo = clase === "hecho" ? MSG_YA_EXISTIA : mensaje;
-    st.moverAFallidos(item.id, motivo);
-    if (item.ventaPath) {
-      // Rastro en la venta para admin (best-effort; sin red se sube después).
+    // Rastro en la venta para admin (best-effort; sin red se sube después).
+    const errorEnVenta = item.ventaPath
+      ? { tipo: item.tipo, error: motivo, fecha: new Date().toISOString() }
+      : undefined;
+    st.moverAFallidos(item.id, motivo, errorEnVenta);
+    if (item.ventaPath && errorEnVenta) {
       void updateDoc(doc(db, item.ventaPath), {
-        lealtadErrores: arrayUnion({
-          tipo: item.tipo,
-          error: motivo,
-          fecha: new Date().toISOString(),
-        }),
+        lealtadErrores: arrayUnion(errorEnVenta),
       }).catch(() => {});
     }
     return clase;
@@ -132,6 +138,16 @@ export function procesarFalloPuntos(item: LlamadaPuntos, err: unknown): ClaseErr
   }
   st.anotarFallo(item.id, mensaje, Date.now() + esperaReintentoMs(intentos));
   return clase;
+}
+
+/** Un reintento salió bien: se quita de la venta el rastro del rechazo. */
+function enviadoOk(item: LlamadaPuntos) {
+  useClientePuntos.getState().quitarDeCola(item.id);
+  if (item.ventaPath && item.errorEnVenta) {
+    void updateDoc(doc(db, item.ventaPath), {
+      lealtadErrores: arrayRemove(item.errorEnVenta),
+    }).catch(() => {});
+  }
 }
 
 export type ResultadoEnvioPuntos =
@@ -153,7 +169,7 @@ export async function enviarPuntosAhora(id: string): Promise<ResultadoEnvioPunto
   }
   try {
     const res = await ejecutarLlamadaPuntos(item.tipo, item.payload);
-    useClientePuntos.getState().quitarDeCola(id);
+    enviadoOk(item);
     return { ok: true, data: res.data };
   } catch (e) {
     const clase = procesarFalloPuntos(item, e);
@@ -173,7 +189,7 @@ async function enviarCola() {
     if (esperaRegistroPuntos(item, cola)) continue;
     try {
       await ejecutarLlamadaPuntos(item.tipo, item.payload);
-      useClientePuntos.getState().quitarDeCola(item.id);
+      enviadoOk(item);
     } catch (e) {
       procesarFalloPuntos(item, e);
     }

@@ -11,6 +11,9 @@ import { cajaOcupada } from "@/lib/cajaOcupada";
 import { useNodoSession } from "@/hooks/useNodoSession";
 
 const LS_KEY = "amise_nodo_refresco_render_huella";
+// Una sola recarga en espera aunque el listener vuelva a disparar mientras la
+// caja está ocupada.
+let recargaEnEspera = false;
 
 /**
  * Escucha el doc remoto `negocios/{nid}/datos/refrescoRender` y, cuando
@@ -57,16 +60,18 @@ export function useRefrescoRender(): void {
           return;
         }
 
-        if (huellaLocal !== huellaRemota) {
-          // Persistir ANTES de recargar — si recargas y la persistencia
-          // no quedó, el siguiente arranque vería la misma huella vieja
-          // y entraría en loop.
-          localStorage.setItem(LS_KEY, huellaRemota);
+        if (huellaLocal !== huellaRemota && !recargaEnEspera) {
+          recargaEnEspera = true;
           // Disparar limpieza + reload sin bloquear el listener.
           (async () => {
             while (cajaOcupada()) {
               await new Promise((r) => window.setTimeout(r, 2000));
             }
+            // Persistir ANTES de recargar — si recargas y la persistencia
+            // no quedó, el siguiente arranque vería la misma huella vieja
+            // y entraría en loop. Y DESPUÉS de esperar: si la app se cierra
+            // durante la espera, al reabrir todavía se recarga.
+            localStorage.setItem(LS_KEY, huellaRemota);
             try {
               await limpiarRender();
             } catch (e) {

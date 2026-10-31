@@ -36,6 +36,9 @@ export type LlamadaPuntos = {
   enCursoHasta?: number;
   /** Doc de la venta, para dejar rastro si falla sin remedio. */
   ventaPath?: string;
+  /** Rastro que se escribió en `lealtadErrores` de la venta: se quita si un
+   *  reintento sale bien. */
+  errorEnVenta?: { tipo: string; error: string; fecha: string };
 };
 
 /**
@@ -111,7 +114,11 @@ type State = {
   /** Cuenta un intento fallido: libera el ítem y fija cuándo reintentar. */
   anotarFallo: (id: string, ultimoError: string, proximoIntento: number) => void;
   /** Pasa un ítem de la cola a fallidos. */
-  moverAFallidos: (id: string, ultimoError: string) => void;
+  moverAFallidos: (
+    id: string,
+    ultimoError: string,
+    errorEnVenta?: LlamadaPuntos["errorEnVenta"],
+  ) => void;
   /** Regresa un fallido a la cola (el cajero pidió reintentar). */
   reintentarFallido: (id: string) => void;
   quitarFallido: (id: string) => void;
@@ -167,7 +174,7 @@ export const useClientePuntos = create<State>()(
               : x,
           ),
         })),
-      moverAFallidos: (id, ultimoError) =>
+      moverAFallidos: (id, ultimoError, errorEnVenta) =>
         set((st) => {
           const item = st.cola.find((x) => x.id === id);
           if (!item) return {};
@@ -175,7 +182,13 @@ export const useClientePuntos = create<State>()(
             cola: st.cola.filter((x) => x.id !== id),
             fallidos: [
               ...st.fallidos,
-              { ...item, intentos: item.intentos + 1, ultimoError, enCursoHasta: undefined },
+              {
+                ...item,
+                intentos: item.intentos + 1,
+                ultimoError,
+                enCursoHasta: undefined,
+                ...(errorEnVenta ? { errorEnVenta } : {}),
+              },
             ],
           };
         }),
