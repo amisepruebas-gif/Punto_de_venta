@@ -42,17 +42,15 @@ import { useApariencia } from "@/features/apariencia/useApariencia";
 import { Bookmark, ListOrdered, Settings, Truck } from "lucide-react";
 import { useResurtidosPendientesCount } from "@/features/resurtidos/useResurtidosPendientesCount";
 import type { Articulo, Venta } from "@shared";
-import { FloatingPreRegistroButton } from "@/features/puntos/FloatingPreRegistroButton";
+import { MenuPuntosRegalo } from "@/features/puntos/MenuPuntosRegalo";
 import {
   PreRegistroClienteModal,
   type PreRegistroData,
 } from "@/features/puntos/PreRegistroClienteModal";
-import { FloatingVenderRegaloButton } from "@/features/puntos/FloatingVenderRegaloButton";
 import {
   VenderRegaloModal,
   type VenderRegaloData,
 } from "@/features/puntos/VenderRegaloModal";
-import { FloatingRecargarRegaloButton } from "@/features/puntos/FloatingRecargarRegaloButton";
 import {
   RecargarRegaloModal,
   type RecargarRegaloData,
@@ -996,6 +994,32 @@ export function Ventas() {
               }
             />
           </div>
+
+          {/* Botones flotantes, de abajo hacia arriba. Viven en el área del
+              carrito: empiezan debajo del buscador (con o sin banner) y la
+              pila los pasa a otra columna si la pantalla es baja. */}
+          <PilaBotonesFlotantes>
+            <FloatingChatButton
+              onClick={() => setChatOpen(true)}
+              // Mientras el chat está abierto, el badge se oculta (los mensajes
+              // se están viendo en vivo). marcarApertura ya marca leídos al
+              // abrir, así que cerrar dejará noLeidos en 0 hasta que llegue
+              // un mensaje nuevo.
+              noLeidos={chatOpen ? 0 : chatData.noLeidos}
+            />
+            <FloatingApartarButton onClick={() => setApartarOpen(true)} />
+            <FloatingNoRegistradoButton onClick={() => setNoRegOpen(true)} />
+            <FloatingReimprimirButton
+              onClick={handleReimprimir}
+              disabled={!ultimaVenta}
+              numeroDeVenta={ultimaVenta?.numeroDeVenta}
+            />
+            <MenuPuntosRegalo
+              onPreRegistro={() => setPreRegOpen(true)}
+              onVenderRegalo={() => setGiftOpen(true)}
+              onRecargarRegalo={() => setRecargaOpen(true)}
+            />
+          </PilaBotonesFlotantes>
         </div>
       </div>
 
@@ -1018,29 +1042,6 @@ export function Ventas() {
           <p className="text-sm font-semibold text-white">Procesando venta…</p>
         </div>
       )}
-
-      {/* Botones flotantes, de abajo hacia arriba. La pila los acomoda en
-          columnas si la pantalla es baja (tablet acostada). */}
-      <PilaBotonesFlotantes>
-        <FloatingChatButton
-          onClick={() => setChatOpen(true)}
-          // Mientras el chat está abierto, el badge se oculta (los mensajes
-          // se están viendo en vivo). marcarApertura ya marca leídos al
-          // abrir, así que cerrar dejará noLeidos en 0 hasta que llegue
-          // un mensaje nuevo.
-          noLeidos={chatOpen ? 0 : chatData.noLeidos}
-        />
-        <FloatingApartarButton onClick={() => setApartarOpen(true)} />
-        <FloatingNoRegistradoButton onClick={() => setNoRegOpen(true)} />
-        <FloatingReimprimirButton
-          onClick={handleReimprimir}
-          disabled={!ultimaVenta}
-          numeroDeVenta={ultimaVenta?.numeroDeVenta}
-        />
-        <FloatingPreRegistroButton onClick={() => setPreRegOpen(true)} />
-        <FloatingVenderRegaloButton onClick={() => setGiftOpen(true)} />
-        <FloatingRecargarRegaloButton onClick={() => setRecargaOpen(true)} />
-      </PilaBotonesFlotantes>
 
       <PreRegistroClienteModal
         open={preRegOpen}

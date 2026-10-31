@@ -350,8 +350,10 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
         cuadro de totales (abajo). Col 2-4 (COBRAR, NO REG, scroll de billetes)
         coinciden con el ancho y alto del cuadro de totales y se alinean al
         bottom de la fila para quedar a la altura exacta de los totales.
+        Debajo de 760 px (tablet chica parada) junto a totales + COBRAR no
+        queda lugar para los billetes: ahí pasan a su propio renglón arriba.
       */}
-      <div className="flex w-full items-end gap-1.5 p-1.5">
+      <div className="flex w-full items-end gap-1.5 p-1.5 max-[759px]:flex-wrap">
         {/* Columna 1: TRANSFER (top) + TARJETA (medio) + totales (bottom) */}
         <div className="pointer-events-auto flex w-[20rem] shrink-0 flex-col gap-1">
           <Button
@@ -585,15 +587,18 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
             queden alineados a la derecha (espacio libre se traga el primer
             elemento), pero cuando exceden el ancho el `margin auto` colapsa
             y el `overflow-x-auto` permite scroll natural. Usar `justify-end`
-            rompía el scroll porque escondía los primeros items. */}
-        <div className="no-scrollbar flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto [&>:first-child]:ml-auto">
+            rompía el scroll porque escondía los primeros items.
+            Debajo de 1500 px de ancho los 6 billetes grandes no caben (en una
+            tablet se veían 2 o 3): ahí van en 2 filas de billetes chicos con
+            su cantidad, pegados a COBRAR, con la misma altura total. */}
+        <div className="no-scrollbar flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto [&>:first-child]:ml-auto max-[1500px]:grid max-[1500px]:grid-cols-[repeat(3,max-content)] max-[759px]:order-first max-[759px]:basis-full max-[759px]:grid-cols-[repeat(6,max-content)]">
           {BILLETES.map((b) => (
             <button
               key={b.d}
               type="button"
               onClick={() => elegirBillete(b.d)}
               aria-label={`Pago con $${b.d}`}
-              className="pointer-events-auto h-[4.5rem] aspect-[110/54] shrink-0 overflow-hidden rounded-md border-2 border-border bg-card transition hover:border-primary/60 active:scale-95"
+              className="pointer-events-auto relative h-[4.5rem] aspect-[110/54] shrink-0 overflow-hidden rounded-md border-2 border-border bg-card transition hover:border-primary/60 active:scale-95 max-[1500px]:h-[2.125rem]"
             >
               <img
                 src={b.src}
@@ -601,6 +606,9 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
                 className="h-full w-full object-cover"
                 draggable={false}
               />
+              <span className="absolute bottom-0 right-0 hidden rounded-tl bg-black/65 px-1 text-[10px] font-bold leading-tight text-white max-[1500px]:block">
+                ${b.d}
+              </span>
             </button>
           ))}
         </div>

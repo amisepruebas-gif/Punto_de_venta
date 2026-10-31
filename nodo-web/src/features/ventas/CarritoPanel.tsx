@@ -35,8 +35,12 @@ export function CarritoPanel({ bottomPadding }: Props) {
         className="flex-1 overflow-y-auto"
         style={{ paddingBottom: (bottomPadding ?? FALLBACK_PADDING) + 16 }}
       >
+        {/* Centrada por default. En tablets acostadas (760–1080 px) la lista
+            centrada caía debajo de la columna de pagos del PagoFooter (20rem a
+            la izquierda) y tapaba el + de los artículos: ahí va a su derecha
+            (21rem) y deja 5rem libres para los botones flotantes. */}
         {vacio ? null : (
-          <ul className="mx-auto w-full max-w-[25.6rem] list-none space-y-1 p-2">
+          <ul className="mx-auto w-full max-w-[25.6rem] list-none space-y-1 p-2 min-[760px]:max-[1080px]:ml-[21rem] min-[760px]:max-[1080px]:mr-[5rem] min-[760px]:max-[1080px]:w-auto">
             {items.map((it) => (
               <CarritoRow key={it.key} itemKey={it.key} />
             ))}
