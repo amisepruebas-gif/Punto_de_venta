@@ -5,6 +5,7 @@ import { useSucursal } from "@/features/sucursal/useSucursal";
 import { subtotalItem } from "./carritoStore";
 import type { CobrarPayload } from "./PagoFooter";
 import {
+  desgloseVenta,
   mostrarMetaTicket,
   type MovimientoPago,
   type TicketLinea,
@@ -91,13 +92,11 @@ export function ConfirmarVentaModal({ data, onCancel, onConfirm }: Props) {
     }
   }
 
-  const total = Number(data.montoCobro) || 0;
+  const d = desgloseVenta(data);
   const pago = Number(data.montoPago) || 0;
   const cambio = Number(data.cambio) || 0;
-  const comicion = Number(data.comicion) || 0;
-  const conComision =
-    data.movimiento === "pagoTarjeta" && data.statusComision === "con comision";
-  const totalFinal = conComision ? total + comicion : total;
+  const conComision = d.comision > 0;
+  const totalFinal = conComision ? d.totalConComision : d.total;
 
   const encabezado = cfg?.encabezado ?? [];
   const pie = cfg?.pie ?? [];
@@ -261,12 +260,22 @@ export function ConfirmarVentaModal({ data, onCancel, onConfirm }: Props) {
 
             {/* Totales */}
             <div className="space-y-0.5 text-[11.5px]">
+              {/* Mismo orden que el ticket impreso (desgloseVenta). */}
+              {(d.cashback > 0 || d.regalo > 0) && (
+                <FilaTotal label="Artículos" valor={`$${d.articulos}`} />
+              )}
+              {d.cashback > 0 && (
+                <FilaTotal label="Cashback usado" valor={`− $${d.cashback}`} />
+              )}
+              {d.regalo > 0 && (
+                <FilaTotal label="Crédito de regalo" valor={`− $${d.regalo}`} />
+              )}
               {conComision && (
                 <>
-                  <FilaTotal label="Subtotal" valor={`$${total}`} />
+                  <FilaTotal label="Subtotal" valor={`$${d.total}`} />
                   <FilaTotal
                     label="Comisión tarjeta"
-                    valor={`+ $${comicion}`}
+                    valor={`+ $${d.comision}`}
                   />
                 </>
               )}

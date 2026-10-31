@@ -1,4 +1,4 @@
-import { mostrarMetaTicket, subtotalLinea } from "@shared";
+import { desgloseVenta, mostrarMetaTicket, subtotalLinea } from "@shared";
 import type {
   Sucursal,
   Venta,
@@ -147,13 +147,18 @@ export function formatearTicketEscPos(
 
   out.push(divisor());
 
-  // Totales
-  const conComision =
-    venta.movimiento === "pagoTarjeta" &&
-    venta.statusComision === "con comision" &&
-    Number(venta.comicion) > 0;
+  // Totales, mismo orden que la confirmación, el ticket en pantalla y admin
+  // (desgloseVenta): Artículos → − Cashback → − Crédito de regalo →
+  // (Subtotal → Comisión) → TOTAL. montoCobro ya viene neto de descuentos.
+  const d = desgloseVenta(venta);
+  const m = (n: number) => String(Math.round(n * 100) / 100);
+  if (d.cashback > 0 || d.regalo > 0) {
+    out.push(`[L]Articulos[R]$${m(d.articulos)}\n`);
+    if (d.cashback > 0) out.push(`[L]Cashback usado[R]-$${m(d.cashback)}\n`);
+    if (d.regalo > 0) out.push(`[L]Credito de regalo[R]-$${m(d.regalo)}\n`);
+  }
 
-  if (conComision) {
+  if (d.comision > 0) {
     out.push(`[L]Subtotal[R]$${venta.montoCobro}\n`);
     out.push(`[L]Comision[R]+$${venta.comicion}\n`);
     out.push(
@@ -182,28 +187,23 @@ export function formatearTicketEscPos(
     out.push("[L]\n");
   }
 
-  // Descuento por canje de cashback (informativo; el TOTAL ya viene neto).
-  if (venta.descuentoPuntos && Number(venta.descuentoPuntos) > 0) {
-    out.push(`[L]Descuento de cashback[R]-$${s(venta.descuentoPuntos)}\n`);
-    out.push("[L]\n");
-  }
-
-  // Cashback ACUMULADO en esta venta (cliente recurrente). Informativo.
-  if (venta.puntosGanados && Number(venta.puntosGanados) > 0) {
+  // Cashback: lo acumulado en esta venta y, si es cliente nuevo, su contraseña
+  // temporal para activar la cuenta en amise.mx. Un solo bloque.
+  const acumulado = Number(venta.puntosGanados) > 0;
+  if (acumulado || venta.codigoPuntos) {
     out.push("[C]<b>* CASHBACK AMISE *</b>\n");
-    out.push(`[L]Cashback acumulado[R]<b>+$${s(venta.puntosGanados)}</b>\n`);
-    if (venta.puntosSaldoDinero) {
-      out.push(`[L]Saldo disponible[R]<b>$${s(venta.puntosSaldoDinero)}</b>\n`);
+    if (acumulado) {
+      out.push(`[L]Cashback acumulado[R]<b>+$${s(venta.puntosGanados)}</b>\n`);
+      if (venta.puntosSaldoDinero) {
+        out.push(`[L]Saldo disponible[R]<b>$${s(venta.puntosSaldoDinero)}</b>\n`);
+      }
     }
-    out.push("[C]<font size='small'>Consulta tu cashback en amise.mx</font>\n");
-    out.push("[L]\n");
-  }
-
-  // Puntos de lealtad: contraseña temporal para activar la cuenta en amise.mx.
-  if (venta.codigoPuntos) {
-    out.push("[C]<b>* PUNTOS AMISE *</b>\n");
-    out.push(`[L]Contrasena temporal[R]<b>${s(venta.codigoPuntos)}</b>\n`);
-    out.push("[C]<font size='small'>Activala en amise.mx con tu correo</font>\n");
+    if (venta.codigoPuntos) {
+      out.push(`[L]Contrasena temporal[R]<b>${s(venta.codigoPuntos)}</b>\n`);
+      out.push("[C]<font size='small'>Activala en amise.mx con tu correo</font>\n");
+    } else {
+      out.push("[C]<font size='small'>Consulta tu cashback en amise.mx</font>\n");
+    }
     out.push("[L]\n");
   }
 

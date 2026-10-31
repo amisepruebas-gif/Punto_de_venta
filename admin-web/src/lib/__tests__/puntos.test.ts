@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clasificarErrorPuntos,
+  desgloseVenta,
   descartarTrasFallo,
   esValorPuntos,
   esperaRegistroPuntos,
@@ -119,5 +120,73 @@ describe("política de la cola", () => {
     expect(telefonosIguales("5511111111", "5511111112")).toBe(false);
     expect(telefonosIguales("123", "123")).toBe(false);
     expect(telefonosIguales(undefined, null)).toBe(false);
+  });
+});
+
+describe("desgloseVenta", () => {
+  const cuadra = (d: { articulos: number; cashback: number; regalo: number; total: number }) =>
+    Math.abs(d.articulos - d.cashback - d.regalo - d.total) < 0.005;
+
+  it("venta sin descuentos ni comisión", () => {
+    const d = desgloseVenta({ articulos: [{ cantidad: "2", precio: "100" }], montoCobro: "200" });
+    expect(d).toEqual({ articulos: 200, cashback: 0, regalo: 0, total: 200, comision: 0,
+      totalConComision: 200 });
+  });
+
+  it("con cashback, con regalo y con ambos: artículos − descuentos = total", () => {
+    const arts = [{ cantidad: "2", precio: "100" }];
+    const c = desgloseVenta({ articulos: arts, montoCobro: "170", descuentoPuntos: "30" });
+    expect(c.cashback).toBe(30);
+    expect(cuadra(c)).toBe(true);
+    const r = desgloseVenta({ articulos: arts, montoCobro: "150", descuentoRegalo: "50" });
+    expect(r.regalo).toBe(50);
+    expect(cuadra(r)).toBe(true);
+    const ambos = desgloseVenta({ articulos: arts, montoCobro: "120", descuentoPuntos: "30",
+      descuentoRegalo: "50" });
+    expect(cuadra(ambos)).toBe(true);
+  });
+
+  it("comisión solo con tarjeta y 'con comision'", () => {
+    const base = { articulos: [{ cantidad: "1", precio: "100" }], montoCobro: "100",
+      comicion: "7" };
+    const t = desgloseVenta({ ...base, movimiento: "pagoTarjeta", statusComision: "con comision" });
+    expect(t.comision).toBe(7);
+    expect(t.totalConComision).toBe(107);
+    expect(desgloseVenta({ ...base, movimiento: "pagoTarjeta",
+      statusComision: "sin comision" }).comision).toBe(0);
+    expect(desgloseVenta({ ...base, movimiento: "pagoEfectivo",
+      statusComision: "con comision" }).comision).toBe(0);
+  });
+
+  it("3x2, mayoreo, línea de tarjeta y de regalo cuentan como artículos", () => {
+    const d = desgloseVenta({
+      articulos: [
+        { cantidad: "3", precio: "100", aply_3x2: "1" }, // 200
+        { cantidad: "10", precio: "35", descuento: "30" }, // 300
+        { cantidad: "1", precio: "30" }, // tarjeta de cashback
+        { cantidad: "1", precio: "300" }, // tarjeta de regalo
+      ],
+      montoCobro: "810",
+      descuentoPuntos: "20",
+    });
+    expect(d.articulos).toBe(830);
+    expect(cuadra(d)).toBe(true);
+  });
+
+  it("ventas viejas sin campos o con datos raros no truenan", () => {
+    expect(desgloseVenta({})).toEqual({ articulos: 0, cashback: 0, regalo: 0, total: 0,
+      comision: 0, totalConComision: 0 });
+    const raro = desgloseVenta({ montoCobro: "abc", descuentoPuntos: "-5", comicion: "x",
+      movimiento: "pagoTarjeta", statusComision: "con comision" });
+    expect(raro.total).toBe(0);
+    expect(raro.cashback).toBe(0);
+    expect(raro.comision).toBe(0);
+  });
+
+  it("admin puede pasar su propia suma de artículos (ventas legacy)", () => {
+    const d = desgloseVenta({ articulos: [{ cantidad: "1" }], montoCobro: "90",
+      descuentoPuntos: "10" }, 100);
+    expect(d.articulos).toBe(100);
+    expect(cuadra(d)).toBe(true);
   });
 });

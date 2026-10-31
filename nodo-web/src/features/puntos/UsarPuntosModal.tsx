@@ -88,9 +88,12 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
   if (!open) return null;
 
-  const tope = saldo ? Math.min(maxTotal, saldo.saldoUsable) : 0;
-  // Cashback 1:1 en $: el descuento es el monto pedido (a centavos), tope incluido.
-  const pedido = Math.round(Math.min(Number(monto) || 0, tope) * 100) / 100;
+  // Pesos enteros: los totales de la caja y del ticket no llevan centavos (los
+  // centavos del saldo quedan para después).
+  const usable = saldo ? Math.floor(saldo.saldoUsable) : 0;
+  const tope = saldo ? Math.floor(Math.min(maxTotal, saldo.saldoUsable)) : 0;
+  // Cashback 1:1 en $: el descuento es el monto pedido, tope incluido.
+  const pedido = Math.floor(Math.min(Number(monto) || 0, tope));
 
   // Estados en los que el canje/acumulación NO puede prosperar. Se derivan aquí
   // para que los BOTONES los reflejen (deshabilitados + motivo junto a ellos) en
@@ -107,12 +110,12 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   const sinTelefono = !telefono.trim();
   const puedeAcumular = !sinTelefono;
   const puedeUsar = !sinTelefono && tope > 0;
-  // El caso "saldo del cliente < $0.50" NO entra aquí: tiene su propio aviso
+  // El caso "saldo del cliente < $1" NO entra aquí: tiene su propio aviso
   // (abajo) y ahí el botón de usar ni se renderiza. Este motivo es sólo para
   // cuando SÍ hay saldo usable pero la venta no da tope.
   const motivoBloqueo = sinTelefono
     ? "Este monedero no trae teléfono, y sin teléfono no se puede debitar ni acumular cashback. Consulta al cliente por teléfono (o por correo) para operarlo."
-    : tope <= 0 && !!saldo && saldo.saldoUsable > 0
+    : tope <= 0 && usable >= 1
       ? `Tope disponible ${money(tope)}: esta venta no tiene subtotal de productos al que aplicar el descuento. Las tarjetas de regalo se pagan con dinero real.`
       : null;
 
@@ -320,7 +323,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
         onClick={(e) => e.stopPropagation()}
         className="max-h-[90vh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl"
       >
-        <h2 className="text-lg font-semibold">Puntos del cliente</h2>
+        <h2 className="text-lg font-semibold">Cashback del cliente</h2>
 
         <form onSubmit={consultar} className="flex gap-2">
           <Input
@@ -389,21 +392,21 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
         {saldo && !recovered && (
           <div className="space-y-3">
-            {saldo.saldoUsable > 0 ? (
+            {usable >= 1 ? (
               <>
                 <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
                   Saldo de cashback:{" "}
                   <strong className="text-base">{money(saldo.saldoDinero)}</strong>
                   <span className="block text-[12px] text-text-soft">
-                    Disponible para usar (en múltiplos de $0.50):{" "}
-                    <strong>{money(saldo.saldoUsable)}</strong>
+                    Disponible para usar (pesos enteros):{" "}
+                    <strong>{money(usable)}</strong>
                   </span>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">¿Cuánto usar en esta venta?</label>
                   <Input
                     type="number"
-                    inputMode="decimal"
+                    inputMode="numeric"
                     placeholder={`Máximo ${money(tope)}`}
                     value={monto}
                     onChange={(e) => setMonto(e.target.value)}
@@ -421,7 +424,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
             ) : (
               <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
                 Saldo de cashback: <strong>{money(saldo.saldoDinero)}</strong> — aún no
-                alcanza el mínimo para usar ($0.50). Puedes <strong>acumular</strong> en
+                alcanza el mínimo para usar ($1). Puedes <strong>acumular</strong> en
                 esta venta.
               </div>
             )}

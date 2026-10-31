@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { useVentasAdmin } from "@/features/ventas-admin/useVentasAdmin";
 import { useSucursales } from "@/features/sucursales/useSucursales";
 import { Button } from "@/components/ui/button";
+import { desgloseVenta } from "@shared";
 
 /**
  * Detalle de venta. Replica la lógica de adapterHistorialDos +
@@ -124,6 +125,7 @@ export function VentaDetailPage() {
     0,
   );
 
+  const d = desgloseVenta(venta, subtotal);
   const pago = metodoPago(venta.movimiento);
 
   return (
@@ -183,14 +185,30 @@ export function VentaDetailPage() {
       <section className="rounded-lg border bg-card p-5">
         <h2 className="mb-2 text-base font-semibold">Totales</h2>
         <div className="space-y-1 text-sm">
-          {Math.abs(subtotal - Number(venta.montoCobro)) > 0.01 && (
-            <Row label="Subtotal artículos" value={`$${subtotal.toFixed(2)}`} />
+          {/* Mismo orden que el ticket (desgloseVenta): Artículos → −
+              Cashback → − Crédito de regalo → Total → Comisión. */}
+          {(d.cashback > 0 || d.regalo > 0 || Math.abs(subtotal - d.total) > 0.01) && (
+            <Row label="Artículos" value={`$${subtotal.toFixed(2)}`} />
           )}
-          <Row
-            label="Total cobrado"
-            value={`$${Number(venta.montoCobro).toFixed(2)}`}
-            strong
-          />
+          {d.cashback > 0 && (
+            <Row label="Cashback usado" value={`− $${d.cashback.toFixed(2)}`} />
+          )}
+          {d.regalo > 0 && (
+            <Row label="Crédito de regalo" value={`− $${d.regalo.toFixed(2)}`} />
+          )}
+          <Row label="Total cobrado" value={`$${d.total.toFixed(2)}`} strong />
+          {d.comision > 0 && (
+            <>
+              <Row label="Comisión tarjeta" value={`+ $${d.comision.toFixed(2)}`} />
+              <Row label="Pagó con tarjeta" value={`$${d.totalConComision.toFixed(2)}`} />
+            </>
+          )}
+          {venta.puntosClienteTelefono && (
+            <Row
+              label="Cliente de cashback"
+              value={`tel ••••${venta.puntosClienteTelefono.replace(/\D/g, "").slice(-4)}`}
+            />
+          )}
           <Row label="Método" value={pago.label} />
           {venta.movimiento === "pagoEfectivo" && (
             <>

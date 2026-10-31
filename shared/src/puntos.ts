@@ -8,6 +8,7 @@
  * candados (cerrar canje / cerrar regalo) se descartan, porque el servidor
  * los vence solo.
  */
+import { subtotalLinea, type LineaCobro } from "./precio";
 
 /** Tipos de la cola. No agregar tipos: la versión anterior de la caja manda
  *  cualquier tipo desconocido a "acumular" (compatibilidad al regresar). */
@@ -129,4 +130,62 @@ export function esperaRegistroPuntos(item: ItemColaPuntos, cola: ItemColaPuntos[
   return cola.some(
     (x) => x.tipo === "register" && x.id !== item.id && telefonosIguales(x.payload.phone, tel),
   );
+}
+
+// ── Desglose de una venta (ticket, confirmación, ticket en pantalla, admin) ──
+
+/** Campos de una venta (o de su vista previa) que definen sus totales. */
+export type VentaDesglosable = {
+  articulos?: LineaCobro[];
+  montoCobro?: string | number;
+  descuentoPuntos?: string | number;
+  descuentoRegalo?: string | number;
+  comicion?: string | number;
+  statusComision?: string;
+  movimiento?: string;
+};
+
+export type DesgloseVenta = {
+  /** Suma de las líneas cobradas (3x2, mayoreo y descuentos por línea). */
+  articulos: number;
+  /** Cashback usado (descuento). */
+  cashback: number;
+  /** Crédito de regalo usado (descuento). */
+  regalo: number;
+  /** Lo cobrado antes de comisión (`montoCobro`, ya neto de descuentos). */
+  total: number;
+  /** Comisión por pago con tarjeta; 0 si no aplica. */
+  comision: number;
+  /** Lo que paga el cliente con tarjeta: total + comisión. */
+  totalConComision: number;
+};
+
+const num = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * Totales en el mismo orden en todos lados: Artículos → − Cashback → −
+ * Crédito de regalo → (Subtotal → Comisión) → TOTAL. Antes el crédito de
+ * regalo no aparecía en ningún lado y el cashback salía después del total,
+ * así que las cuentas no cuadraban a la vista. `sumaArticulos` permite a
+ * admin usar su propia suma (ventas legacy con `precioVenta`).
+ */
+export function desgloseVenta(v: VentaDesglosable, sumaArticulos?: number): DesgloseVenta {
+  const articulos =
+    sumaArticulos ?? (v.articulos ?? []).reduce((s, l) => s + subtotalLinea(l), 0);
+  const total = num(v.montoCobro);
+  const comision =
+    v.movimiento === "pagoTarjeta" && v.statusComision === "con comision"
+      ? Math.max(0, num(v.comicion))
+      : 0;
+  return {
+    articulos,
+    cashback: Math.max(0, num(v.descuentoPuntos)),
+    regalo: Math.max(0, num(v.descuentoRegalo)),
+    total,
+    comision,
+    totalConComision: total + comision,
+  };
 }

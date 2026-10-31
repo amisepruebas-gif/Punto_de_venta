@@ -1,5 +1,5 @@
 /**
- * Ticket de RECUPERACIÓN de contraseña de puntos (formato ESC/POS, 48 mm).
+ * Ticket de RECUPERACIÓN de contraseña de cashback (formato ESC/POS, 48 mm).
  * Reutiliza el mismo lenguaje de etiquetas del ticket de venta. Imprime la
  * contraseña NUEVA re-emitida (la vieja no se puede leer; va hasheada).
  */
@@ -21,7 +21,7 @@ export function formatearTicketRecuperacion(opts: {
   out.push("[L]\n");
   out.push(`[C]${"-".repeat(ANCHO)}\n`);
   out.push("[C]<b>RECUPERACION DE CONTRASENA</b>\n");
-  out.push("[C]Programa de puntos\n");
+  out.push("[C]Programa de cashback\n");
   out.push(`[C]${"-".repeat(ANCHO)}\n`);
   out.push(`[L]Fecha[R]${s(opts.fecha)}\n`);
   out.push(`[L]Correo[R]${s(opts.email)}\n`);

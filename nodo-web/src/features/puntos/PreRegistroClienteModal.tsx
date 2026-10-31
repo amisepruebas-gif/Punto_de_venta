@@ -79,9 +79,9 @@ export function PreRegistroClienteModal({ open, onClose, onRegistrar }: Props) {
         className="max-h-[90vh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl"
       >
         <div>
-          <h2 className="text-lg font-semibold">Registrar cliente · Puntos</h2>
+          <h2 className="text-lg font-semibold">Registrar cliente · Cashback</h2>
           <p className="text-sm text-muted-foreground">
-            En su siguiente compra se le acreditarán los puntos. Se le dará un código
+            En su siguiente compra se le acreditará el cashback. Se le dará un código
             en el ticket para activar su cuenta en amise.mx.
           </p>
         </div>

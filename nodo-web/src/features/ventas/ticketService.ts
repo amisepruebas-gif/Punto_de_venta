@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { mostrarMetaTicket, precioCobradoLinea, subtotalLinea } from "@shared";
+import { desgloseVenta, mostrarMetaTicket, precioCobradoLinea, subtotalLinea } from "@shared";
 import type { Venta, Sucursal, TicketLinea } from "@shared";
 
 type PdfBlock = Record<string, unknown>;
@@ -72,7 +72,13 @@ export async function generarTicketPDF(params: {
   const metodoPago = metodoLegible(venta.movimiento);
   // Precio COBRADO por línea (promo o mayoreo en `descuento`, 3x2 incluido).
   // Antes usaba el precio de lista y el ticket no cuadraba con el total.
-  const subtotal = venta.articulos.reduce((acc, a) => acc + subtotalLinea(a), 0);
+  const d = desgloseVenta(venta);
+  const filaPdf = (label: string, valor: string): PdfBlock => ({
+    columns: [
+      { text: label, fontSize: 9 },
+      { text: valor, alignment: "right", fontSize: 9 },
+    ],
+  });
 
   const itemsTable = [
     [
@@ -197,22 +203,24 @@ export async function generarTicketPDF(params: {
         fontSize: 9,
       },
       { text: "─".repeat(32), alignment: "center", fontSize: 8, margin: [0, 4, 0, 4] as [number, number, number, number] },
-      ...(subtotal !== Number(venta.montoCobro)
+      // Mismo orden que el ticket impreso (desgloseVenta): Artículos → −
+      // Cashback → − Crédito de regalo → (Subtotal → Comisión) → Total.
+      ...(d.cashback > 0 || d.regalo > 0 || Math.abs(d.articulos - d.total) > 0.005
+        ? [filaPdf("Artículos", `$${d.articulos.toFixed(2)}`)]
+        : []),
+      ...(d.cashback > 0 ? [filaPdf("Cashback usado", `-$${d.cashback.toFixed(2)}`)] : []),
+      ...(d.regalo > 0 ? [filaPdf("Crédito de regalo", `-$${d.regalo.toFixed(2)}`)] : []),
+      ...(d.comision > 0
         ? [
-            {
-              columns: [
-                { text: "Subtotal" },
-                { text: `$${subtotal.toFixed(2)}`, alignment: "right" },
-              ],
-              fontSize: 9,
-            },
+            filaPdf("Subtotal", `$${d.total.toFixed(2)}`),
+            filaPdf("Comisión tarjeta", `+$${d.comision.toFixed(2)}`),
           ]
         : []),
       {
         columns: [
-          { text: "Total", bold: true },
+          { text: d.comision > 0 ? "Total con tarjeta" : "Total", bold: true },
           {
-            text: `$${Number(venta.montoCobro).toFixed(2)}`,
+            text: `$${(d.comision > 0 ? d.totalConComision : d.total).toFixed(2)}`,
             alignment: "right",
             bold: true,
           },
@@ -258,27 +266,20 @@ export async function generarTicketPDF(params: {
             bold: true,
           }
         : {},
-      venta.descuentoPuntos && Number(venta.descuentoPuntos) > 0
+      Number(venta.puntosGanados) > 0 || venta.codigoPuntos
         ? {
-            columns: [
-              { text: "Descuento de cashback", fontSize: 9 },
-              {
-                text: `-$${venta.descuentoPuntos}`,
-                alignment: "right",
-                fontSize: 9,
-                bold: true,
-              },
-            ],
-          }
-        : {},
-      venta.codigoPuntos
-        ? {
-            text: "* PUNTOS AMISE *",
+            text: "* CASHBACK AMISE *",
             alignment: "center",
             fontSize: 9,
             bold: true,
             margin: [0, 4, 0, 0] as [number, number, number, number],
           }
+        : {},
+      Number(venta.puntosGanados) > 0
+        ? filaPdf("Cashback acumulado", `+$${venta.puntosGanados}`)
+        : {},
+      Number(venta.puntosGanados) > 0 && venta.puntosSaldoDinero
+        ? filaPdf("Saldo disponible", `$${venta.puntosSaldoDinero}`)
         : {},
       venta.codigoPuntos
         ? {

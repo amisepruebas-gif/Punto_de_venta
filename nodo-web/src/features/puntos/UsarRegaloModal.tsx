@@ -64,8 +64,9 @@ export function UsarRegaloModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
   if (!open) return null;
 
-  const tope = saldo ? Math.round(Math.min(maxTotal, saldo.saldo) * 100) / 100 : 0;
-  const pedido = Math.round(Math.min(Number(monto) || 0, tope) * 100) / 100;
+  // Pesos enteros, igual que el cashback: los totales no llevan centavos.
+  const tope = saldo ? Math.floor(Math.min(maxTotal, saldo.saldo)) : 0;
+  const pedido = Math.floor(Math.min(Number(monto) || 0, tope));
 
   // Mismo criterio que UsarPuntosModal: con tope 0 el botón NO puede prosperar
   // (`aplicar` saldría por un `return` silencioso y el error se pintaría arriba
@@ -193,7 +194,7 @@ export function UsarRegaloModal({ open, maxTotal, onClose, onAplicar }: Props) {
               <label className="text-sm font-medium">¿Cuánto usar en esta venta?</label>
               <Input
                 type="number"
-                inputMode="decimal"
+                inputMode="numeric"
                 placeholder={`Máximo ${money(tope)}`}
                 value={monto}
                 onChange={(e) => setMonto(e.target.value)}

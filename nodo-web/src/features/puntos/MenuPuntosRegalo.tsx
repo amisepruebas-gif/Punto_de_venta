@@ -8,7 +8,7 @@ type Props = {
 };
 
 /**
- * Botón flotante "Puntos y regalo". Junta en un menú las acciones de lealtad
+ * Botón flotante "Cashback y regalo". Junta en un menú las acciones de lealtad
  * que no se usan en cada venta (pre-registrar cliente, vender y recargar
  * tarjeta de regalo), para que la pila de Ventas quepa en tablets chicas.
  * El menú abre a la izquierda y hacia abajo del botón: hacia arriba lo
@@ -40,7 +40,7 @@ export function MenuPuntosRegalo({
 
   const opciones = [
     {
-      label: "Pre-registrar cliente de puntos",
+      label: "Pre-registrar cliente de cashback",
       Icono: UserPlus,
       color: "bg-indigo-600",
       onClick: onPreRegistro,
@@ -64,7 +64,7 @@ export function MenuPuntosRegalo({
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
-        aria-label="Puntos y tarjetas de regalo"
+        aria-label="Cashback y tarjetas de regalo"
         aria-haspopup="menu"
         aria-expanded={abierto}
         className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-black/20 transition-transform hover:scale-105 hover:bg-amber-600 active:scale-95"

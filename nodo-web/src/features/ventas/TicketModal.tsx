@@ -8,7 +8,7 @@ import {
   compartirPDF,
 } from "./ticketService";
 import { subtotalItem } from "./carritoStore";
-import type { MovimientoPago, Venta } from "@shared";
+import { desgloseVenta, type MovimientoPago, type Venta } from "@shared";
 
 const METODO_LABEL: Record<MovimientoPago, string> = {
   pagoEfectivo: "EFECTIVO",
@@ -62,13 +62,10 @@ export function TicketModal({ venta, onClose }: Props) {
 
   if (!venta) return null;
 
-  const total = Number(venta.montoCobro) || 0;
+  const d = desgloseVenta(venta);
   const pago = Number(venta.montoPago) || 0;
   const cambio = Number(venta.cambio) || 0;
-  const comicion = Number(venta.comicion) || 0;
-  const conComision =
-    venta.movimiento === "pagoTarjeta" &&
-    venta.statusComision === "con comision";
+  const conComision = d.comision > 0;
 
   return (
     <div
@@ -179,12 +176,35 @@ export function TicketModal({ venta, onClose }: Props) {
 
         {/* Totales */}
         <div className="space-y-1 border-t bg-muted/30 px-4 py-2.5">
+          {/* Mismo orden que el ticket impreso (desgloseVenta). */}
+          {(d.cashback > 0 || d.regalo > 0) && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Artículos</span>
+              <span className="font-medium tabular-nums">${d.articulos.toFixed(0)}</span>
+            </div>
+          )}
+          {d.cashback > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Cashback usado</span>
+              <span className="font-medium tabular-nums text-indigo-700">
+                − ${d.cashback.toFixed(0)}
+              </span>
+            </div>
+          )}
+          {d.regalo > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Crédito de regalo</span>
+              <span className="font-medium tabular-nums text-amber-700">
+                − ${d.regalo.toFixed(0)}
+              </span>
+            </div>
+          )}
           {conComision && (
             <>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal carrito</span>
                 <span className="font-medium tabular-nums">
-                  ${total.toFixed(0)}
+                  ${d.total.toFixed(0)}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -192,7 +212,7 @@ export function TicketModal({ venta, onClose }: Props) {
                   Comisión tarjeta
                 </span>
                 <span className="font-medium tabular-nums text-orange-700">
-                  + ${comicion.toFixed(0)}
+                  + ${d.comision.toFixed(0)}
                 </span>
               </div>
             </>
@@ -214,7 +234,7 @@ export function TicketModal({ venta, onClose }: Props) {
               {conComision ? "TOTAL CON TARJETA" : "TOTAL"}
             </span>
             <span className="text-2xl font-bold tabular-nums">
-              ${(conComision ? total + comicion : total).toFixed(0)}
+              ${(conComision ? d.totalConComision : d.total).toFixed(0)}
             </span>
           </div>
         </div>

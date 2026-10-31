@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 type Props = {
   open: boolean;
   correo: string;
-  /** Sí: acreditar los puntos de esta venta al cliente. */
+  /** Sí: acreditar el cashback de esta venta al cliente. */
   onSi: () => void;
   /** No: no acreditar esta venta (el pendiente se mantiene). */
   onNo: () => void;
@@ -23,7 +23,7 @@ export function VinculacionClienteModal({ open, correo, onSi, onNo }: Props) {
     >
       <div className="max-h-[90vh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-xl bg-card p-5 shadow-lg sm:rounded-xl">
         <div>
-          <h2 className="text-lg font-semibold">¿Sumar puntos a este cliente?</h2>
+          <h2 className="text-lg font-semibold">¿Sumar cashback a este cliente?</h2>
           <p className="text-sm text-muted-foreground">
             Cliente registrado: <span className="font-medium">{correo}</span>
           </p>
@@ -33,7 +33,7 @@ export function VinculacionClienteModal({ open, correo, onSi, onNo }: Props) {
             No
           </Button>
           <Button type="button" className="flex-1" onClick={onSi}>
-            Sí, sumar puntos
+            Sí, sumar cashback
           </Button>
         </div>
       </div>
