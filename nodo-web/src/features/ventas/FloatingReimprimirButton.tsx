@@ -7,9 +7,8 @@ type Props = {
 };
 
 /**
- * FAB para reimprimir el ticket de la última venta. Vive arriba del FAB de
- * "no registrado" (`bottom-[16.4rem]`). Stack de FABs (de abajo hacia
- * arriba): chat → apartar → no-reg → reimprimir.
+ * FAB para reimprimir el ticket de la última venta. El orden y la posición los da
+ * PilaBotonesFlotantes (Ventas.tsx).
  *
  * Se deshabilita visualmente cuando aún no hay una venta en la sesión.
  */
@@ -28,7 +27,7 @@ export function FloatingReimprimirButton({
           ? "Sin ventas para reimprimir"
           : `Reimprimir ticket #${numeroDeVenta ?? ""}`.trim()
       }
-      className={`pointer-events-auto fixed bottom-[20.6rem] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg shadow-black/20 transition-transform ${
+      className={`pointer-events-auto relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-lg shadow-black/20 transition-transform ${
         disabled
           ? "cursor-not-allowed bg-slate-400/60 opacity-60"
           : "bg-sky-600 hover:scale-105 hover:bg-sky-700 active:scale-95"

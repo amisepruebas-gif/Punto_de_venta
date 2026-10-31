@@ -13,7 +13,7 @@ export function FloatingChatButton({ onClick, noLeidos }: Props) {
       type="button"
       onClick={onClick}
       aria-label="Abrir chat"
-      className="pointer-events-auto fixed bottom-[8rem] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/20 transition-transform hover:scale-105 active:scale-95"
+      className="pointer-events-auto relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/20 transition-transform hover:scale-105 active:scale-95"
     >
       <MessageSquare className="h-6 w-6" />
       {count > 0 && (

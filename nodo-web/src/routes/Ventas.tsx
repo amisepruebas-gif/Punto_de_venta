@@ -27,6 +27,7 @@ import { FloatingChatButton } from "@/features/chat-grupo/FloatingChatButton";
 import { FloatingApartarButton } from "@/features/apartados/FloatingApartarButton";
 import { FloatingNoRegistradoButton } from "@/features/ventas/FloatingNoRegistradoButton";
 import { FloatingReimprimirButton } from "@/features/ventas/FloatingReimprimirButton";
+import { PilaBotonesFlotantes } from "@/features/ventas/PilaBotonesFlotantes";
 import { RegistrosVentasSheet } from "@/features/ventas/historial/RegistrosVentasSheet";
 import { PinPromptModal } from "@/features/ventas/historial/PinPromptModal";
 import { usePinVentas } from "@/features/ventas/historial/usePinVentas";
@@ -1018,20 +1019,39 @@ export function Ventas() {
         </div>
       )}
 
-      <FloatingNoRegistradoButton onClick={() => setNoRegOpen(true)} />
-      <FloatingPreRegistroButton onClick={() => setPreRegOpen(true)} />
+      {/* Botones flotantes, de abajo hacia arriba. La pila los acomoda en
+          columnas si la pantalla es baja (tablet acostada). */}
+      <PilaBotonesFlotantes>
+        <FloatingChatButton
+          onClick={() => setChatOpen(true)}
+          // Mientras el chat está abierto, el badge se oculta (los mensajes
+          // se están viendo en vivo). marcarApertura ya marca leídos al
+          // abrir, así que cerrar dejará noLeidos en 0 hasta que llegue
+          // un mensaje nuevo.
+          noLeidos={chatOpen ? 0 : chatData.noLeidos}
+        />
+        <FloatingApartarButton onClick={() => setApartarOpen(true)} />
+        <FloatingNoRegistradoButton onClick={() => setNoRegOpen(true)} />
+        <FloatingReimprimirButton
+          onClick={handleReimprimir}
+          disabled={!ultimaVenta}
+          numeroDeVenta={ultimaVenta?.numeroDeVenta}
+        />
+        <FloatingPreRegistroButton onClick={() => setPreRegOpen(true)} />
+        <FloatingVenderRegaloButton onClick={() => setGiftOpen(true)} />
+        <FloatingRecargarRegaloButton onClick={() => setRecargaOpen(true)} />
+      </PilaBotonesFlotantes>
+
       <PreRegistroClienteModal
         open={preRegOpen}
         onClose={() => setPreRegOpen(false)}
         onRegistrar={handlePreRegistrar}
       />
-      <FloatingVenderRegaloButton onClick={() => setGiftOpen(true)} />
       <VenderRegaloModal
         open={giftOpen}
         onClose={() => setGiftOpen(false)}
         onVender={handleVenderRegalo}
       />
-      <FloatingRecargarRegaloButton onClick={() => setRecargaOpen(true)} />
       <RecargarRegaloModal
         open={recargaOpen}
         onClose={() => setRecargaOpen(false)}
@@ -1045,25 +1065,10 @@ export function Ventas() {
         onSi={handleVincularSi}
         onNo={handleVincularNo}
       />
-      <FloatingApartarButton onClick={() => setApartarOpen(true)} />
-      <FloatingChatButton
-        onClick={() => setChatOpen(true)}
-        // Mientras el chat está abierto, el badge se oculta (los mensajes
-        // se están viendo en vivo). marcarApertura ya marca leídos al
-        // abrir, así que cerrar dejará noLeidos en 0 hasta que llegue
-        // un mensaje nuevo.
-        noLeidos={chatOpen ? 0 : chatData.noLeidos}
-      />
 
       <VentaRealizadaOverlay
         show={overlayShow}
         onDone={() => setOverlayShow(false)}
-      />
-
-      <FloatingReimprimirButton
-        onClick={handleReimprimir}
-        disabled={!ultimaVenta}
-        numeroDeVenta={ultimaVenta?.numeroDeVenta}
       />
 
       <NoRegistradoModal open={noRegOpen} onClose={() => setNoRegOpen(false)} />
