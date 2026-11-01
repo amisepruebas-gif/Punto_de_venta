@@ -13,8 +13,10 @@ const {
   rechazar,
 } = require("../lib/puntosSeguridad");
 
-test("el modo por defecto es observar (no rechaza hasta cambiar la constante)", () => {
-  assert.equal(EXIGIR_IDENTIDAD, false);
+// Sin opciones, todo sigue la constante: estas pruebas pasan en observar y en exigir.
+test("el modo por defecto lo fija la constante EXIGIR_IDENTIDAD", () => {
+  assert.equal(typeof EXIGIR_IDENTIDAD, "boolean");
+  assert.equal(rechazar({ok: false, motivo: "no_coincide"}), EXIGIR_IDENTIDAD);
 });
 
 test("telefonosIguales: últimos 10 dígitos, con o sin lada ni formato", () => {
@@ -53,10 +55,12 @@ const BALANCE = {exists: true, saldoDinero: 37.8, saldoUsable: 37.5, valorPorPes
   email: "ana@demo.test", nombre: "Ana", walletId: "W1"};
 
 test("filtrarSaldo: solo lo que usa la caja", () => {
-  const r = filtrarSaldo(BALANCE);
+  const r = filtrarSaldo(BALANCE, {exigir: false});
   assert.deepEqual(r, {exists: true, saldoDinero: 37.8, saldoUsable: 37.5,
     valorPorPeso: 0.05, telefono: "+525511111111",
     tarjeta: {codigo: "7501000000012", estado: "activa"}});
+  assert.equal(filtrarSaldo(BALANCE).tarjeta.codigo,
+      EXIGIR_IDENTIDAD ? "0012" : "7501000000012");
   assert.deepEqual(filtrarSaldo({exists: false, email: "x@y.z"}), {exists: false});
   assert.deepEqual(filtrarSaldo(null), {exists: false});
   assert.equal(filtrarSaldo({...BALANCE, tarjeta: null}).tarjeta, null);
@@ -134,7 +138,6 @@ test("rechazar: observar nunca; exigir todo lo que no sea ok", () => {
     assert.equal(rechazar({ok: false, motivo}, {exigir: true}), true, motivo);
   }
   assert.equal(rechazar({ok: true, motivo: "ok_tarjeta"}, {exigir: true}), false);
-  assert.equal(rechazar({ok: false, motivo: "no_coincide"}), false); // default: observar
 });
 
 test("rechazar con faltanteOk: tarjeta ya cobrada solo se frena por datos contradictorios", () => {
