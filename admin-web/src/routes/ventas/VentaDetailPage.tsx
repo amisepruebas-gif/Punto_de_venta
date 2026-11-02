@@ -4,7 +4,17 @@ import { ChevronLeft } from "lucide-react";
 import { useVentasAdmin } from "@/features/ventas-admin/useVentasAdmin";
 import { useSucursales } from "@/features/sucursales/useSucursales";
 import { Button } from "@/components/ui/button";
-import { desgloseVenta, NOMBRES_OPERACION_PUNTOS as NOMBRES_LEALTAD } from "@shared";
+import {
+  desgloseVenta,
+  etiquetaTarjetaClip,
+  NOMBRES_OPERACION_PUNTOS as NOMBRES_LEALTAD,
+} from "@shared";
+
+/** Alertas que Clip deja en un cobro aprobado: hay que revisarlo a mano. */
+const ALERTAS_CLIP: Record<string, string> = {
+  "pago-de-mas": "la terminal cobró de más; devuelve la diferencia en Clip",
+  "varias-aprobaciones": "hubo más de una aprobación; revisa si hay un cobro doble en Clip",
+};
 
 /**
  * Detalle de venta. Replica la lógica de adapterHistorialDos +
@@ -203,6 +213,22 @@ export function VentaDetailPage() {
             />
           )}
           <Row label="Método" value={pago.label} />
+          {venta.pagoClip && (
+            <Row
+              label="Terminal Clip"
+              value={
+                venta.pagoClip.verificado
+                  ? etiquetaTarjetaClip(venta.pagoClip) || "Cobro aprobado"
+                  : "Confirmado a mano en la terminal (sin verificar con Clip)"
+              }
+            />
+          )}
+          {venta.pagoClip?.alerta && (
+            <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">
+              Clip: {ALERTAS_CLIP[venta.pagoClip.alerta] ?? venta.pagoClip.alerta}
+              {venta.pagoClip.transaccionId ? ` (transacción ${venta.pagoClip.transaccionId})` : ""}.
+            </p>
+          )}
           {venta.movimiento === "pagoEfectivo" && (
             <>
               <Row

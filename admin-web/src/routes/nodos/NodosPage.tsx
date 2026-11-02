@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Ban, Smartphone, History, RefreshCw, KeyRound } from "lucide-react";
-import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { Ban, Smartphone, History, RefreshCw, KeyRound, CreditCard } from "lucide-react";
+import {
+  deleteField,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useAuth } from "@/hooks/useAuth";
 import { useNodos } from "@/features/nodos/useNodos";
@@ -18,8 +25,12 @@ import {
   DOC_REFRESCO_RENDER,
   fechaISO_MX,
   generarID,
+  paths,
   type Nodo,
 } from "@shared";
+
+/** Número de serie como lo acepta el servidor (y las reglas). */
+const SERIE_CLIP = /^[A-Za-z0-9_-]{4,40}$/;
 
 export function NodosPage() {
   const { negocioId } = useNegocio();
@@ -28,6 +39,7 @@ export function NodosPage() {
   const { sucursales } = useSucursales();
   const [filtroSucursal, setFiltroSucursal] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<Nodo | null>(null);
+  const [terminal, setTerminal] = useState<Nodo | null>(null);
   const [revocando, setRevocando] = useState<string | null>(null);
   const [forzando, setForzando] = useState(false);
   const [generandoCodigo, setGenerandoCodigo] = useState(false);
@@ -216,6 +228,7 @@ export function NodosPage() {
                 <th className="px-4 py-2 font-medium">Nombre</th>
                 <th className="px-4 py-2 font-medium">Sucursal</th>
                 <th className="px-4 py-2 font-medium">Registrado por</th>
+                <th className="px-4 py-2 font-medium">Terminal Clip</th>
                 <th className="px-4 py-2 font-medium">Estado</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -229,6 +242,22 @@ export function NodosPage() {
                   </td>
                   <td className="px-4 py-2 text-muted-foreground">
                     {n.registradoPor}
+                  </td>
+                  <td className="px-4 py-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTerminal(n)}
+                      disabled={n.estado !== "activo"}
+                      title="Terminal Clip de esta caja"
+                    >
+                      <CreditCard className="mr-1 h-3 w-3" />
+                      {n.clipSerial ? (
+                        <span className="font-mono text-xs">{n.clipSerial}</span>
+                      ) : (
+                        <span className="text-muted-foreground">Asignar</span>
+                      )}
+                    </Button>
                   </td>
                   <td className="px-4 py-2">
                     <span
@@ -272,6 +301,13 @@ export function NodosPage() {
       )}
 
       {detalle && <NodoDetalleModal nodo={detalle} onClose={() => setDetalle(null)} />}
+      {terminal && negocioId && (
+        <TerminalClipModal
+          nodo={terminal}
+          negocioId={negocioId}
+          onClose={() => setTerminal(null)}
+        />
+      )}
       {codigoCaja && (
         <CodigoCajaModal {...codigoCaja} onClose={() => setCodigoCaja(null)} />
       )}
@@ -311,6 +347,96 @@ function CodigoCajaModal({
         <Button onClick={onClose} className="w-full">
           Cerrar
         </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Terminal Clip de una caja: con número de serie, la caja manda sus cobros
+ * con tarjeta a esa terminal; sin él, cobra a mano como antes (también es la
+ * forma de regresar atrás). Las reglas solo dejan a admin cambiar este campo.
+ */
+function TerminalClipModal({
+  nodo,
+  negocioId,
+  onClose,
+}: {
+  nodo: Nodo;
+  negocioId: string;
+  onClose: () => void;
+}) {
+  const [serie, setSerie] = useState(nodo.clipSerial ?? "");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const limpia = serie.trim();
+  const valida = SERIE_CLIP.test(limpia);
+
+  async function guardar(valor: string | null) {
+    setGuardando(true);
+    setError(null);
+    try {
+      await updateDoc(doc(db, paths.nodo(negocioId, nodo.nodoId)), {
+        clipSerial: valor ?? deleteField(),
+      });
+      onClose();
+    } catch (err) {
+      setError("No se pudo guardar: " + (err as Error).message);
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal
+      aria-labelledby="terminal-clip-titulo"
+    >
+      <div
+        className="w-full max-w-sm space-y-4 rounded-lg bg-card p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 id="terminal-clip-titulo" className="text-lg font-semibold">
+            Terminal Clip · {nodo.nombre}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Con número de serie, los cobros con tarjeta de esta caja se mandan a
+            esa terminal. Sin él, la caja cobra a mano, como antes. La terminal
+            necesita la app PinPad de Clip.
+          </p>
+        </div>
+        <label className="block space-y-1 text-sm">
+          <span className="font-medium">Número de serie</span>
+          <input
+            value={serie}
+            onChange={(e) => setSerie(e.target.value)}
+            placeholder="Ej. P8C1231120001152"
+            autoFocus
+            className="h-10 w-full rounded-md border bg-background px-3 font-mono text-sm"
+          />
+          {limpia && !valida && (
+            <span className="text-xs text-destructive">
+              Solo letras, números, guion y guion bajo (4 a 40).
+            </span>
+          )}
+        </label>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <div className="flex flex-col gap-2">
+          <Button onClick={() => guardar(limpia)} disabled={!valida || guardando}>
+            {guardando ? "Guardando…" : "Guardar"}
+          </Button>
+          {nodo.clipSerial && (
+            <Button variant="outline" onClick={() => guardar(null)} disabled={guardando}>
+              Quitar terminal (cobrar a mano)
+            </Button>
+          )}
+          <Button variant="ghost" onClick={onClose} disabled={guardando}>
+            Cancelar
+          </Button>
+        </div>
       </div>
     </div>
   );
