@@ -50,13 +50,25 @@ service cloud.firestore {
         allow write: if esAdmin(nid);
       }
 
+      // Los crea la CF (Admin SDK). La caja lee su propio doc (para saber si
+      // tiene terminal Clip) y admin solo asigna la terminal (`clipSerial`).
       match /nodos_web_new_version/{nodoId} {
-        allow read: if esAdmin(nid);
-        allow write: if false; // los crea la CF (Admin SDK)
+        allow read: if esAdmin(nid)
+          || (esNodo(nid) && request.auth.token.nodoId == nodoId);
+        allow update: if esAdmin(nid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clipSerial'])
+          && (!('clipSerial' in request.resource.data)
+              || (request.resource.data.clipSerial is string
+                  && request.resource.data.clipSerial.matches('^[A-Za-z0-9_-]{4,40}$')));
       }
 
       // Códigos de alta de cajas (solo su hash): solo las CF (Admin SDK).
       match /codigos_caja_web_new_version/{codigoHash} {
+        allow read, write: if false;
+      }
+
+      // Candado de cada terminal Clip (una venta a la vez): solo las CF.
+      match /clip_terminales_web_new_version/{serie} {
         allow read, write: if false;
       }
 
@@ -161,6 +173,14 @@ service cloud.firestore {
         }
         match /mercanciaRateLimit/{doc} {
           allow read, write: if false; // solo la CF (Admin SDK)
+        }
+        // Cobros con la terminal Clip: los escriben solo las CF; la caja lee
+        // los suyos para seguir el cobro en vivo.
+        match /pagos_clip_web_new_version/{cobroId} {
+          allow read: if esAdmin(nid)
+            || (esNodoSuc(nid, sid)
+                && (resource == null || resource.data.nodoId == request.auth.token.nodoId));
+          allow write: if false;
         }
       }
     }

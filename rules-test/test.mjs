@@ -3,7 +3,7 @@ import {
   assertFails,
   assertSucceeds,
 } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 
 const RULES = readFileSync(
@@ -208,6 +208,43 @@ await check("CAJA admin NO lee codigo de alta (solo CF)", "fail", getDoc(doc(adm
 await check("CAJA superadmin NO escribe codigo de alta", "fail", setDoc(doc(supera, P.codigoCaja), { usado: false }));
 await check("CAJA nodo NO cambia la llave de su nodo", "fail", updateDoc(doc(nodo1, P.nodoDoc), { llaveHash: "x" }));
 await check("CAJA admin NO cambia la llave de un nodo", "fail", updateDoc(doc(adminC, P.nodoDoc), { llaveHash: "x" }));
+
+// ============ CLIP: terminal de cada caja y sus cobros ============
+// La caja lee su propio doc (¿tiene terminal?) y sus cobros; admin solo
+// asigna la serie; los cobros y el candado de la terminal solo las CF.
+const nodoN1 = `${N}/nodos_web_new_version/n1`;
+const pagos = (sid) => `${N}/sucursales_data_web_new_version/${sid}/pagos_clip_web_new_version`;
+const cobroS1 = `${pagos(S1)}/C1`;
+const cobroOtraCaja = `${pagos(S1)}/C2`;
+const cobroS2 = `${pagos(S2)}/C3`;
+const candadoT1 = `${N}/clip_terminales_web_new_version/T1`;
+await env.withSecurityRulesDisabled(async (c) => {
+  const db = c.firestore();
+  await setDoc(doc(db, nodoN1), { nombre: "Caja 1", llaveHash: "h" });
+  await setDoc(doc(db, cobroS1), { nodoId: "n1", estado: "pendiente" });
+  await setDoc(doc(db, cobroOtraCaja), { nodoId: "n2", estado: "pendiente" });
+  await setDoc(doc(db, cobroS2), { nodoId: "n1", estado: "pendiente" });
+  await setDoc(doc(db, candadoT1), { cobroPath: cobroS1 });
+});
+await check("CLIP nodo lee su propio doc de caja", "ok", getDoc(doc(nodo1, nodoN1)));
+await check("CLIP nodo NO lee el doc de otra caja", "fail", getDoc(doc(nodo1, P.nodoDoc)));
+await check("CLIP nodo NO asigna su terminal", "fail", updateDoc(doc(nodo1, nodoN1), { clipSerial: "TOTAL3-1" }));
+await check("CLIP admin asigna la terminal de una caja", "ok", updateDoc(doc(adminC, P.nodoDoc), { clipSerial: "P8C1231120001152" }));
+await check("CLIP admin quita la terminal de una caja", "ok", updateDoc(doc(adminC, P.nodoDoc), { clipSerial: deleteField() }));
+await check("CLIP admin NO pone una serie inválida", "fail", updateDoc(doc(adminC, P.nodoDoc), { clipSerial: "con espacio" }));
+await check("CLIP admin NO cambia otro campo junto con la serie", "fail", updateDoc(doc(adminC, P.nodoDoc), { clipSerial: "TOTAL3-1", estado: "activo" }));
+await check("CLIP admin NO crea nodos", "fail", setDoc(doc(adminC, `${N}/nodos_web_new_version/NUEVO`), { clipSerial: "TOTAL3-1" }));
+await check("CLIP nodo lee su cobro", "ok", getDoc(doc(nodo1, cobroS1)));
+await check("CLIP nodo lee un cobro que aún no existe (para escucharlo)", "ok", getDoc(doc(nodo1, `${pagos(S1)}/NADA`)));
+await check("CLIP nodo NO lee el cobro de otra caja", "fail", getDoc(doc(nodo1, cobroOtraCaja)));
+await check("CLIP nodo NO lee cobros de otra sucursal", "fail", getDoc(doc(nodo1, cobroS2)));
+await check("CLIP nodo NO crea cobros", "fail", setDoc(doc(nodo1, `${pagos(S1)}/C9`), { nodoId: "n1", estado: "aprobado" }));
+await check("CLIP nodo NO marca su cobro como aprobado", "fail", updateDoc(doc(nodo1, cobroS1), { estado: "aprobado" }));
+await check("CLIP admin lee cobros", "ok", getDoc(doc(adminC, cobroS1)));
+await check("CLIP admin NO escribe cobros", "fail", updateDoc(doc(adminC, cobroS1), { estado: "aprobado" }));
+await check("CLIP anon NO lee cobros", "fail", getDoc(doc(anon, cobroS1)));
+await check("CLIP nodo NO lee el candado de la terminal", "fail", getDoc(doc(nodo1, candadoT1)));
+await check("CLIP admin NO escribe el candado de la terminal", "fail", setDoc(doc(adminC, candadoT1), { cobroPath: "x" }));
 
 let ok = true;
 for (const [pass, name] of res) { console.log((pass ? "PASS" : "FALLA") + "  " + name); if (!pass) ok = false; }

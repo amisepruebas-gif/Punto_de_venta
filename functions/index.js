@@ -22,6 +22,17 @@ const LOYALTY_POS_SECRET = defineSecret("LOYALTY_POS_SECRET");
 // Dominio CANÓNICO: amise.mx (apex) hace 308 → www y se pierde el header
 // Authorization. Hay que llamar directo a www para que el Bearer llegue.
 const AMISE_API_BASE = "https://www.amise.mx";
+// Clip (terminal de tarjetas, API de PinPad). Las claves solo viven en las
+// CF: la caja nunca las ve. Setear con la credencial del Panel de
+// Desarrollador de Clip: firebase functions:secrets:set CLIP_API_KEY (y
+// CLIP_API_SECRET). Clip no tiene ambiente de pruebas: estas son reales.
+const CLIP_API_KEY = defineSecret("CLIP_API_KEY");
+const CLIP_API_SECRET = defineSecret("CLIP_API_SECRET");
+const CLIP_API_BASE = "https://api.payclip.io";
+// Donde Clip avisa que cambió un cobro (ver webhookClip).
+const CLIP_WEBHOOK_URL = "https://us-central1-amisetienda-c7eab.cloudfunctions.net/webhookClip";
+// Clip: reglas del cobro en la terminal (lib/clip.js).
+const clip = require("./lib/clip");
 // Lealtad: exige sesión con rol permitido (ver lib/rolesPuntos.js).
 const {requireRolPuntos} = require("./lib/rolesPuntos");
 // Lealtad: identidad del cliente (tarjeta o correo) y datos hacia la caja.
@@ -2935,5 +2946,406 @@ exports.asegurarPrecioZona = onDocumentWritten(
       console.log(
           `asegurarPrecioZona ${negocioId}/${articuloId}: precio de zona ` +
           `${despues.zonaPrecioId} restaurado`);
+    },
+);
+
+// ============================================================
+// CLIP — cobro con tarjeta en la terminal (API de PinPad)
+// ============================================================
+// La caja pide el cobro (cobrarConClip), la terminal lo toma y el cliente
+// paga ahí. El resultado llega por el aviso de Clip (webhookClip) o porque
+// la caja consulta (consultarCobroClip); en los dos casos manda la consulta
+// a Clip, nunca el aviso. Un cobro por venta (cobroId = idempotencyKey de la
+// venta) en sucursales_data/{sid}/pagos_clip/{cobroId}, más un candado por
+// terminal (clip_terminales/{serie}) para que dos ventas no la usen a la vez.
+// Solo estas CF escriben; la caja lee su cobro para seguirlo en vivo.
+
+const COL_PAGOS_CLIP = `pagos_clip${SUFFIX}`;
+
+function pagoClipRef(negocioId, sucursalId, cobroId) {
+  return db.collection(COL_NEGOCIOS).doc(negocioId)
+      .collection(`sucursales_data${SUFFIX}`).doc(sucursalId)
+      .collection(COL_PAGOS_CLIP).doc(cobroId);
+}
+
+function candadoClipRef(negocioId, serial) {
+  return db.collection(COL_NEGOCIOS).doc(negocioId)
+      .collection(`clip_terminales${SUFFIX}`).doc(serial);
+}
+
+const rutaPagoClip = (id) =>
+  `/f2f/pinpad/v1/payment?pinpadRequestId=${encodeURIComponent(id)}`;
+
+/**
+ * Quien cobra: la sesión de una caja (lib/clip.js) con su nodo vigente, como
+ * en asegurarLlaveNodo. El token de una caja revocada sirve hasta una hora.
+ */
+async function requireCaja(auth) {
+  const c = clip.claimsCaja(auth);
+  const snap = await db.collection(COL_NEGOCIOS).doc(c.negocioId)
+      .collection(COL_NODOS).doc(c.nodoId).get();
+  const nodo = snap.exists ? snap.data() : null;
+  if (!nodo || nodo.estado === "revocado") {
+    throw new HttpsError("permission-denied", "Caja revocada o inexistente");
+  }
+  if (nodo.authUid && nodo.authUid !== auth.uid) {
+    throw new HttpsError("permission-denied", "Sesión de caja reemplazada");
+  }
+  if (nodo.sucursalId && nodo.sucursalId !== c.sucursalId) {
+    throw new HttpsError("permission-denied", "La caja es de otra sucursal");
+  }
+  return {...c, nodo};
+}
+
+/** Llama a la API de PinPad con Basic auth y tiempo límite. */
+async function llamarClip(method, path, {body, detalle} = {}) {
+  const headers = {
+    "Authorization": clip.basicAuth(CLIP_API_KEY.value(), CLIP_API_SECRET.value()),
+    "Accept": "application/json",
+  };
+  if (body) headers["Content-Type"] = "application/json";
+  if (detalle) headers["Pinpad-Include-Detail"] = "true";
+  let resp;
+  try {
+    resp = await fetch(`${CLIP_API_BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (e) {
+    throw clip.errorClip(0, null);
+  }
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw clip.errorClip(resp.status, data);
+  return data;
+}
+
+/**
+ * Cambia el estado del intento `n` en una transacción. Respeta las
+ * transiciones de lib/clip.js (un aprobado nunca se pierde) y, al llegar a
+ * un estado final, libera el candado de la terminal si es de este intento.
+ */
+async function actualizarIntento(ref, n, cambios) {
+  const ahora = Date.now();
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return null;
+    const c = snap.data();
+    const final = clip.ESTADOS_FINALES.includes(cambios.estado);
+    const candadoRef = final && c.serial ? candadoClipRef(c.negocioId, c.serial) : null;
+    const candSnap = candadoRef ? await tx.get(candadoRef) : null;
+    const esActual = c.intento === n;
+    if (esActual && !clip.transicionValida(c.estado, cambios.estado)) {
+      logger.warn("clip: cambio de estado ignorado",
+          {cobroId: c.cobroId, intento: n, de: c.estado, a: cambios.estado});
+      return c;
+    }
+    const resumen = {estado: cambios.estado};
+    if (cambios.pinpadRequestId) resumen.pinpadRequestId = cambios.pinpadRequestId;
+    if (cambios.error) resumen.error = cambios.error;
+    const intentos = (c.intentos || [])
+        .map((i) => (i.n === n ? {...i, ...resumen, actualizadoEn: ahora} : i));
+    const upd = {intentos, actualizadoEn: ahora};
+    if (esActual) Object.assign(upd, cambios);
+    tx.update(ref, upd);
+    if (candSnap && candSnap.exists) {
+      const k = candSnap.data();
+      if (k.cobroPath === ref.path && k.intento === n) tx.delete(candadoRef);
+    }
+    return {...c, ...upd};
+  });
+}
+
+/**
+ * Pregunta a Clip en qué quedó el intento abierto y lo guarda. `minMs` evita
+ * consultar a Clip más de una vez cada tanto (la caja consulta seguido).
+ */
+async function refrescarCobroClip(ref, {minMs = 2000} = {}) {
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  const c = snap.data();
+  const ahora = Date.now();
+  if (c.estado === "enviando" &&
+      ahora - (Number(c.actualizadoEn) || 0) > clip.ENVIANDO_VENCE_MS) {
+    return actualizarIntento(ref, c.intento, {estado: "incierto",
+      error: {code: "SIN_RESPUESTA", mensaje: "El envío a la terminal no terminó"}});
+  }
+  if (c.estado !== "pendiente" || !c.pinpadRequestId) return c;
+  if (ahora - (Number(c.consultadoEn) || 0) < minMs) return c;
+  await ref.update({consultadoEn: ahora});
+  const r = await llamarClip("GET", rutaPagoClip(c.pinpadRequestId), {detalle: true});
+  const ev = clip.evaluarIntentoClip(r, c.montoCentavos);
+  if (ev.estado === "pendiente") return {...c, consultadoEn: ahora};
+  return actualizarIntento(ref, c.intento, {estado: ev.estado, tarjeta: ev.tarjeta,
+    pagadoCentavos: ev.pagadoCentavos, alerta: ev.alerta});
+}
+
+/**
+ * Cancela lo que la terminal tenga sin tomar (por su número de serie). Si la
+ * terminal ya está cobrando, o no se pudo hablar con Clip, no sigue.
+ */
+async function limpiarTerminalClip(serial) {
+  try {
+    await llamarClip("DELETE",
+        `/f2f/pinpad/v1/payment/serial-number/${encodeURIComponent(serial)}`);
+    return {ok: true};
+  } catch (e) {
+    const det = (e && e.details) || {};
+    if (det.clipCode === "PAYMENT_PENDING") {
+      return {ok: false, aviso: "La terminal está cobrando el intento anterior. " +
+        "Espera a que termine y revisa si se aprobó."};
+    }
+    if (clip.envioIncierto(e)) {
+      return {ok: false, aviso: "No se pudo revisar la terminal (sin conexión con Clip). " +
+        "Intenta de nuevo."};
+    }
+    return {ok: true}; // no había nada que cancelar
+  }
+}
+
+// Manda a la terminal de la caja el cobro de una venta. Idempotente por
+// cobroId: dos toques o un reintento mientras espera devuelven el mismo
+// cobro; un intento nuevo solo sale cuando el anterior terminó sin pago.
+// Input: {cobroId, monto, reintentarIncierto?} → el cobro (cobroPublico) y,
+// a veces, un `aviso` para el cajero.
+exports.cobrarConClip = onCall(
+    {secrets: [CLIP_API_KEY, CLIP_API_SECRET], timeoutSeconds: 40, memory: "256MiB"},
+    async (request) => {
+      const caja = await requireCaja(request.auth);
+      const {cobroId, monto, reintentarIncierto} = request.data || {};
+      if (!clip.cobroIdValido(cobroId)) {
+        throw new HttpsError("invalid-argument", "cobroId inválido");
+      }
+      const montoTxt = clip.montoClip(monto);
+      const montoCentavos = clip.centavos(montoTxt);
+      const serial = typeof caja.nodo.clipSerial === "string" ? caja.nodo.clipSerial.trim() : "";
+      if (!clip.serieValida(serial)) {
+        throw new HttpsError("failed-precondition", "Esta caja no tiene terminal Clip asignada");
+      }
+      const ref = pagoClipRef(caja.negocioId, caja.sucursalId, cobroId);
+      const candadoRef = candadoClipRef(caja.negocioId, serial);
+
+      // Decide (y, si toca, aparta el intento nuevo y la terminal) en una
+      // transacción. Un intento "incierto" solo se aparta después de limpiar
+      // la terminal (`apartarLimpieza`).
+      const decidir = (apartarLimpieza) => db.runTransaction(async (tx) => {
+        const ahora = Date.now();
+        const snap = await tx.get(ref);
+        const candSnap = await tx.get(candadoRef);
+        const cobro = snap.exists ? snap.data() : null;
+        if (cobro && cobro.nodoId !== caja.nodoId) {
+          throw new HttpsError("permission-denied", "El cobro es de otra caja");
+        }
+        const candado = candSnap.exists ? candSnap.data() : null;
+        let cobroDelCandado = null;
+        if (candado && candado.cobroPath && candado.cobroPath !== ref.path) {
+          const s = await tx.get(db.doc(candado.cobroPath));
+          cobroDelCandado = s.exists ? s.data() : null;
+        }
+        const d = clip.decidirCobro({cobro, candado, cobroDelCandado, cobroPath: ref.path,
+          montoCentavos, ahora, reintentarIncierto: reintentarIncierto === true});
+        const apartar = d.accion === "nuevo" ||
+          (d.accion === "limpiar-y-nuevo" && apartarLimpieza);
+        if (apartar) {
+          const n = d.intento;
+          const refClip = clip.referencia(cobroId, n);
+          const intentos = [...((cobro && cobro.intentos) || []),
+            {n, referencia: refClip, estado: "enviando", creadoEn: ahora, actualizadoEn: ahora}]
+              .slice(-10);
+          tx.set(ref, {
+            cobroId, negocioId: caja.negocioId, sucursalId: caja.sucursalId,
+            nodoId: caja.nodoId, serial, monto: montoTxt, montoCentavos,
+            estado: "enviando", intento: n, referencia: refClip, pinpadRequestId: null,
+            intentos, tarjeta: null, pagadoCentavos: 0, alerta: null, error: null,
+            creadoEn: (cobro && cobro.creadoEn) || ahora, actualizadoEn: ahora, consultadoEn: 0,
+          });
+          tx.set(candadoRef, {cobroPath: ref.path, intento: n, nodoId: caja.nodoId, desde: ahora});
+        }
+        return {...d, apartado: apartar};
+      });
+
+      let d = await decidir(false);
+      if (d.accion === "limpiar-y-nuevo") {
+        // El intento anterior quedó incierto y el cajero ya revisó la
+        // terminal: si sigue ahí sin tomar, se cancela antes de mandar otro.
+        const limpia = await limpiarTerminalClip(serial);
+        if (!limpia.ok) {
+          return {...clip.cobroPublico((await ref.get()).data()), aviso: limpia.aviso};
+        }
+        d = await decidir(true);
+      }
+      if (d.accion === "error") throw new HttpsError(d.code, d.mensaje);
+      if (!d.apartado) return clip.cobroPublico((await ref.get()).data());
+
+      const n = d.intento;
+      try {
+        const r = await llamarClip("POST", "/f2f/pinpad/v1/payment", {
+          body: clip.cuerpoCobro({monto: montoTxt, referencia: clip.referencia(cobroId, n),
+            serial, webhookUrl: CLIP_WEBHOOK_URL}),
+        });
+        const id = typeof r.pinpad_request_id === "string" ? r.pinpad_request_id : "";
+        await actualizarIntento(ref, n, id ?
+          {estado: "pendiente", pinpadRequestId: id} :
+          {estado: "incierto", error: {code: "SIN_ID", mensaje: "Clip no devolvió el id del cobro"}});
+      } catch (e) {
+        const det = (e && e.details) || {};
+        await actualizarIntento(ref, n, clip.envioIncierto(e) ?
+          {estado: "incierto", error: {code: det.clipCode || "SIN_RESPUESTA", mensaje: e.message}} :
+          {estado: "fallido", error: {code: det.clipCode || e.code || "ERROR", mensaje: e.message}});
+      }
+      return clip.cobroPublico((await ref.get()).data());
+    },
+);
+
+// La caja pregunta en qué va su cobro (respaldo del aviso de Clip, que se
+// manda una sola vez). Consulta a Clip a lo más cada 2 s por cobro.
+exports.consultarCobroClip = onCall(
+    {secrets: [CLIP_API_KEY, CLIP_API_SECRET], timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const caja = await requireCaja(request.auth);
+      const {cobroId} = request.data || {};
+      if (!clip.cobroIdValido(cobroId)) {
+        throw new HttpsError("invalid-argument", "cobroId inválido");
+      }
+      const ref = pagoClipRef(caja.negocioId, caja.sucursalId, cobroId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        throw new HttpsError("not-found", "No hay cobro con terminal para esta venta");
+      }
+      if (snap.data().nodoId !== caja.nodoId) {
+        throw new HttpsError("permission-denied", "El cobro es de otra caja");
+      }
+      let c = snap.data();
+      try {
+        c = await refrescarCobroClip(ref);
+      } catch (e) {
+        logger.warn("consultarCobroClip: no se pudo consultar a Clip",
+            {cobroId, error: e.message});
+      }
+      return clip.cobroPublico(c);
+    },
+);
+
+// Cancela el cobro de la venta. Clip solo lo permite antes de que la
+// terminal lo tome; después hay que cancelarlo en la terminal (se avisa).
+exports.cancelarCobroClip = onCall(
+    {secrets: [CLIP_API_KEY, CLIP_API_SECRET], timeoutSeconds: 40, memory: "256MiB"},
+    async (request) => {
+      const caja = await requireCaja(request.auth);
+      const {cobroId} = request.data || {};
+      if (!clip.cobroIdValido(cobroId)) {
+        throw new HttpsError("invalid-argument", "cobroId inválido");
+      }
+      const ref = pagoClipRef(caja.negocioId, caja.sucursalId, cobroId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        throw new HttpsError("not-found", "No hay cobro con terminal para esta venta");
+      }
+      const c = snap.data();
+      if (c.nodoId !== caja.nodoId) {
+        throw new HttpsError("permission-denied", "El cobro es de otra caja");
+      }
+      if (c.estado === "pendiente" && c.pinpadRequestId) {
+        try {
+          await llamarClip("DELETE",
+              `/f2f/pinpad/v1/payment/${encodeURIComponent(c.pinpadRequestId)}`);
+        } catch (e) {
+          const det = (e && e.details) || {};
+          const actual = await refrescarCobroClip(ref, {minMs: 0}).catch(() => c);
+          if (det.clipCode === "PAYMENT_PENDING") {
+            return {...clip.cobroPublico(actual),
+              aviso: "La terminal ya tomó el cobro: cancélalo en la terminal."};
+          }
+          return {...clip.cobroPublico(actual),
+            ...(actual.estado === "pendiente" ?
+              {aviso: "No se pudo cancelar: revisa la terminal."} : {})};
+        }
+        // Clip lo canceló. Se confirma con la consulta; si aún dice PENDING,
+        // se marca aquí (ya no puede cobrarse).
+        let actual = await refrescarCobroClip(ref, {minMs: 0}).catch(() => null);
+        if (!actual || actual.estado === "pendiente") {
+          actual = await actualizarIntento(ref, c.intento, {estado: "cancelado"});
+        }
+        return clip.cobroPublico(actual);
+      }
+      const enviandoVivo = c.estado === "enviando" &&
+        Date.now() - (Number(c.actualizadoEn) || 0) < clip.ENVIANDO_VENCE_MS;
+      if (enviandoVivo) {
+        return {...clip.cobroPublico(c),
+          aviso: "El cobro se está enviando a la terminal: espera un momento."};
+      }
+      if (c.estado === "incierto" || c.estado === "enviando") {
+        const limpia = await limpiarTerminalClip(c.serial);
+        if (!limpia.ok) return {...clip.cobroPublico(c), aviso: limpia.aviso};
+        return clip.cobroPublico(await actualizarIntento(ref, c.intento, {estado: "cancelado"}));
+      }
+      return clip.cobroPublico(c);
+    },
+);
+
+/**
+ * Aviso de un cobro cuyo id no tenemos: se perdió la respuesta del envío y
+ * el intento quedó incierto. La referencia (cobroId-n) lo liga de vuelta.
+ */
+async function adoptarIntentoClip(id) {
+  let r;
+  try {
+    r = await llamarClip("GET", rutaPagoClip(id), {detalle: true});
+  } catch (e) {
+    logger.warn("webhookClip: id desconocido", {id, error: e.message});
+    return;
+  }
+  const ref = clip.leerReferencia(r.reference);
+  const conPago = ["aprobado", "revisar"]
+      .includes(clip.evaluarIntentoClip(r, clip.centavos(r.amount)).estado);
+  // Un aviso con dinero que no ligamos a una venta es lo que hay que revisar.
+  const reportar = (motivo, extra) => {
+    const datos = {id, reference: String(r.reference || "").slice(0, 80),
+      status: r.status, ...extra};
+    if (conPago) logger.error(`webhookClip: ${motivo}`, datos);
+    else logger.info(`webhookClip: ${motivo}`, datos);
+  };
+  if (!ref) return reportar("referencia ajena");
+  const q = await db.collectionGroup(COL_PAGOS_CLIP)
+      .where("cobroId", "==", ref.cobroId).limit(1).get();
+  if (q.empty) return reportar("cobro no encontrado");
+  const doc = q.docs[0];
+  const c = doc.data();
+  if (c.intento !== ref.intento || !["incierto", "enviando"].includes(c.estado)) {
+    return reportar("intento que no está abierto", {intento: c.intento, estado: c.estado});
+  }
+  await actualizarIntento(doc.ref, c.intento, {estado: "pendiente", pinpadRequestId: id});
+  await refrescarCobroClip(doc.ref, {minMs: 0});
+}
+
+// Aviso de Clip: {id, origin, event_type}, sin firma y una sola vez. Nunca
+// se cree: solo dispara la consulta a Clip, y solo para cobros nuestros
+// abiertos. Siempre responde 200.
+exports.webhookClip = onRequest(
+    {secrets: [CLIP_API_KEY, CLIP_API_SECRET], maxInstances: 2, timeoutSeconds: 30,
+      memory: "256MiB"},
+    async (req, res) => {
+      if (req.method !== "POST") {
+        res.status(405).end();
+        return;
+      }
+      const id = req.body && typeof req.body.id === "string" ? req.body.id.trim() : "";
+      if (!/^pinpad-[A-Za-z0-9-]{8,80}$/.test(id)) {
+        res.status(200).json({ok: true});
+        return;
+      }
+      try {
+        const q = await db.collectionGroup(COL_PAGOS_CLIP)
+            .where("pinpadRequestId", "==", id).limit(1).get();
+        if (q.empty) {
+          await adoptarIntentoClip(id);
+        } else if (q.docs[0].data().estado === "pendiente") {
+          await refrescarCobroClip(q.docs[0].ref, {minMs: 0});
+        }
+      } catch (e) {
+        logger.error("webhookClip", {id, error: e.message});
+      }
+      res.status(200).json({ok: true});
     },
 );
