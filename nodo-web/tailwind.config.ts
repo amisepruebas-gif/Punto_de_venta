@@ -36,6 +36,31 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Un color, un significado (guía visual de la caja).
+        marca: {
+          DEFAULT: "#2CC9F9",
+          texto: "#0A6E99",
+          suave: "#E2F6FD",
+          oscuro: "#075A80",
+        },
+        lealtad: {
+          DEFAULT: "#7D3E95",
+          texto: "#6A2F80",
+          suave: "#F4ECF7",
+          borde: "#E3D3EC",
+        },
+        cobro: {
+          DEFAULT: "#0F7A45",
+          texto: "#0D6B3E",
+          suave: "#E6F6EC",
+          claro: "#E3F7EC",
+        },
+        aviso: {
+          DEFAULT: "#7A4A00",
+          suave: "#FFF3D1",
+          borde: "#F2D08A",
+          badge: "#FFE3A3",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

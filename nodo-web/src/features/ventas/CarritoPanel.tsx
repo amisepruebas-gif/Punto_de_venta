@@ -1,10 +1,20 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CheckCircle2, CircleDashed, Gift, Minus, Plus, Trash2 } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleDashed,
+  Gift,
+  Minus,
+  Plus,
+  ScanBarcode,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCarrito, subtotalItem } from "./carritoStore";
 
 /**
- * Carrito compacto. Cada fila se elimina o desmarca por gesto:
+ * Lista de la venta actual, en su propia tarjeta (el cobro ya no flota
+ * encima, así que no necesita reservar espacio abajo). Cada fila se elimina
+ * o desmarca por gesto:
  *   - Swipe a la IZQUIERDA → revela botón rojo "Eliminar".
  *   - Swipe a la DERECHA → revela botón azul "Desmarcar" (o "Marcar"
  *     si ya está desmarcado).
@@ -13,34 +23,34 @@ import { useCarrito, subtotalItem } from "./carritoStore";
  * COBRAR queda bloqueado mientras haya algún desmarcado (la lógica de
  * bloqueo vive en PagoFooter).
  */
-type Props = {
-  /** Altura en px que ocupa el PagoFooter superpuesto. La pasa el padre
-   *  midiéndolo con ResizeObserver — necesario para que la zona scrolleable
-   *  reserve espacio inferior dinámico (transferencia + comisión + banner
-   *  de error/desmarcado pueden hacer crecer el footer). Antes era un
-   *  `pb-44` fijo (176px) que quedaba corto y "tragaba" los items últimos
-   *  detrás del footer cuando el carrito tenía 4+ filas. */
-  bottomPadding?: number;
-};
-
-const FALLBACK_PADDING = 280;
-
-export function CarritoPanel({ bottomPadding }: Props) {
+export function CarritoPanel() {
   const items = useCarrito((s) => s.items);
   const vacio = items.length === 0;
 
   return (
-    <section className="flex flex-1 flex-col overflow-hidden bg-transparent">
-      <div
-        className="flex-1 overflow-y-auto"
-        style={{ paddingBottom: (bottomPadding ?? FALLBACK_PADDING) + 16 }}
-      >
-        {/* Centrada por default. En tablets acostadas (760–1080 px) la lista
-            centrada caía debajo de la columna de pagos del PagoFooter (20rem a
-            la izquierda) y tapaba el + de los artículos: ahí va a su derecha
-            (21rem) y deja 5rem libres para los botones flotantes. */}
-        {vacio ? null : (
-          <ul className="mx-auto w-full max-w-[25.6rem] list-none space-y-1 p-2 min-[760px]:max-[1080px]:ml-[21rem] min-[760px]:max-[1080px]:mr-[5rem] min-[760px]:max-[1080px]:w-auto">
+    <section
+      aria-label="Venta actual"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card"
+    >
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3.5">
+        <span className="text-sm font-semibold">Venta actual</span>
+        <span className="text-[13px] text-muted-foreground">
+          {items.length} {items.length === 1 ? "artículo" : "artículos"}
+        </span>
+        {!vacio && (
+          <span className="ml-auto hidden truncate text-xs text-muted-foreground min-[480px]:block">
+            Desliza ← para quitar
+          </span>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {vacio ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
+            <ScanBarcode className="h-8 w-8" aria-hidden />
+            <p className="text-sm">Escanea o busca un artículo para empezar.</p>
+          </div>
+        ) : (
+          <ul className="list-none">
             {items.map((it) => (
               <CarritoRow key={it.key} itemKey={it.key} />
             ))}
@@ -169,7 +179,7 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
 
   return (
     <li
-      className="relative overflow-hidden rounded-md select-none touch-pan-y"
+      className="relative overflow-hidden border-b select-none touch-pan-y last:border-b-0"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -220,8 +230,8 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
 
       {/* Contenido — se desplaza con el gesto */}
       <div
-        className={`relative flex items-center gap-2 rounded-md border bg-card px-2 py-3 shadow-sm ${
-          it.no_registrado ? "border-rose-300 bg-rose-50/40" : ""
+        className={`relative flex min-h-[3.625rem] items-center gap-2.5 px-3 py-1.5 ${
+          it.no_registrado ? "bg-rose-50" : "bg-card"
         } ${
           desmarcado ? "opacity-50 saturate-0" : ""
         }`}
@@ -230,56 +240,17 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
           transition: dragX === null ? "transform 0.2s ease-out" : "none",
         }}
       >
-        {/* Controles horizontales: [+] [-] [cantidad]. La línea gift NO se puede
-            multiplicar (una tarjeta física = una denominación) → sin +/-; se
-            elimina deslizando. */}
-        {it.giftCard ? (
-          <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-amber-100 text-amber-600"
-            aria-label="Tarjeta de regalo"
-          >
-            <Gift className="h-4 w-4" />
-          </span>
-        ) : (
-          <>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => incrementar(it.key)}
-              aria-label="Más"
-              className="h-9 w-9 shrink-0"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => decrementar(it.key)}
-              aria-label="Menos"
-              className="h-9 w-9 shrink-0"
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-          </>
-        )}
-        <span className="shrink-0 text-sm font-bold tabular-nums leading-none">
-          {it.cantidad}
-          <span className="ml-0.5 text-[9px] font-normal text-muted-foreground">
-            pz
-          </span>
-        </span>
-
         {/* Miniatura */}
         {it.imagenUrl ? (
           <img
             src={it.imagenUrl}
             crossOrigin="anonymous"
             alt=""
-            className="h-9 w-9 shrink-0 rounded object-cover"
+            className="h-10 w-10 shrink-0 rounded-lg object-cover"
             loading="lazy"
           />
         ) : (
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted text-[9px] text-muted-foreground">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-[11px] font-semibold text-muted-foreground">
             {it.no_registrado ? "NR" : it.descripcion || "—"}
           </div>
         )}
@@ -287,39 +258,39 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
         {/* Centro: nombre + sigla + pills */}
         <div className="min-w-0 flex-1 leading-tight">
           <div className="flex flex-wrap items-center gap-1">
-            <p className="truncate text-xs font-semibold">
+            <p className="truncate text-[15px] font-semibold">
               {it.nombrePublico}
             </p>
             {desmarcado && (
-              <span className="rounded bg-amber-500/15 px-1 py-0 text-[9px] font-bold text-amber-700">
+              <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-bold text-amber-800">
                 DESMARCADO
               </span>
             )}
             {it.no_registrado && (
-              <span className="rounded bg-rose-500/15 px-1 py-0 text-[9px] font-bold text-rose-700">
+              <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[11px] font-bold text-rose-800">
                 NR
               </span>
             )}
             {it.talla && (
-              <span className="rounded bg-muted px-1 py-0 text-[9px] font-medium">
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium">
                 T{it.talla}
               </span>
             )}
             {it.seña && (
               <span
-                className="max-w-[16ch] truncate rounded bg-emerald-500/15 px-1 py-0 text-[9px] font-medium text-emerald-700"
+                className="max-w-[16ch] truncate rounded bg-cobro-suave px-1.5 py-0.5 text-[11px] font-medium text-cobro-texto"
                 title={`Seña: ${it.seña}`}
               >
                 SEÑA: {it.seña}
               </span>
             )}
             {tieneDescuento && (
-              <span className="rounded bg-amber-500/15 px-1 py-0 text-[9px] font-medium text-amber-700">
+              <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
                 DESC
               </span>
             )}
             {aply3x2Activo && (
-              <span className="rounded bg-violet-500/15 px-1 py-0 text-[9px] font-bold text-violet-700">
+              <span className="rounded bg-lealtad-suave px-1.5 py-0.5 text-[11px] font-bold text-lealtad-texto">
                 3×2
               </span>
             )}
@@ -327,7 +298,7 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
           {(it.descripcion ||
             (it.id && it.id !== "00000000") ||
             it.subvariacionCodigo) && (
-            <p className="truncate text-[10px] text-muted-foreground">
+            <p className="truncate text-[13px] text-muted-foreground">
               {it.subvariacionCodigo ? (
                 <span className="font-mono">{it.subvariacionCodigo}</span>
               ) : (
@@ -342,25 +313,62 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
             <button
               type="button"
               onClick={() => toggleAply3x2(it.key)}
-              className={`mt-0.5 rounded px-1.5 py-0 text-[9px] font-bold ${
+              className={`mt-1 h-7 rounded-md px-2 text-xs font-bold ${
                 aply3x2Activo
-                  ? "bg-violet-600 text-white"
-                  : "border border-violet-400 text-violet-700"
+                  ? "bg-lealtad text-white"
+                  : "border border-lealtad-borde bg-lealtad-suave text-lealtad-texto"
               }`}
             >
               {aply3x2Activo ? `3×2 ON (${it.aply_3x2}×)` : "3 X 2"}
             </button>
           )}
           {cantNum > 1 && cantNum < 3 && it.flag3x2 && !aply3x2Activo && (
-            <p className="text-[9px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground">
               mínimo 3 para 3×2
             </p>
           )}
         </div>
 
+        {/* Cantidad: [−] n [+], de 44 px para el dedo. La línea gift NO se
+            puede multiplicar (una tarjeta física = una denominación) → sin
+            +/−; se elimina deslizando. */}
+        {it.giftCard ? (
+          <span
+            className="flex h-11 w-[8.25rem] shrink-0 items-center justify-center gap-1.5 rounded-[10px] bg-amber-50 text-[13px] font-semibold text-amber-800"
+            title="Tarjeta de regalo"
+          >
+            <Gift className="h-[18px] w-[18px]" aria-hidden />
+            Regalo
+          </span>
+        ) : (
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => decrementar(it.key)}
+              aria-label="Una pieza menos"
+              className="h-11 w-11 rounded-[10px]"
+            >
+              <Minus className="h-[18px] w-[18px]" />
+            </Button>
+            <span className="w-9 text-center text-[17px] font-bold tabular-nums">
+              {it.cantidad}
+            </span>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => incrementar(it.key)}
+              aria-label="Una pieza más"
+              className="h-11 w-11 rounded-[10px]"
+            >
+              <Plus className="h-[18px] w-[18px]" />
+            </Button>
+          </div>
+        )}
+
         {/* Derecha: precio unitario + subtotal */}
-        <div className="shrink-0 text-right leading-tight">
-          <p className="text-[10px] text-muted-foreground">
+        <div className="min-w-[4.75rem] shrink-0 text-right leading-tight">
+          <p className="text-xs text-muted-foreground">
             {tieneDescuento ? (
               <>
                 <span className="line-through">${precioBase}</span> $
@@ -372,11 +380,11 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
             <span className="opacity-70"> c/u</span>
           </p>
           {it.mayoreoAply && (
-            <p className="text-[9px] font-bold uppercase text-emerald-600">
+            <p className="text-[11px] font-bold uppercase text-cobro-texto">
               Mayoreo {it.escalonMinPz ? `${it.escalonMinPz}+ pz` : ""}
             </p>
           )}
-          <p className="text-base font-bold tabular-nums">
+          <p className="text-[17px] font-bold tabular-nums">
             ${subtotal.toFixed(0)}
           </p>
         </div>

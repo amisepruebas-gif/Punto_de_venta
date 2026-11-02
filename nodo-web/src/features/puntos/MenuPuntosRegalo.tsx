@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Gift, UserPlus, UserX, WalletCards } from "lucide-react";
+import { claseBotonAccion } from "@/features/ventas/BarraAcciones";
+import { cn } from "@/lib/utils";
 
 type Props = {
   onPreRegistro: () => void;
@@ -11,12 +13,10 @@ type Props = {
 };
 
 /**
- * Botón flotante "Cashback y regalo". Junta en un menú las acciones de lealtad
- * que no se usan en cada venta (pre-registrar cliente, vender y recargar
- * tarjeta de regalo), para que la pila de Ventas quepa en tablets chicas.
- * Con un cliente en espera lleva un punto y permite quitarlo.
- * El menú abre a la izquierda y hacia abajo del botón: hacia arriba lo
- * recortaría el área del carrito cuando el botón queda hasta arriba.
+ * Botón "Cashback y regalo" de la barra de acciones. Junta en un menú las
+ * acciones de lealtad que no se usan en cada venta (pre-registrar cliente,
+ * vender y recargar tarjeta de regalo). Con un cliente en espera lleva un
+ * punto y permite quitarlo. El menú abre hacia arriba, sobre la lista.
  */
 export function MenuPuntosRegalo({
   onPreRegistro,
@@ -76,19 +76,20 @@ export function MenuPuntosRegalo({
   ];
 
   return (
-    <div ref={ref} className="pointer-events-auto relative shrink-0">
+    <div ref={ref} className="relative min-w-0">
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
         aria-label="Cashback y tarjetas de regalo"
         aria-haspopup="menu"
         aria-expanded={abierto}
-        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-black/20 transition-transform hover:scale-105 hover:bg-amber-600 active:scale-95"
+        className={cn(claseBotonAccion, "border-lealtad-borde text-lealtad-texto")}
       >
-        <Gift className="h-6 w-6" />
+        <Gift className="h-5 w-5 shrink-0" aria-hidden />
+        <span className="line-clamp-2">Cashback y regalo</span>
         {pendienteCorreo && (
           <span
-            className="absolute right-0.5 top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-indigo-600"
+            className="absolute right-2 top-1.5 h-3 w-3 rounded-full border-2 border-card bg-lealtad"
             aria-label="Hay un cliente en espera"
           />
         )}
@@ -96,7 +97,7 @@ export function MenuPuntosRegalo({
       {abierto && (
         <div
           role="menu"
-          className="absolute right-full top-0 mr-2 flex w-64 flex-col gap-1 rounded-lg border bg-card p-1.5 shadow-xl"
+          className="absolute bottom-full right-0 z-40 mb-2 flex w-64 flex-col gap-1 rounded-lg border bg-card p-1.5 shadow-xl"
         >
           {opciones.map(({ label, Icono, color, onClick }) => (
             <button

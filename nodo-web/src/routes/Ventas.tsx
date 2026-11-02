@@ -23,11 +23,8 @@ import { ApartadoModal } from "@/features/apartados/ApartadoModal";
 import { ApartadosSheet } from "@/features/apartados/ApartadosSheet";
 import { TicketModal } from "@/features/ventas/TicketModal";
 import { VentaRealizadaOverlay } from "@/features/ventas/VentaRealizadaOverlay";
-import { FloatingChatButton } from "@/features/chat-grupo/FloatingChatButton";
-import { FloatingApartarButton } from "@/features/apartados/FloatingApartarButton";
-import { FloatingNoRegistradoButton } from "@/features/ventas/FloatingNoRegistradoButton";
-import { FloatingReimprimirButton } from "@/features/ventas/FloatingReimprimirButton";
-import { PilaBotonesFlotantes } from "@/features/ventas/PilaBotonesFlotantes";
+import { BarraAcciones, BotonAccion } from "@/features/ventas/BarraAcciones";
+import { BotonCabecera, BotonCorte } from "@/features/ventas/BotonCabecera";
 import { RegistrosVentasSheet } from "@/features/ventas/historial/RegistrosVentasSheet";
 import { PinPromptModal } from "@/features/ventas/historial/PinPromptModal";
 import { usePinVentas } from "@/features/ventas/historial/usePinVentas";
@@ -45,7 +42,16 @@ import { formatearTicketEscPos } from "@/features/ventas/ticketEscPos";
 import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
 import { useBackHandler } from "@/lib/back-handler";
 import { useApariencia } from "@/features/apariencia/useApariencia";
-import { Bookmark, ListOrdered, Settings, Truck } from "lucide-react";
+import {
+  Bookmark,
+  BookmarkPlus,
+  ListOrdered,
+  MessageSquare,
+  PackagePlus,
+  Printer,
+  Settings,
+  Truck,
+} from "lucide-react";
 import { useResurtidosPendientesCount } from "@/features/resurtidos/useResurtidosPendientesCount";
 import type { Articulo, Venta } from "@shared";
 import { MenuPuntosRegalo } from "@/features/puntos/MenuPuntosRegalo";
@@ -96,18 +102,20 @@ import { marcarCajaOcupada } from "@/lib/cajaOcupada";
 
 export function Ventas() {
   const navigate = useNavigate();
-  const { negocioId, sucursalId, nodoId } = useNodoSession();
+  const { negocioId, sucursalId, nodoId, session } = useNodoSession();
   const { sucursal } = useSucursal();
   const { corte } = useCorteActivo();
-  const { limpiar, enTurno, items, agregar } = useCarrito();
+  const { limpiar, items, agregar } = useCarrito();
   const { byId: articulosById } = useArticulos();
   const { fondo, fondoOpacidad, cabecera, cabeceraOpacidad, logo } =
     useApariencia();
   const resurtidosPendientes = useResurtidosPendientesCount();
   usePuntosColaFlush();
   const pendientePuntos = useClientePuntos((s) => s.pendiente);
-  const sinVendedor = !enTurno;
-  const carritoVacio = items.length === 0;
+  // "Caja 1 · Centro" junto al logo, para saber en qué caja se está.
+  const nombreCaja = [session?.nombreNodo, sucursal?.nombre]
+    .filter(Boolean)
+    .join(" · ");
 
   // Higiene (money-safety): al quedar VACÍO el carrito (venta finalizada o
   // vaciado manual) no arrastrar una `tarjetaPendiente` rancia a otra venta.
@@ -122,12 +130,6 @@ export function Ventas() {
       useClientePuntos.getState().limpiarGiftPendiente();
     }
   }, [items.length]);
-  const banner =
-    sinVendedor && !carritoVacio
-      ? "Selecciona un vendedor para cobrar"
-      : carritoVacio && sinVendedor
-      ? "Carrito vacío · selecciona un vendedor"
-      : null;
   const [corteOpen, setCorteOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [apartarOpen, setApartarOpen] = useState(false);
@@ -179,24 +181,6 @@ export function Ventas() {
   // lo dejáramos dentro de ChatGrupoModal, el cajero solo escucharía el
   // sonido al tener el chat abierto, que es lo contrario de lo útil.
   const chatData = useChatGrupoNodo();
-
-  // Altura real del PagoFooter — la usa CarritoPanel como padding inferior
-  // del scroll. Sin esto, los items que caen detrás del footer (cuando hay
-  // muchos en el carrito) quedan inalcanzables: scroll bottom no los
-  // muestra completos. Reactivo a transferencia, banners, comisión, etc.
-  const footerRef = useRef<HTMLDivElement>(null);
-  const [footerHeight, setFooterHeight] = useState(280);
-
-  useEffect(() => {
-    const el = footerRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver((entries) => {
-      const h = entries[0]?.contentRect.height;
-      if (typeof h === "number" && h > 0) setFooterHeight(Math.ceil(h));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
   // El preview lleva una `idempotencyKey` generada al momento de cobrar,
   // para que un retry de `crearVenta` (timeout, etc.) no duplique la venta:
   // misma key → mismo doc id → la transacción detecta que ya existe y
@@ -1004,7 +988,7 @@ export function Ventas() {
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <header className="relative flex shrink-0 items-center gap-2 overflow-hidden border-b px-3 py-2">
+      <header className="relative flex h-14 shrink-0 items-center gap-1 overflow-hidden border-b bg-card px-2.5 min-[1000px]:gap-1.5 min-[1000px]:px-3">
         {/* Capa de imagen de cabecera con opacidad ajustable. Va detrás del
             contenido. Si no hay cabecera elegida, no se renderiza. */}
         {cabecera.src && (
@@ -1017,68 +1001,50 @@ export function Ventas() {
             aria-hidden
           />
         )}
-        <div className="relative z-10 flex min-w-0 max-w-[14rem] shrink items-center">
+        <div className="relative z-10 flex min-w-0 shrink items-center gap-2.5">
           {logo.src ? (
             <img
               src={logo.src}
-              alt="Logo"
-              className="h-9 max-w-[12rem] object-contain"
+              alt="Amise"
+              className="h-6 max-w-full object-contain min-[1000px]:h-7"
               draggable={false}
             />
           ) : (
             <span className="truncate text-sm font-semibold">Amise</span>
           )}
+          {nombreCaja && (
+            <span className="hidden truncate text-[13px] text-muted-foreground min-[1000px]:block">
+              {nombreCaja}
+            </span>
+          )}
         </div>
-        <div className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
-          <SelectorVendedor className="max-w-[18rem]" />
-          <Button
-            variant="ghost"
-            size="icon"
+        <div className="relative z-10 ml-auto flex shrink-0 items-center gap-1 min-[1000px]:gap-1.5">
+          <SelectorVendedor />
+          <BotonCabecera
+            icono={ListOrdered}
+            etiqueta="Registros"
             onClick={() => setPinOpen(true)}
-            aria-label="Registros de venta"
-          >
-            <ListOrdered className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
+          />
+          <BotonCabecera
+            icono={Bookmark}
+            etiqueta="Apartados"
             onClick={() => setApartadosOpen(true)}
-            aria-label="Apartados"
-          >
-            <Bookmark className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
+          />
+          <BotonCabecera
+            icono={Truck}
+            etiqueta="Resurtidos"
             onClick={() => navigate("/resurtidos")}
-            aria-label="Resurtidos"
-            className="relative"
-          >
-            <Truck className="h-5 w-5" />
-            {resurtidosPendientes > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">
-                {resurtidosPendientes}
-              </span>
-            )}
-          </Button>
+            badge={resurtidosPendientes}
+          />
           {/* Solo aparece si hay cashback/tarjetas/regalos sin enviar. */}
           <ColaPuntosAviso />
-          <Button
-            size="sm"
-            onClick={() => setCorteOpen(true)}
-            className={`h-7 rounded-full border border-white/30 backdrop-blur-sm transition-colors ${
-              corte
-                ? "bg-emerald-500/70 text-white hover:bg-emerald-500/80"
-                : "bg-white/20 text-foreground hover:bg-white/40"
-            }`}
-          >
-            {corte ? "Corte en curso" : "Iniciar corte"}
-          </Button>
+          <BotonCorte abierto={!!corte} onClick={() => setCorteOpen(true)} />
           <Button
             variant="ghost"
             size="icon"
             onClick={() => navigate("/ajustes")}
             aria-label="Ajustes"
+            className="h-11 w-11"
           >
             <Settings className="h-5 w-5" />
           </Button>
@@ -1086,9 +1052,10 @@ export function Ventas() {
       </header>
 
       {/* Cuerpo principal — wrapper con imagen de fondo. La imagen va en
-          una capa absoluta detrás de todo el contenido; el contenido sigue
-          como siblings normales pero con `z-10` para quedar encima. */}
-      <div className="relative flex flex-1 flex-col overflow-hidden">
+          una capa absoluta detrás de todo el contenido; lo demás va en
+          tarjetas encima. Acostada: lista a la izquierda y cobro a la
+          derecha; parada (menos de 860 px), el cobro va abajo. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
         {fondo.src && (
           <div
             className="pointer-events-none absolute inset-0 bg-cover bg-center"
@@ -1100,74 +1067,78 @@ export function Ventas() {
           />
         )}
 
-        {/* Banner de estado (sin vendedor / carrito vacío) */}
-        {banner && (
-          <div className="relative z-10 border-b bg-amber-50 px-3 py-1 text-center text-xs font-medium text-amber-900">
-            {banner}
-          </div>
-        )}
-
-        {/* Buscador (autocomplete) en la parte superior; carrito ocupa el área principal.
-            z-30 (mayor que el bloque de abajo z-10) para que el desplegable de
-            sugerencias quede por encima de la fila carrito+footer. */}
-        <div className="relative z-30">
-          <BuscadorArticulo
-            ref={buscadorRef}
-            onPedirVariacion={setVarPickerPadre}
-            onPedirSena={setSenaPadre}
-          />
-        </div>
-        {/* `relative` para anclar el PagoFooter como overlay al fondo. El carrito
-            se extiende a toda la altura disponible y es scrollable; el footer
-            flota encima con fondo transparente y `pointer-events-none` en las
-            zonas vacías para que puedas ver y hacer click en los items que
-            quedan detrás de los huecos entre botones. */}
-        <div className="relative z-10 flex flex-1 overflow-hidden">
-          <CarritoPanel bottomPadding={footerHeight} />
-
-          <div
-            ref={footerRef}
-            className="pointer-events-none absolute inset-x-0 bottom-0"
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2.5 p-2.5 min-[860px]:flex-row min-[860px]:gap-3 min-[860px]:p-3">
+          <section
+            aria-label="Venta"
+            className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5"
           >
-            <PagoFooter
-              resetSignal={resetPuntosSignal}
-              onCobrar={(data) =>
-                setPreview({ ...data, idempotencyKey: generarID() })
-              }
-            />
-          </div>
+            {/* z-30 para que el desplegable de sugerencias quede encima de
+                la lista. */}
+            <div className="relative z-30">
+              <BuscadorArticulo
+                ref={buscadorRef}
+                onPedirVariacion={setVarPickerPadre}
+                onPedirSena={setSenaPadre}
+              />
+            </div>
 
-          {/* Botones flotantes, de abajo hacia arriba. Viven en el área del
-              carrito: empiezan debajo del buscador (con o sin banner) y la
-              pila los pasa a otra columna si la pantalla es baja. */}
-          <PilaBotonesFlotantes>
-            <FloatingChatButton
-              onClick={() => setChatOpen(true)}
-              // Mientras el chat está abierto, el badge se oculta (los mensajes
-              // se están viendo en vivo). marcarApertura ya marca leídos al
-              // abrir, así que cerrar dejará noLeidos en 0 hasta que llegue
-              // un mensaje nuevo.
-              noLeidos={chatOpen ? 0 : chatData.noLeidos}
-            />
-            <FloatingApartarButton onClick={() => setApartarOpen(true)} />
-            <FloatingNoRegistradoButton onClick={() => setNoRegOpen(true)} />
-            <FloatingReimprimirButton
-              onClick={handleReimprimir}
-              disabled={!ultimaVenta}
-              numeroDeVenta={ultimaVenta?.numeroDeVenta}
-            />
-            <MenuPuntosRegalo
-              onPreRegistro={() => setPreRegOpen(true)}
-              onVenderRegalo={() => setGiftOpen(true)}
-              onRecargarRegalo={() => setRecargaOpen(true)}
-              pendienteCorreo={pendientePuntos?.correo ?? null}
-              onQuitarPendiente={() => {
-                useClientePuntos.getState().limpiarPendiente();
-                setToast("Se quitó al cliente en espera.");
-                window.setTimeout(() => setToast(null), 3000);
-              }}
-            />
-          </PilaBotonesFlotantes>
+            <CarritoPanel />
+
+            <BarraAcciones>
+              <BotonAccion
+                icono={Printer}
+                etiqueta="Reimprimir"
+                onClick={handleReimprimir}
+                disabled={!ultimaVenta}
+                ariaLabel={
+                  ultimaVenta
+                    ? `Reimprimir ticket #${ultimaVenta.numeroDeVenta ?? ""}`.trim()
+                    : "Sin ventas para reimprimir"
+                }
+              />
+              <BotonAccion
+                icono={PackagePlus}
+                etiqueta="No registrado"
+                onClick={() => setNoRegOpen(true)}
+                ariaLabel="Vender artículo no registrado"
+              />
+              <BotonAccion
+                icono={BookmarkPlus}
+                etiqueta="Apartar"
+                onClick={() => setApartarOpen(true)}
+                ariaLabel="Crear apartado"
+              />
+              <MenuPuntosRegalo
+                onPreRegistro={() => setPreRegOpen(true)}
+                onVenderRegalo={() => setGiftOpen(true)}
+                onRecargarRegalo={() => setRecargaOpen(true)}
+                pendienteCorreo={pendientePuntos?.correo ?? null}
+                onQuitarPendiente={() => {
+                  useClientePuntos.getState().limpiarPendiente();
+                  setToast("Se quitó al cliente en espera.");
+                  window.setTimeout(() => setToast(null), 3000);
+                }}
+              />
+              <BotonAccion
+                icono={MessageSquare}
+                etiqueta="Chat"
+                onClick={() => setChatOpen(true)}
+                // Mientras el chat está abierto, el badge se oculta (los
+                // mensajes se están viendo en vivo). marcarApertura ya marca
+                // leídos al abrir, así que cerrar dejará noLeidos en 0 hasta
+                // que llegue un mensaje nuevo.
+                badge={chatOpen ? 0 : chatData.noLeidos}
+                ariaLabel="Abrir chat"
+              />
+            </BarraAcciones>
+          </section>
+
+          <PagoFooter
+            resetSignal={resetPuntosSignal}
+            onCobrar={(data) =>
+              setPreview({ ...data, idempotencyKey: generarID() })
+            }
+          />
         </div>
       </div>
 
@@ -1314,7 +1285,7 @@ export function Ventas() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-32 left-1/2 z-40 w-[min(90vw,28rem)] -translate-x-1/2 rounded-md bg-primary px-4 py-3 text-center text-sm text-primary-foreground shadow-lg"
+          className="pointer-events-none fixed bottom-32 left-1/2 z-40 w-[min(90vw,28rem)] -translate-x-1/2 rounded-md bg-primary px-4 py-3 text-center text-sm text-primary-foreground shadow-lg"
         >
           {toast}
         </div>

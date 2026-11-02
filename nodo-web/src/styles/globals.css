@@ -3,27 +3,31 @@
 @tailwind utilities;
 
 @layer base {
+  /* Colores de Amise (guía visual de la caja). El azul de marca (#2CC9F9)
+     solo va en el logo y en los bordes de lo elegido: sobre blanco no se lee
+     como texto, y el anillo de foco usa el azul oscuro para verse con el
+     teclado físico. */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --background: 210 20% 96.1%;
+    --foreground: 210 34.4% 12.5%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 210 34.4% 12.5%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 210 34.4% 12.5%;
+    --primary: 198 87.7% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 21.4% 94.5%;
+    --secondary-foreground: 210 34.4% 12.5%;
+    --muted: 210 21.4% 94.5%;
+    --muted-foreground: 212.5 11.7% 40.4%;
+    --accent: 195.6 87.1% 93.9%;
+    --accent-foreground: 198.8 89.6% 26.5%;
+    --destructive: 354.9 63% 47.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 16.7% 88.2%;
+    --input: 210 16.7% 88.2%;
+    --ring: 198 87.7% 32%;
+    --radius: 0.625rem;
   }
 }
 

@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Trash2, X, Layers } from "lucide-react";
+import { Trash2, X, Layers, ScanBarcode } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useArticulos, type SearchEntry } from "@/features/articulos/useArticulos";
@@ -240,13 +240,20 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
   const carritoVacio = items.length === 0;
 
   return (
-    <div ref={wrapRef} className="relative border-b bg-transparent">
-      <div className="flex items-center gap-2 p-3">
+    <div ref={wrapRef} className="relative">
+      <div className="flex h-[3.25rem] items-center gap-2 rounded-xl border-[1.5px] border-border bg-card pl-3 pr-1 transition-colors focus-within:border-marca">
+        <ScanBarcode
+          className="h-[22px] w-[22px] shrink-0 text-muted-foreground"
+          aria-hidden
+        />
         <div className="relative min-w-0 flex-1">
           <Input
             ref={inputRef}
+            aria-label="Buscar artículo"
             placeholder={
-              loading ? "Cargando artículos…" : "Buscar por nombre, sigla, ID…"
+              loading
+                ? "Cargando artículos…"
+                : "Escanea o busca por nombre, sigla o ID"
             }
             value={q}
             onChange={(e) => {
@@ -277,7 +284,7 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
             }}
             autoFocus
             inputMode={hayTecladoFisico ? "none" : "search"}
-            className="rounded-full pl-4 pr-11"
+            className="h-11 rounded-none border-0 bg-transparent px-1 pr-11 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
           />
           {q && (
             <button
@@ -287,14 +294,14 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
                 setAbierto(false);
               }}
               aria-label="Limpiar búsqueda"
-              className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
             >
               <X className="h-5 w-5" />
             </button>
           )}
 
           {abierto && q.trim() && (
-            <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-[21rem] overflow-y-auto overscroll-contain rounded-md border bg-card shadow-lg">
+            <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[21rem] overflow-y-auto overscroll-contain rounded-md border bg-card shadow-lg">
               {sugerencias.length === 0 ? (
                 <p className="px-3 py-2 text-sm text-muted-foreground">
                   {loading ? "Cargando…" : "Sin resultados"}
@@ -379,20 +386,15 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
         </div>
         <Button
           variant="ghost"
-          size="sm"
           onClick={() => limpiar()}
           disabled={carritoVacio}
-          className="h-9 shrink-0 rounded-full"
+          className="h-11 shrink-0 gap-1.5 rounded-[9px] bg-muted px-3 text-sm font-semibold hover:bg-border"
         >
-          <Trash2 className="mr-1 h-3.5 w-3.5" /> Vaciar
+          <Trash2 className="h-[18px] w-[18px]" aria-hidden /> Vaciar
         </Button>
-        <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-          {items.length}{" "}
-          {items.length === 1 ? "artículo" : "artículos"}
-        </span>
       </div>
       {aviso && (
-        <p role="alert" className="px-4 pb-2 text-sm font-medium text-destructive">
+        <p role="alert" className="px-1 pt-1.5 text-sm font-medium text-destructive">
           {aviso}
         </p>
       )}

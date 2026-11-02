@@ -1,12 +1,28 @@
 import { useEffect } from "react";
+import { ChevronDown } from "lucide-react";
 import { useEquipo } from "@/features/equipo/useEquipo";
 import { useCarrito } from "./carritoStore";
-import { Button } from "@/components/ui/button";
 
 type Props = {
   className?: string;
 };
 
+/** "Vendedor Prueba" → "VP", para el círculo del chip. */
+function iniciales(nombre: string): string {
+  return (
+    nombre
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]!.toUpperCase())
+      .join("") || "?"
+  );
+}
+
+/**
+ * Chip "En turno" de la cabecera. Sin vendedor elegido va en ámbar: no se
+ * puede cobrar hasta elegir (el panel de cobro también lo avisa).
+ */
 export function SelectorVendedor({ className = "" }: Props) {
   const { equipo, loading } = useEquipo();
   const { enTurno, setVendedor } = useCarrito();
@@ -33,53 +49,86 @@ export function SelectorVendedor({ className = "" }: Props) {
   const sinEquipo = equipo.length === 0;
   const unico = equipo.length === 1;
   const multi = equipo.length > 1;
+  const elegido = !!enTurno && equipo.some((e) => e.nombre === enTurno);
 
-  return (
-    <div className={`flex min-w-0 items-center gap-1 ${className}`}>
-      <span className="shrink-0 text-xs text-muted-foreground">En turno:</span>
-      {sinEquipo && (
-        <span className="shrink-0 text-xs text-muted-foreground">
-          (sin equipo)
+  const etiqueta = unico && !elegido ? "Toca para elegir" : "En turno";
+  const nombre = elegido
+    ? enTurno!
+    : sinEquipo
+      ? "Sin equipo"
+      : unico
+        ? equipo[0]!.nombre
+        : "Elegir";
+
+  const chip = `relative flex h-11 min-w-0 items-center gap-2 rounded-full border pl-1 pr-2.5 text-left ${
+    elegido ? "border-border bg-muted" : "border-aviso-borde bg-aviso-suave"
+  } ${className}`;
+
+  const contenido = (
+    <>
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+          elegido ? "bg-marca-suave text-marca-oscuro" : "bg-card text-aviso"
+        }`}
+        aria-hidden
+      >
+        {elegido ? iniciales(enTurno!) : unico ? iniciales(nombre) : "?"}
+      </span>
+      <span className="flex min-w-0 flex-col items-start leading-tight">
+        <span className="text-[11px] text-muted-foreground">{etiqueta}</span>
+        <span className="max-w-[6.5rem] truncate text-sm font-semibold min-[1000px]:max-w-[9rem]">
+          {nombre}
         </span>
-      )}
-      {unico && (
-        <Button
-          size="sm"
-          onClick={() =>
-            setVendedor(equipo[0]!.nombre, equipo[0]!.idUsuario)
-          }
-          className={`h-7 shrink-0 rounded-full border border-white/30 backdrop-blur-sm transition-colors ${
-            enTurno === equipo[0]!.nombre
-              ? "bg-white/70 text-foreground hover:bg-white/80"
-              : "bg-white/20 text-foreground hover:bg-white/40"
-          }`}
-        >
-          {equipo[0]!.nombre}
-        </Button>
-      )}
+      </span>
       {multi && (
-        <select
-          value={enTurno ?? ""}
-          onChange={(ev) => {
-            const nombre = ev.target.value;
-            if (!nombre) return;
-            const m = equipo.find((e) => e.nombre === nombre);
-            if (m) setVendedor(m.nombre, m.idUsuario);
-          }}
-          className="h-7 shrink-0 rounded-full border border-white/30 bg-white/20 px-2 text-xs text-foreground backdrop-blur-sm transition-colors hover:bg-white/40"
-        >
-          {!enTurno && (
-            <option value="" disabled>
-              — elegir —
-            </option>
-          )}
-          {equipo.map((e) => (
-            <option key={e.idUsuario} value={e.nombre}>
-              {e.nombre}
-            </option>
-          ))}
-        </select>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       )}
-    </div>
+    </>
+  );
+
+  if (sinEquipo) {
+    return <div className={chip}>{contenido}</div>;
+  }
+
+  if (unico) {
+    return (
+      <button
+        type="button"
+        onClick={() => setVendedor(equipo[0]!.nombre, equipo[0]!.idUsuario)}
+        className={chip}
+      >
+        {contenido}
+      </button>
+    );
+  }
+
+  // Varios vendedores: el <select> nativo va encima del chip, transparente,
+  // para que la tablet abra su lista de siempre.
+  return (
+    <label className={chip}>
+      {contenido}
+      <select
+        value={enTurno ?? ""}
+        onChange={(ev) => {
+          const elegidoNombre = ev.target.value;
+          if (!elegidoNombre) return;
+          const m = equipo.find((e) => e.nombre === elegidoNombre);
+          if (m) setVendedor(m.nombre, m.idUsuario);
+        }}
+        aria-label="Quién atiende"
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      >
+        {!enTurno && (
+          <option value="" disabled>
+            — elegir —
+          </option>
+        )}
+        {equipo.map((e) => (
+          <option key={e.idUsuario} value={e.nombre}>
+            {e.nombre}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
