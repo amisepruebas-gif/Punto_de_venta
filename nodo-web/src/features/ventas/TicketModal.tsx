@@ -8,7 +8,7 @@ import {
   compartirPDF,
 } from "./ticketService";
 import { subtotalItem } from "./carritoStore";
-import { desgloseVenta, type MovimientoPago, type Venta } from "@shared";
+import { desgloseVenta, etiquetaTarjetaClip, type MovimientoPago, type Venta } from "@shared";
 
 const METODO_LABEL: Record<MovimientoPago, string> = {
   pagoEfectivo: "EFECTIVO",
@@ -221,6 +221,14 @@ export function TicketModal({ venta, onClose }: Props) {
             <span className="text-muted-foreground">Monto pago</span>
             <span className="font-medium tabular-nums">${pago.toFixed(0)}</span>
           </div>
+          {venta.pagoClip && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Tarjeta</span>
+              <span className="font-medium">
+                {etiquetaTarjetaClip(venta.pagoClip) || "Terminal Clip"}
+              </span>
+            </div>
+          )}
           {venta.movimiento === "pagoEfectivo" && cambio > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Cambio</span>

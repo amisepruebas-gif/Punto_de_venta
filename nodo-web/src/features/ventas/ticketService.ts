@@ -1,5 +1,11 @@
 import QRCode from "qrcode";
-import { desgloseVenta, mostrarMetaTicket, precioCobradoLinea, subtotalLinea } from "@shared";
+import {
+  desgloseVenta,
+  etiquetaTarjetaClip,
+  mostrarMetaTicket,
+  precioCobradoLinea,
+  subtotalLinea,
+} from "@shared";
 import type { Venta, Sucursal, TicketLinea } from "@shared";
 
 type PdfBlock = Record<string, unknown>;
@@ -234,6 +240,19 @@ export async function generarTicketPDF(params: {
           { text: metodoPago, alignment: "right", fontSize: 9 },
         ],
       },
+      // Cobro con la terminal Clip: marca y últimos 4 dígitos.
+      venta.pagoClip
+        ? {
+            columns: [
+              { text: "Tarjeta", fontSize: 9 },
+              {
+                text: etiquetaTarjetaClip(venta.pagoClip) || "Terminal Clip",
+                alignment: "right",
+                fontSize: 9,
+              },
+            ],
+          }
+        : {},
       venta.movimiento === "pagoEfectivo"
         ? {
             columns: [

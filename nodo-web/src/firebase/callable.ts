@@ -1,5 +1,6 @@
 import { httpsCallable, type HttpsCallable } from "firebase/functions";
 import { functions } from "./config";
+import type { CobroClip } from "@shared";
 
 // ============================================================
 // Tipos de Cloud Functions (mismo contrato que functions/index.js)
@@ -358,3 +359,18 @@ export const fnCerrarCreditoRegalo = callable<
   CerrarCreditoRegaloInput,
   CerrarCreditoRegaloOutput
 >("cerrarCreditoRegalo");
+
+// ---- Clip: cobro con tarjeta en la terminal (CF → API de PinPad) ----
+// La caja nunca habla con Clip: las CF guardan las claves y siguen el pago.
+export type CobrarConClipInput = {
+  /** idempotencyKey de la venta: un cobro por venta. */
+  cobroId: string;
+  /** Lo que paga el cliente con tarjeta (con la comisión, si aplica). */
+  monto: number;
+  /** El intento anterior quedó incierto y el cajero ya revisó la terminal. */
+  reintentarIncierto?: boolean;
+};
+export type CobroClipInput = { cobroId: string };
+export const fnCobrarConClip = callable<CobrarConClipInput, CobroClip>("cobrarConClip");
+export const fnConsultarCobroClip = callable<CobroClipInput, CobroClip>("consultarCobroClip");
+export const fnCancelarCobroClip = callable<CobroClipInput, CobroClip>("cancelarCobroClip");

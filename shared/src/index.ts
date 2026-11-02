@@ -11,3 +11,4 @@ export * from "./pinHash";
 export * from "./passwordHash";
 export * from "./storageUrl";
 export * from "./puntos";
+export * from "./clip";

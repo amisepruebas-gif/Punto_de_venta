@@ -18,6 +18,7 @@ import {
   type Venta,
   type VentaArticulo,
   type MovimientoPago,
+  type PagoClip,
 } from "@shared";
 import {
   aplicarStockEnTx,
@@ -58,6 +59,15 @@ export type NuevaVentaInput = {
    * Si se omite, se genera una key nueva (back-compat — no idempotente).
    */
   idempotencyKey?: string;
+  /** Cobro con la terminal Clip de esta venta (marca y últimos 4 dígitos). */
+  pagoClip?: PagoClip;
+  /**
+   * false: si la transacción falla, NO caer al modo offline sino lanzar el
+   * error. Lo usa la caja al terminar una venta ya cobrada con terminal tras
+   * recargar: la venta pudo haberse creado antes y el `setDoc` offline la
+   * pisaría (y el stock se descontaría dos veces al reconciliar).
+   */
+  permitirOffline?: boolean;
 };
 
 export type VentaResult = {
@@ -162,6 +172,7 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
       }
     });
   } catch (err) {
+    if (input.permitirOffline === false) throw err;
     // FIX A8: fallback offline. numeroDeVenta con prefijo OFFLINE-
     // para ser reconciliado por Cloud Function al reconectar.
     // FASE 2: usar la misma huella en el setDoc — si el cliente reintenta
@@ -232,6 +243,7 @@ function buildVenta(p: NuevaVentaInput & {
   if (p.datosPagoDividido) v.datosPagoDividido = p.datosPagoDividido;
   if (p.comicion) v.comicion = p.comicion;
   if (p.statusComision) v.statusComision = p.statusComision;
+  if (p.pagoClip) v.pagoClip = p.pagoClip;
   if (p.descuentoPuntos && Number(p.descuentoPuntos) > 0) {
     v.descuentoPuntos = p.descuentoPuntos;
   }

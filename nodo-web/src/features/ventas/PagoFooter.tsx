@@ -15,6 +15,7 @@ import { useNodoSession } from "@/hooks/useNodoSession";
 import { useSucursal } from "@/features/sucursal/useSucursal";
 import { UsarPuntosModal } from "@/features/puntos/UsarPuntosModal";
 import { UsarRegaloModal } from "@/features/puntos/UsarRegaloModal";
+import { useTerminalClip } from "@/features/clip/useTerminalClip";
 import { telefonosIguales, type MovimientoPago, type VentaArticulo } from "@shared";
 
 /** Billetes con sus imágenes copiadas de `nodo_1/.../drawable/billete*`.
@@ -69,6 +70,9 @@ export type CobrarPayload = {
   regaloCodigo?: string;
   regaloPhone?: string;
   regaloEmail?: string;
+  /** Con tarjeta: el cobro se manda a la terminal Clip de la caja. Sin esto
+   *  (sin terminal, sin internet o "Cobrar sin terminal") se cobra a mano. */
+  terminalClip?: boolean;
 };
 
 type Props = {
@@ -92,6 +96,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   const { items, enTurno, vendedorIdUsuario } = useCarrito();
   const { negocioId, sucursalId, nodoId } = useNodoSession();
   const { sucursal } = useSucursal();
+  const { serial: terminalSerial, enLinea } = useTerminalClip();
 
   // Items "desmarcados" se mantienen visibles en el carrito pero se
   // excluyen del total y del COBRAR. Mientras haya alguno, el botón
@@ -194,6 +199,8 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     !!sucursal?.cobrarComision && metodo === "pagoTarjeta" && total > 0;
   const comision = comisionEnabled ? Math.round(total * comisionPct) : 0;
   const totalConTarjeta = total + comision;
+  // Con terminal Clip asignada y con internet, la tarjeta se cobra en ella.
+  const conTerminal = metodo === "pagoTarjeta" && !!terminalSerial && enLinea;
 
   const recibidoNum = Number(recibido) || 0;
   const cambio =
@@ -239,7 +246,8 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     setRecibido("");
   }
 
-  function cobrar() {
+  /** `aMano`: con terminal asignada, cobrarla por fuera ("Cobrar sin terminal"). */
+  function cobrar(aMano = false) {
     if (!negocioId || !sucursalId || !nodoId || !enTurno) return;
     if (vacio) return;
     if (tieneDesmarcados) {
@@ -276,6 +284,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
         ? {
             comicion: String(comision),
             statusComision: comisionEnabled ? "con comision" : "sin comision",
+            ...(conTerminal && !aMano ? { terminalClip: true } : {}),
           }
         : {}),
       ...(clientePuntos
@@ -362,9 +371,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
       ? `Efectivo · cambio ${pesos(cambio)}`
       : `Faltan ${pesos(faltan)} por recibir`
     : metodo === "pagoTarjeta"
-    ? comisionEnabled
-      ? "Tarjeta · con comisión"
-      : "Tarjeta"
+    ? `Tarjeta${conTerminal ? " · terminal Clip" : ""}${comisionEnabled ? " · con comisión" : ""}`
     : "Transferencia";
 
   return (
@@ -582,7 +589,11 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
               </div>
             )}
             <p className="text-[13px] text-muted-foreground">
-              Cobra en la terminal y después toca Cobrar.
+              {conTerminal
+                ? "Se manda a la terminal Clip: el cliente paga ahí."
+                : terminalSerial
+                  ? "Sin internet: cobra en la terminal por tu cuenta y después toca Cobrar."
+                  : "Cobra en la terminal y después toca Cobrar."}
             </p>
           </div>
         )}
@@ -642,12 +653,13 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
 
       <button
         type="button"
-        onClick={cobrar}
+        onClick={() => cobrar()}
         disabled={!puedeCobrar}
         className="flex h-[3.75rem] shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl bg-cobro text-white transition-colors hover:bg-cobro/90 active:bg-cobro/80 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
       >
         <span className="text-xl font-bold tabular-nums">
           Cobrar {pesos(totalACobrar)}
+          {conTerminal ? " en terminal" : ""}
         </span>
         <span
           className={`text-[13px] font-medium tabular-nums ${
@@ -657,6 +669,17 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
           {cobrarDetalle}
         </span>
       </button>
+      {conTerminal && (
+        // Respaldo: la terminal no responde o el cliente paga en otra.
+        <button
+          type="button"
+          onClick={() => cobrar(true)}
+          disabled={!puedeCobrar}
+          className="h-11 shrink-0 rounded-xl text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Cobrar sin terminal
+        </button>
+      )}
     </aside>
   );
 }

@@ -1,4 +1,4 @@
-import { desgloseVenta, mostrarMetaTicket, subtotalLinea } from "@shared";
+import { desgloseVenta, etiquetaTarjetaClip, mostrarMetaTicket, subtotalLinea } from "@shared";
 import type {
   Sucursal,
   Venta,
@@ -178,6 +178,12 @@ export function formatearTicketEscPos(
   out.push(
     `[C]<b>${MOVIMIENTO_ETIQUETA[venta.movimiento] ?? venta.movimiento}</b>\n`,
   );
+  // Cobro con la terminal Clip: marca y últimos 4 dígitos (sin "•", que la
+  // impresora no tiene).
+  if (venta.pagoClip) {
+    const tarjeta = etiquetaTarjetaClip(venta.pagoClip).replace(/•/g, "*") || "Terminal Clip";
+    out.push(`[C]${tarjeta}\n`);
+  }
   out.push("[L]\n");
 
   // Aviso INTERNO de sobreventa (se cobró sin stock suficiente). Discreto

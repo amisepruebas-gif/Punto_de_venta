@@ -93,6 +93,9 @@ export const paths = {
 
   sucursalData: (nid: string, sid: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_SUCURSALES_DATA}/${sid}`,
+  /** Cobro con la terminal Clip de una venta (lo escriben solo las CF). */
+  pagoClip: (nid: string, sid: string, cobroId: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_SUCURSALES_DATA}/${sid}/pagos_clip_web_new_version/${cobroId}`,
   ventaDia: (nid: string, sid: string, y: string, m: string, d: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_SUCURSALES_DATA}/${sid}/${COL_VENTAS}/${y}/${m}/${d}`,
   ventaItem: (

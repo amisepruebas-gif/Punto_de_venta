@@ -34,9 +34,15 @@ import { crearVenta } from "@/features/ventas/ventaService";
 import {
   codigoErrorPuntos,
   ean13Ok,
+  etiquetaTarjetaClip,
   generarID,
+  montoCobroClip,
+  pagoClipDeCobro,
   pendienteVigente,
   telefonosIguales,
+  ventaSinDescuentoConEfectivo,
+  type CobroClip,
+  type PagoClip,
 } from "@shared";
 import { formatearTicketEscPos } from "@/features/ventas/ticketEscPos";
 import { posDisponible, imprimirTicket } from "@/lib/pos-bridge";
@@ -76,7 +82,17 @@ import { ColaPuntosAviso } from "@/features/puntos/ColaPuntosAviso";
 import {
   useClientePuntos,
   type ClientePendiente,
+  type GiftPendiente,
+  type TarjetaPendiente,
 } from "@/features/puntos/clientePuntosStore";
+import { CobroClipOverlay } from "@/features/clip/CobroClipOverlay";
+import {
+  RecuperarCobroClip,
+  montoTarjetaDe,
+  type AccionRecuperar,
+} from "@/features/clip/RecuperarCobroClip";
+import { useCobroTerminal } from "@/features/clip/useCobroTerminal";
+import { useCobroClip, type VentaEnCobro } from "@/features/clip/clipStore";
 import {
   enviarPuntosAhora,
   usePuntosColaFlush,
@@ -99,6 +115,77 @@ import {
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
 import { marcarCajaOcupada } from "@/lib/cajaOcupada";
+
+/** Pendientes de lealtad de una venta (tarjeta a ligar, regalo a emitir). */
+type PendientesVenta = {
+  tarjPend: TarjetaPendiente | null;
+  giftPend: GiftPendiente | null;
+};
+
+/** Opciones de `ejecutarVenta` para el cobro con la terminal Clip. */
+type OpcionesVenta = {
+  /** La tarjeta ya se cobró (o el cajero lo confirmó): no se vuelve a cobrar. */
+  pagoClip?: PagoClip;
+  /** Venta retomada tras recargar: sus pendientes vienen guardados con el
+   *  cobro, porque la caja abrió con el carrito vacío y los limpió. */
+  pendientes?: PendientesVenta;
+  /** Terminar una venta ya cobrada tras recargar: sin el modo offline de
+   *  crearVenta, que podría pisar la venta si ya se había creado. */
+  sinOffline?: boolean;
+};
+
+/** Un descuento (cashback o regalo) no se pudo aplicar. Con la tarjeta ya
+ *  cobrada no aborta: se reintenta o la diferencia se cobra en efectivo. */
+class DescuentoFallido extends Error {
+  quitar: "cashback" | "regalo";
+  monto: number;
+  constructor(mensaje: string, quitar: "cashback" | "regalo", monto: number) {
+    super(mensaje);
+    this.quitar = quitar;
+    this.monto = monto;
+  }
+}
+
+/**
+ * Antes de cobrar en la terminal: que el cashback y el crédito de regalo
+ * alcancen (solo consulta). Si no, se detiene sin cobrar nada; así, ya
+ * cobrada la tarjeta, un descuento casi no puede fallar.
+ */
+async function revisarSaldosAntesDeTerminal(
+  codigoCashback: string | undefined,
+  cashbackUsar: number,
+  regaloUsar: number,
+  regaloIdent: { codigo?: string; phone?: string } | null,
+): Promise<void> {
+  if (cashbackUsar > 0) {
+    let disponible: number;
+    try {
+      const r = await fnConsultarSaldoPuntos({ codigo: codigoCashback });
+      disponible = r.data.exists ? Number(r.data.saldoUsable ?? r.data.saldoDinero) || 0 : 0;
+    } catch {
+      throw new Error("No se pudo revisar el cashback (sin conexión). Quítalo o reintenta.");
+    }
+    if (disponible < cashbackUsar) {
+      throw new Error("Cashback insuficiente. Ajusta el monto y reintenta.");
+    }
+  }
+  if (regaloUsar > 0 && regaloIdent) {
+    let saldo: { saldo: number; vencido: boolean };
+    try {
+      const r = await fnConsultarSaldoTarjetaRegalo({
+        ...(regaloIdent.codigo ? { codigo: regaloIdent.codigo } : {}),
+        ...(regaloIdent.phone ? { phone: regaloIdent.phone } : {}),
+      });
+      saldo = { saldo: Number(r.data.saldo) || 0, vencido: Boolean(r.data.vencido) };
+    } catch {
+      throw new Error("No se pudo revisar el crédito de regalo (sin conexión). Quítalo o reintenta.");
+    }
+    if (saldo.vencido) throw new Error("El crédito de regalo venció. Quítalo y reintenta.");
+    if (saldo.saldo < regaloUsar) {
+      throw new Error("Crédito de regalo insuficiente. Ajusta el monto y reintenta.");
+    }
+  }
+}
 
 export function Ventas() {
   const navigate = useNavigate();
@@ -202,6 +289,15 @@ export function Ventas() {
   // Loading que cubre el hueco entre "Confirmar" y "Venta realizada" (incluye la
   // acreditación de cashback, que es un await a la nube tras crear la venta).
   const [procesando, setProcesando] = useState(false);
+  // Cobro con la terminal Clip: pantalla y pasos (ver features/clip).
+  const terminal = useCobroTerminal({ negocioId, sucursalId });
+  // Cobro con terminal a medias de antes de recargar: se pregunta al abrir.
+  const registroClip = useCobroClip((s) => s.cobro);
+  const [recuperarClip, setRecuperarClip] = useState(
+    () => useCobroClip.getState().cobro !== null,
+  );
+  // Venta retomada desde un cobro a medias: lleva sus pendientes de lealtad.
+  const retomadoRef = useRef<{ cobroId: string; pendientes: PendientesVenta } | null>(null);
   const [ticketModalOpen, setTicketModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -210,6 +306,9 @@ export function Ventas() {
   // navegue atrás (lo hace `__handleAndroidBack` en back-handler.ts).
   useBackHandler(
     () => {
+      // A media venta (cobrando, en la terminal o retomando un cobro) atrás
+      // no hace nada: cerrar la vista previa perdería el aviso del cobro.
+      if (procesando || terminal.vista || recuperarClip) return true;
       if (salidaOpen) {
         setSalidaOpen(false);
         return true;
@@ -286,6 +385,9 @@ export function Ventas() {
       ticketModalOpen,
       preview,
       overlayShow,
+      procesando,
+      terminal.vista,
+      recuperarClip,
     ],
   );
 
@@ -333,36 +435,46 @@ export function Ventas() {
 
   // Envoltura: enciende el loading durante TODO el proceso (canje + crearVenta +
   // acreditación) y lo apaga en cualquier salida (éxito, vinculación o error).
-  async function confirmarVenta() {
+  // Sin argumentos cobra la venta de la vista previa (botón Confirmar); al
+  // retomar un cobro con terminal a medias se pasan su venta y sus opciones.
+  async function confirmarVenta(v: VentaEnCobro | null = preview, op?: OpcionesVenta) {
     setProcesando(true);
     // La recarga forzada remota espera a que termine (débito → venta → envíos).
     marcarCajaOcupada("cobro", true);
     try {
-      await ejecutarVenta();
+      const retomado = retomadoRef.current;
+      await ejecutarVenta(
+        v,
+        op ??
+          (retomado && v && retomado.cobroId === v.idempotencyKey
+            ? { pendientes: retomado.pendientes }
+            : {}),
+      );
     } finally {
       marcarCajaOcupada("cobro", false);
       setProcesando(false);
+      terminal.cerrar();
     }
   }
 
-  async function ejecutarVenta() {
-    if (!preview) throw new Error("Sin preview de venta");
+  async function ejecutarVenta(p: VentaEnCobro | null, op: OpcionesVenta = {}) {
+    if (!p) throw new Error("Sin preview de venta");
     if (!negocioId || !sucursalId || !nodoId) {
       throw new Error("Sesión del nodo inválida");
     }
-    const monto = preview.montoCobro;
-    const puntosTel = preview.puntosTelefono;
-    const descPuntos = preview.descuentoPuntos;
+    const monto = p.montoCobro;
+    const puntosTel = p.puntosTelefono;
+    const descPuntos = p.descuentoPuntos;
     const cashbackUsar = Number(descPuntos) || 0;
     // Fase 3 — crédito de regalo usado como descuento (NO ingreso: montoCobro ya
     // lo excluye). Se debita EN LÍNEA antes de crear la venta (como el cashback).
-    const regaloUsar = Number(preview.descuentoRegalo) || 0;
+    const regaloUsar = Number(p.descuentoRegalo) || 0;
     const regaloIdent =
       regaloUsar > 0
         ? {
-            codigo: preview.regaloCodigo,
-            phone: preview.regaloPhone,
-            email: preview.regaloEmail,
+            codigo: p.regaloCodigo,
+            phone: p.regaloPhone,
+            email: p.regaloEmail,
           }
         : null;
 
@@ -378,7 +490,7 @@ export function Ventas() {
     }
     // Usar cashback exige la tarjeta del cliente escaneada (el servidor
     // verifica que sea de ese monedero). Sin ella, se detiene sin debitar.
-    if (cashbackUsar > 0 && !preview.puntosCodigo) {
+    if (cashbackUsar > 0 && !p.puntosCodigo) {
       throw new Error(
         "Para usar cashback hay que escanear la tarjeta del cliente. Quita el descuento y aplícalo con la tarjeta.",
       );
@@ -387,126 +499,203 @@ export function Ventas() {
     // DÉBITO (pendingLock → si hay un canje en curso del mismo cliente devuelve 409
     // y aquí se aborta). NO se reusa el cobro entre recargas (eso requeriría verificar
     // si la venta ya existe → deferido); el residual es el huérfano raro (detectable).
-    const cobroId = preview.idempotencyKey;
-    // Cashback y crédito de regalo juntos: revisar el regalo ANTES del primer
-    // débito. Si no alcanza (o venció), el cobro se detiene sin debitar el
-    // cashback; antes el cashback quedaba debitado sin venta.
-    if (puntosTel && cashbackUsar > 0 && regaloUsar > 0 && regaloIdent) {
-      let saldoRegalo: { saldo: number; vencido: boolean };
+    const cobroId = p.idempotencyKey;
+
+    // Terminal Clip: la tarjeta se cobra ANTES de descontar y de guardar la
+    // venta (un rechazo es común; así no queda un débito sin venta). Antes se
+    // revisan los saldos (solo consulta). El cobro se guarda en la tablet: si
+    // la app se recarga a media espera, al abrir se retoma (RecuperarCobroClip).
+    let pagoClip = op.pagoClip;
+    if (p.terminalClip && !pagoClip) {
+      const previo = useCobroClip.getState().cobro;
+      if (previo && previo.cobroId !== cobroId) {
+        setRecuperarClip(true);
+        throw new Error("Hay un cobro con tarjeta anterior sin terminar. Resuélvelo primero.");
+      }
+      await revisarSaldosAntesDeTerminal(p.puntosCodigo, cashbackUsar, regaloUsar, regaloIdent);
+      const st = useClientePuntos.getState();
+      useCobroClip.getState().iniciar({
+        cobroId,
+        venta: p,
+        tarjPend: op.pendientes ? op.pendientes.tarjPend : st.tarjetaPendiente,
+        giftPend: op.pendientes ? op.pendientes.giftPend : st.giftPendiente,
+      });
       try {
-        const res = await fnConsultarSaldoTarjetaRegalo({
-          ...(regaloIdent.codigo ? { codigo: regaloIdent.codigo } : {}),
-          ...(regaloIdent.phone ? { phone: regaloIdent.phone } : {}),
-        });
-        saldoRegalo = { saldo: Number(res.data.saldo) || 0, vencido: Boolean(res.data.vencido) };
-      } catch {
-        throw new Error("No se pudo revisar el crédito de regalo (sin conexión). Quítalo o reintenta.");
-      }
-      if (saldoRegalo.vencido) {
-        throw new Error("El crédito de regalo venció. Quítalo y reintenta.");
-      }
-      if (saldoRegalo.saldo < regaloUsar) {
-        throw new Error("Crédito de regalo insuficiente. Ajusta el monto y reintenta.");
-      }
-    }
-    if (puntosTel && cashbackUsar > 0) {
-      // Drenar un 'cerrar' encolado de ESTE cliente antes del nuevo canje: un cierre
-      // previo que falló dejaría el candado abierto y rechazaría este cobro (409).
-      const cerrarPend = useClientePuntos
-        .getState()
-        .cola.find(
-          (x) =>
-            x.tipo === "cerrar" &&
-            (x.payload as { phone?: string }).phone === puntosTel,
-        );
-      if (cerrarPend) {
-        try {
-          await fnCerrarCanje(cerrarPend.payload as unknown as CerrarCanjeInput);
-          useClientePuntos.getState().quitarDeCola(cerrarPend.id);
-        } catch {
-          /* si falla, seguimos; el 409 de abajo lo reporta claro */
-        }
-      }
-      try {
-        await fnCanjearPuntos({
-          phone: puntosTel,
-          codigo: preview.puntosCodigo,
-          money: cashbackUsar,
-          idempotencyKey: cobroId,
-          pendingLock: true, // activa el candado del servidor (anti doble-débito)
+        pagoClip = await terminal.cobrar({
+          cobroId,
+          monto: montoCobroClip(p),
+          montoPago: p.montoPago,
         });
       } catch (e) {
-        // Conflicto (otro canje en curso del mismo cliente) → abortar claro; NO crear
-        // venta con descuento sin débito. Otro error (red/saldo) → abortar genérico.
-        const msg = e instanceof Error ? e.message : "";
-        throw new Error(
-          codigoErrorPuntos(e) === "permission-denied"
-            ? "La tarjeta no corresponde al cliente. Quita el descuento y vuelve a escanear."
-            : msg.includes("canje en curso")
-              ? "Ya hay un canje en curso para este cliente. Espera unos minutos y reintenta."
-              : "No se pudo usar el cashback (sin conexión o saldo). Quítalo o reintenta.",
-        );
+        // Sin pago: no queda nada en curso (el servidor ya cerró el cobro).
+        useCobroClip.getState().terminar();
+        throw e;
       }
+      useCobroClip.getState().avanzar("descuentos", { pagoClip });
     }
 
-    // Fase 3 — USAR crédito de regalo: se debita EN LÍNEA antes de crear la venta
-    // (mismo patrón que el cashback). Candado SEPARADO (regalosPendientes) anti
-    // doble-débito. El crédito es un DESCUENTO → NO es ingreso (montoCobro ya lo
-    // excluye). Idempotente por cobroId (= ventaId). Si falla, se aborta el cobro.
-    if (regaloUsar > 0 && regaloIdent) {
-      // Drenar TODOS los 'cerrarRegalo' encolados antes del nuevo débito: un cierre
-      // previo fallido dejaría su candado abierto y podría rechazar este cobro con
-      // 409. Se cierran todos (no solo el que empata por identificador) porque la
-      // MISMA tarjeta puede identificarse por código O por teléfono —canales
-      // distintos que resuelven al mismo monedero—, así que un match exacto fallaría.
-      // Cada cierre es idempotente (el server solo borra si el cobroId coincide).
-      const pendientesCerrar = useClientePuntos
-        .getState()
-        .cola.filter((x) => x.tipo === "cerrarRegalo");
-      for (const p of pendientesCerrar) {
+    try {
+      // Cashback y crédito de regalo juntos: revisar el regalo ANTES del primer
+      // débito. Si no alcanza (o venció), el cobro se detiene sin debitar el
+      // cashback; antes el cashback quedaba debitado sin venta.
+      if (puntosTel && cashbackUsar > 0 && regaloUsar > 0 && regaloIdent) {
+        let saldoRegalo: { saldo: number; vencido: boolean };
         try {
-          await fnCerrarCreditoRegalo(p.payload as unknown as CerrarCreditoRegaloInput);
-          useClientePuntos.getState().quitarDeCola(p.id);
+          const res = await fnConsultarSaldoTarjetaRegalo({
+            ...(regaloIdent.codigo ? { codigo: regaloIdent.codigo } : {}),
+            ...(regaloIdent.phone ? { phone: regaloIdent.phone } : {}),
+          });
+          saldoRegalo = { saldo: Number(res.data.saldo) || 0, vencido: Boolean(res.data.vencido) };
         } catch {
-          /* si falla, seguimos; el 409 de abajo lo reporta si aplica */
+          throw new DescuentoFallido(
+            "No se pudo revisar el crédito de regalo (sin conexión). Quítalo o reintenta.",
+            "regalo",
+            regaloUsar,
+          );
+        }
+        if (saldoRegalo.vencido) {
+          throw new DescuentoFallido("El crédito de regalo venció. Quítalo y reintenta.", "regalo", regaloUsar);
+        }
+        if (saldoRegalo.saldo < regaloUsar) {
+          throw new DescuentoFallido(
+            "Crédito de regalo insuficiente. Ajusta el monto y reintenta.",
+            "regalo",
+            regaloUsar,
+          );
         }
       }
-      try {
-        // Con la tarjeta, o con teléfono + correo (el servidor verifica que el
-        // correo sea de ese monedero).
-        await fnRedimirCreditoRegalo({
-          codigo: regaloIdent.codigo,
-          phone: regaloIdent.phone,
-          ...(regaloIdent.codigo ? {} : { email: regaloIdent.email }),
-          money: regaloUsar,
-          idempotencyKey: cobroId,
-          pendingLock: true,
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "";
-        throw new Error(
-          codigoErrorPuntos(e) === "permission-denied"
-            ? "La tarjeta o el correo no corresponden al cliente. Quita el crédito y vuelve a aplicarlo."
-            : msg.includes("en curso")
-            ? "Ya hay un uso de crédito en curso para esta tarjeta. Espera unos minutos y reintenta."
-            : msg.includes("vencido")
-            ? "El crédito de regalo venció. Quítalo y reintenta."
-            : msg.includes("insuficiente")
-            ? "Crédito de regalo insuficiente. Ajusta el monto y reintenta."
-            : msg.includes("no encontrad")
-            ? "Tarjeta o monedero no encontrado. Verifica el código."
-            : "No se pudo usar el crédito de regalo (sin conexión). Quítalo o reintenta.",
-        );
+      if (puntosTel && cashbackUsar > 0) {
+        // Drenar un 'cerrar' encolado de ESTE cliente antes del nuevo canje: un cierre
+        // previo que falló dejaría el candado abierto y rechazaría este cobro (409).
+        const cerrarPend = useClientePuntos
+          .getState()
+          .cola.find(
+            (x) =>
+              x.tipo === "cerrar" &&
+              (x.payload as { phone?: string }).phone === puntosTel,
+          );
+        if (cerrarPend) {
+          try {
+            await fnCerrarCanje(cerrarPend.payload as unknown as CerrarCanjeInput);
+            useClientePuntos.getState().quitarDeCola(cerrarPend.id);
+          } catch {
+            /* si falla, seguimos; el 409 de abajo lo reporta claro */
+          }
+        }
+        try {
+          await fnCanjearPuntos({
+            phone: puntosTel,
+            codigo: p.puntosCodigo,
+            money: cashbackUsar,
+            idempotencyKey: cobroId,
+            pendingLock: true, // activa el candado del servidor (anti doble-débito)
+          });
+        } catch (e) {
+          // Conflicto (otro canje en curso del mismo cliente) → abortar claro; NO crear
+          // venta con descuento sin débito. Otro error (red/saldo) → abortar genérico.
+          const msg = e instanceof Error ? e.message : "";
+          throw new DescuentoFallido(
+            codigoErrorPuntos(e) === "permission-denied"
+              ? "La tarjeta no corresponde al cliente. Quita el descuento y vuelve a escanear."
+              : msg.includes("canje en curso")
+                ? "Ya hay un canje en curso para este cliente. Espera unos minutos y reintenta."
+                : "No se pudo usar el cashback (sin conexión o saldo). Quítalo o reintenta.",
+            "cashback",
+            cashbackUsar,
+          );
+        }
       }
+
+      // Fase 3 — USAR crédito de regalo: se debita EN LÍNEA antes de crear la venta
+      // (mismo patrón que el cashback). Candado SEPARADO (regalosPendientes) anti
+      // doble-débito. El crédito es un DESCUENTO → NO es ingreso (montoCobro ya lo
+      // excluye). Idempotente por cobroId (= ventaId). Si falla, se aborta el cobro.
+      if (regaloUsar > 0 && regaloIdent) {
+        // Drenar TODOS los 'cerrarRegalo' encolados antes del nuevo débito: un cierre
+        // previo fallido dejaría su candado abierto y podría rechazar este cobro con
+        // 409. Se cierran todos (no solo el que empata por identificador) porque la
+        // MISMA tarjeta puede identificarse por código O por teléfono —canales
+        // distintos que resuelven al mismo monedero—, así que un match exacto fallaría.
+        // Cada cierre es idempotente (el server solo borra si el cobroId coincide).
+        const pendientesCerrar = useClientePuntos
+          .getState()
+          .cola.filter((x) => x.tipo === "cerrarRegalo");
+        for (const pc of pendientesCerrar) {
+          try {
+            await fnCerrarCreditoRegalo(pc.payload as unknown as CerrarCreditoRegaloInput);
+            useClientePuntos.getState().quitarDeCola(pc.id);
+          } catch {
+            /* si falla, seguimos; el 409 de abajo lo reporta si aplica */
+          }
+        }
+        try {
+          // Con la tarjeta, o con teléfono + correo (el servidor verifica que el
+          // correo sea de ese monedero).
+          await fnRedimirCreditoRegalo({
+            codigo: regaloIdent.codigo,
+            phone: regaloIdent.phone,
+            ...(regaloIdent.codigo ? {} : { email: regaloIdent.email }),
+            money: regaloUsar,
+            idempotencyKey: cobroId,
+            pendingLock: true,
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "";
+          throw new DescuentoFallido(
+            codigoErrorPuntos(e) === "permission-denied"
+              ? "La tarjeta o el correo no corresponden al cliente. Quita el crédito y vuelve a aplicarlo."
+              : msg.includes("en curso")
+              ? "Ya hay un uso de crédito en curso para esta tarjeta. Espera unos minutos y reintenta."
+              : msg.includes("vencido")
+              ? "El crédito de regalo venció. Quítalo y reintenta."
+              : msg.includes("insuficiente")
+              ? "Crédito de regalo insuficiente. Ajusta el monto y reintenta."
+              : msg.includes("no encontrad")
+              ? "Tarjeta o monedero no encontrado. Verifica el código."
+              : "No se pudo usar el crédito de regalo (sin conexión). Quítalo o reintenta.",
+            "regalo",
+            regaloUsar,
+          );
+        }
+      }
+    } catch (e) {
+      // Con la tarjeta ya cobrada, un descuento que falla no aborta la venta:
+      // se reintenta (los débitos son idempotentes por cobroId) o la diferencia
+      // se cobra en efectivo. Nunca se guarda un descuento sin débito.
+      if (!pagoClip || !(e instanceof DescuentoFallido)) throw e;
+      const tarjeta = etiquetaTarjetaClip(pagoClip);
+      const decision = await terminal.preguntarDescuento({
+        monto: montoTarjetaDe(p),
+        tarjeta,
+        quitar: e.quitar,
+        descuento: e.monto,
+        // Solo el motivo: el consejo del mensaje ("Quítalo o reintenta") es
+        // para la vista previa; aquí la pantalla dice qué hacer.
+        mensaje: `${e.message.split(". ")[0].replace(/\.$/, "")}.`,
+      });
+      const siguiente =
+        decision === "efectivo" ? ventaSinDescuentoConEfectivo(p, e.quitar) : p;
+      if (decision === "efectivo") {
+        useCobroClip.getState().avanzar("descuentos", { venta: siguiente });
+      }
+      terminal.guardando(montoTarjetaDe(p), tarjeta);
+      return ejecutarVenta(siguiente, { ...op, pagoClip });
     }
 
+    if (pagoClip) {
+      useCobroClip.getState().avanzar("guardando");
+      terminal.guardando(montoTarjetaDe(p), etiquetaTarjetaClip(pagoClip));
+    }
     const result = await crearVenta({
       negocioId,
       sucursalId,
       nodoId,
-      ...preview,
+      ...p,
       idempotencyKey: cobroId, // venta ligada al MISMO id del débito
+      ...(pagoClip ? { pagoClip } : {}),
+      ...(op.sinOffline ? { permitirOffline: false } : {}),
     });
+    retomadoRef.current = null;
 
     // SNAPSHOT de los pendientes ANTES de limpiar() (que dispara el effect de
     // higiene cart-empty → borra tarjetaPendiente/giftPendiente de forma ASÍNCRONA).
@@ -514,8 +703,13 @@ export function Ventas() {
     // vinculación de la tarjeta de lealtad— podía leer giftPendiente ya en null:
     // la gift quedaba cobrada pero NUNCA emitida (pérdida silenciosa). Capturados
     // aquí (carrito aún NO vaciado), la decisión es inmune a esa carrera de timing.
-    const tarjPend = useClientePuntos.getState().tarjetaPendiente;
-    const giftPend = useClientePuntos.getState().giftPendiente;
+    // Una venta retomada tras recargar trae los suyos guardados con el cobro.
+    const tarjPend = op.pendientes
+      ? op.pendientes.tarjPend
+      : useClientePuntos.getState().tarjetaPendiente;
+    const giftPend = op.pendientes
+      ? op.pendientes.giftPend
+      : useClientePuntos.getState().giftPendiente;
     const giftLine = (result.venta.articulos ?? []).find((a) => a.giftCard === true);
     // Total cobrado por líneas gift: base a EXCLUIR del cashback ganado (§0.3).
     const giftTotal = (result.venta.articulos ?? [])
@@ -605,6 +799,9 @@ export function Ventas() {
           anotarEnCurso,
         )
       : null;
+    // Venta guardada y lo que se debe ya anotado: el cobro con terminal
+    // terminó y no queda nada que retomar al abrir.
+    if (pagoClip) useCobroClip.getState().terminar();
 
     // Fase 5: canje debitado y venta creada → cerrar el pendiente (idempotente).
     // Best-effort + encolado durable.
@@ -766,6 +963,41 @@ export function Ventas() {
       return;
     }
     finalizarVenta(result.venta);
+  }
+
+  // Cobro con terminal a medias al abrir la caja (ver RecuperarCobroClip).
+  // Nada se cobra dos veces: seguir el cobro reusa el mismo (idempotente por
+  // cobroId) y terminar la venta usa el pago ya aprobado.
+  async function accionRecuperarClip(accion: AccionRecuperar, cobro: CobroClip | null) {
+    const r = useCobroClip.getState().cobro;
+    setRecuperarClip(false);
+    if (!r) return;
+    const pendientes = { tarjPend: r.tarjPend, giftPend: r.giftPend };
+    if (accion === "retomar") {
+      // No se cobró nada: la venta vuelve a la vista previa para confirmarla.
+      useCobroClip.getState().terminar();
+      retomadoRef.current = { cobroId: r.cobroId, pendientes };
+      setPreview(r.venta);
+      return;
+    }
+    if (accion === "descartar" || accion === "revisar") {
+      useCobroClip.getState().terminar();
+      return;
+    }
+    const pagoClip =
+      accion === "terminar-venta" ? (r.pagoClip ?? (cobro ? pagoClipDeCobro(cobro) : undefined)) : undefined;
+    try {
+      await confirmarVenta(
+        r.venta,
+        accion === "terminar-venta" ? { pendientes, pagoClip, sinOffline: true } : { pendientes },
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setToast(accion === "terminar-venta" ? `No se pudo guardar la venta: ${msg}` : msg);
+      window.setTimeout(() => setToast(null), 6000);
+      // Sigue pendiente (p. ej. sin red al guardar): se vuelve a ofrecer.
+      if (useCobroClip.getState().cobro) setRecuperarClip(true);
+    }
   }
 
   // Pre-registro de cliente (FAB). Devuelve el error para el modal, o null si
@@ -1147,8 +1379,9 @@ export function Ventas() {
         onCancel={() => {
           setPreview(null);
           setResetPuntosSignal((n) => n + 1);
+          retomadoRef.current = null;
         }}
-        onConfirm={confirmarVenta}
+        onConfirm={() => confirmarVenta()}
       />
 
       {procesando && (
@@ -1160,6 +1393,11 @@ export function Ventas() {
           <div className="size-12 animate-spin rounded-full border-4 border-white/30 border-t-white" />
           <p className="text-sm font-semibold text-white">Procesando venta…</p>
         </div>
+      )}
+
+      <CobroClipOverlay terminal={terminal} />
+      {recuperarClip && registroClip && !procesando && (
+        <RecuperarCobroClip registro={registroClip} onAccion={accionRecuperarClip} />
       )}
 
       <PreRegistroClienteModal

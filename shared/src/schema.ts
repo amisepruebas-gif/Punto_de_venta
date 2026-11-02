@@ -180,6 +180,57 @@ export type Nodo = {
     detalle?: string;
   }>;
   fcmToken?: string;
+  /** Número de serie de la terminal Clip de esta caja (admin → Nodos). Sin
+   *  serie, la caja cobra con tarjeta a mano, como antes. */
+  clipSerial?: string;
+};
+
+// ---------- Cobro con la terminal Clip (API de PinPad) ----------
+export type EstadoCobroClip =
+  | "enviando"
+  | "pendiente"
+  | "incierto"
+  | "aprobado"
+  | "fallido"
+  | "cancelado"
+  | "revisar";
+
+/** Datos no sensibles de la tarjeta con que se pagó en la terminal. */
+export type TarjetaClip = {
+  marca?: string;
+  tipo?: string;
+  ultimos4?: string;
+  banco?: string;
+  transaccionId?: string;
+  aprobadoEn?: string;
+};
+
+/** Lo que la caja ve de un cobro en la terminal (CF cobrarConClip y cía). */
+export type CobroClip = {
+  cobroId: string;
+  estado: EstadoCobroClip;
+  intento: number;
+  monto: string;
+  montoCentavos: number;
+  pinpadRequestId: string | null;
+  tarjeta: TarjetaClip | null;
+  pagadoCentavos: number;
+  /** pago-de-mas, varias-aprobaciones, pago-de-menos…: revisar a mano en Clip. */
+  alerta: string | null;
+  error: { code: string; mensaje: string } | null;
+  actualizadoEn: number | null;
+  /** Mensaje para el cajero (solo en respuestas de las callables). */
+  aviso?: string;
+};
+
+/** Cobro con la terminal guardado en la venta. */
+export type PagoClip = TarjetaClip & {
+  cobroId: string;
+  pinpadRequestId?: string;
+  /** false: el cajero confirmó a mano un cobro que no se pudo verificar con
+   *  Clip (se perdió la respuesta al mandarlo). */
+  verificado: boolean;
+  alerta?: string;
 };
 
 // ---------- Usuario (super admin / admin) ----------
@@ -432,6 +483,8 @@ export type Venta = {
   comicion?: string;
   /** "con comision" | "sin comision" — replica el field Android. */
   statusComision?: string;
+  /** Cobro con la terminal Clip de esta venta (marca y últimos 4 dígitos). */
+  pagoClip?: PagoClip;
 
   /** Contraseña temporal de puntos a imprimir en el ticket (solo al vincular un
    *  cliente registrado a esta venta). No se persiste en Firestore. */
