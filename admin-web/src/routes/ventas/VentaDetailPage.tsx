@@ -14,6 +14,7 @@ import {
 const ALERTAS_CLIP: Record<string, string> = {
   "pago-de-mas": "la terminal cobró de más; devuelve la diferencia en Clip",
   "varias-aprobaciones": "hubo más de una aprobación; revisa si hay un cobro doble en Clip",
+  "aprobado-tarde": "Clip aprobó un intento que se daba por cerrado; revisa que no haya otro cobro",
 };
 
 /**

@@ -36,8 +36,9 @@ import {
   ean13Ok,
   etiquetaTarjetaClip,
   generarID,
-  montoCobroClip,
+  clasificarErrorPuntos,
   pagoClipDeCobro,
+  pagoClipManual,
   pendienteVigente,
   telefonosIguales,
   ventaSinDescuentoConEfectivo,
@@ -91,7 +92,7 @@ import {
   montoTarjetaDe,
   type AccionRecuperar,
 } from "@/features/clip/RecuperarCobroClip";
-import { useCobroTerminal } from "@/features/clip/useCobroTerminal";
+import { CobroSinResolver, useCobroTerminal } from "@/features/clip/useCobroTerminal";
 import { useCobroClip, type VentaEnCobro } from "@/features/clip/clipStore";
 import {
   enviarPuntosAhora,
@@ -139,10 +140,13 @@ type OpcionesVenta = {
 class DescuentoFallido extends Error {
   quitar: "cashback" | "regalo";
   monto: number;
-  constructor(mensaje: string, quitar: "cashback" | "regalo", monto: number) {
+  /** Error de red: no se sabe si el débito se hizo. */
+  incierto: boolean;
+  constructor(mensaje: string, quitar: "cashback" | "regalo", monto: number, incierto = false) {
     super(mensaje);
     this.quitar = quitar;
     this.monto = monto;
+    this.incierto = incierto;
   }
 }
 
@@ -521,14 +525,16 @@ export function Ventas() {
         giftPend: op.pendientes ? op.pendientes.giftPend : st.giftPendiente,
       });
       try {
+        const montoTarjeta = montoTarjetaDe(p);
         pagoClip = await terminal.cobrar({
           cobroId,
-          monto: montoCobroClip(p),
-          montoPago: p.montoPago,
+          monto: montoTarjeta,
+          montoPago: String(montoTarjeta),
         });
       } catch (e) {
         // Sin pago: no queda nada en curso (el servidor ya cerró el cobro).
-        useCobroClip.getState().terminar();
+        // Si el cajero salió sin red, el cobro sigue guardado para revisarlo.
+        if (!(e instanceof CobroSinResolver)) useCobroClip.getState().terminar();
         throw e;
       }
       useCobroClip.getState().avanzar("descuentos", { pagoClip });
@@ -538,7 +544,7 @@ export function Ventas() {
       // Cashback y crédito de regalo juntos: revisar el regalo ANTES del primer
       // débito. Si no alcanza (o venció), el cobro se detiene sin debitar el
       // cashback; antes el cashback quedaba debitado sin venta.
-      if (puntosTel && cashbackUsar > 0 && regaloUsar > 0 && regaloIdent) {
+      if (!pagoClip && puntosTel && cashbackUsar > 0 && regaloUsar > 0 && regaloIdent) {
         let saldoRegalo: { saldo: number; vencido: boolean };
         try {
           const res = await fnConsultarSaldoTarjetaRegalo({
@@ -602,6 +608,7 @@ export function Ventas() {
                 : "No se pudo usar el cashback (sin conexión o saldo). Quítalo o reintenta.",
             "cashback",
             cashbackUsar,
+            clasificarErrorPuntos("canje", e) === "reintentar",
           );
         }
       }
@@ -655,6 +662,7 @@ export function Ventas() {
               : "No se pudo usar el crédito de regalo (sin conexión). Quítalo o reintenta.",
             "regalo",
             regaloUsar,
+            clasificarErrorPuntos("canje", e) === "reintentar",
           );
         }
       }
@@ -672,10 +680,24 @@ export function Ventas() {
         // Solo el motivo: el consejo del mensaje ("Quítalo o reintenta") es
         // para la vista previa; aquí la pantalla dice qué hacer.
         mensaje: `${e.message.split(". ")[0].replace(/\.$/, "")}.`,
+        incierto: e.incierto,
       });
       const siguiente =
         decision === "efectivo" ? ventaSinDescuentoConEfectivo(p, e.quitar) : p;
       if (decision === "efectivo") {
+        // El candado del débito que falló se cierra (idempotente por cobroId);
+        // si no, ese cliente no podría usar su saldo hasta que venza.
+        const { encolar } = useClientePuntos.getState();
+        if (e.quitar === "cashback" && puntosTel) {
+          encolar("cerrar", { phone: puntosTel, cobroId });
+        }
+        if (e.quitar === "regalo" && regaloIdent) {
+          encolar("cerrarRegalo", {
+            ...(regaloIdent.codigo ? { codigo: regaloIdent.codigo } : {}),
+            ...(regaloIdent.phone ? { phone: regaloIdent.phone } : {}),
+            cobroId,
+          });
+        }
         useCobroClip.getState().avanzar("descuentos", { venta: siguiente });
       }
       terminal.guardando(montoTarjetaDe(p), tarjeta);
@@ -980,12 +1002,32 @@ export function Ventas() {
       setPreview(r.venta);
       return;
     }
+    if (accion === "mas-tarde") return; // sigue guardado: se pregunta al volver a abrir
     if (accion === "descartar" || accion === "revisar") {
       useCobroClip.getState().terminar();
       return;
     }
     const pagoClip =
-      accion === "terminar-venta" ? (r.pagoClip ?? (cobro ? pagoClipDeCobro(cobro) : undefined)) : undefined;
+      accion === "terminar-venta"
+        ? (r.pagoClip ??
+          (cobro
+            ? cobro.estado === "manual"
+              ? pagoClipManual(r.cobroId)
+              : pagoClipDeCobro(cobro)
+            : undefined))
+        : undefined;
+    if (accion === "terminar-venta") {
+      if (!pagoClip) {
+        setToast("No se encontró el cobro aprobado de esta venta. Revísalo en Clip.");
+        window.setTimeout(() => setToast(null), 6000);
+        return;
+      }
+      // Queda guardado con el registro: si guardar la venta falla, el siguiente
+      // intento no vuelve a la terminal.
+      useCobroClip
+        .getState()
+        .avanzar(r.fase === "terminal" ? "descuentos" : r.fase, { pagoClip });
+    }
     try {
       await confirmarVenta(
         r.venta,

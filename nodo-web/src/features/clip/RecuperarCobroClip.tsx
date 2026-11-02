@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { fnConsultarCobroClip } from "@/firebase/callable";
 import type { CobroClipEnCurso } from "./clipStore";
 
-export type AccionRecuperar = AccionRecuperacionClip | "descartar";
+export type AccionRecuperar = AccionRecuperacionClip | "descartar" | "mas-tarde";
 
 /** Lo que pagó (o va a pagar) el cliente con tarjeta en esa venta. */
 export function montoTarjetaDe(v: { montoPago: string; movimiento: string; datosPagoDividido?: Record<string, unknown> }): number {
@@ -26,7 +26,8 @@ const secundario = cn(boton, "border bg-card text-foreground hover:bg-muted acti
 
 type Estado =
   | { tipo: "cargando" }
-  | { tipo: "sin-red" }
+  /** No se pudo preguntar al servidor (sin red, o la caja no tiene permiso). */
+  | { tipo: "sin-respuesta"; mensaje: string }
   | { tipo: "listo"; accion: AccionRecuperacionClip; cobro: CobroClip | null };
 
 /**
@@ -67,7 +68,9 @@ export function RecuperarCobroClip({
         setEstado(
           code === "not-found"
             ? { tipo: "listo", accion: "retomar", cobro: null }
-            : { tipo: "sin-red" },
+            : code === "permission-denied" || code === "unauthenticated"
+              ? { tipo: "sin-respuesta", mensaje: `La caja no pudo revisar el cobro: ${(e as Error).message}` }
+              : { tipo: "sin-respuesta", mensaje: "Sin conexión: no se puede revisar el cobro todavía." },
         );
       });
     return () => {
@@ -80,12 +83,19 @@ export function RecuperarCobroClip({
   let botones = null;
   if (estado.tipo === "cargando") {
     texto = "Revisando el cobro con Clip…";
-  } else if (estado.tipo === "sin-red") {
-    texto = "Sin conexión: no se puede revisar el cobro todavía.";
+  } else if (estado.tipo === "sin-respuesta") {
+    texto = estado.mensaje;
+    // "Más tarde" no deja atrapada la caja: el cobro sigue guardado y se
+    // pregunta otra vez al abrir; mientras, se vende en efectivo o "sin terminal".
     botones = (
-      <button type="button" className={principal} onClick={() => setIntento((n) => n + 1)}>
-        Reintentar
-      </button>
+      <>
+        <button type="button" className={principal} onClick={() => setIntento((n) => n + 1)}>
+          Reintentar
+        </button>
+        <button type="button" className={secundario} onClick={() => onAccion("mas-tarde", null)}>
+          Más tarde
+        </button>
+      </>
     );
   } else {
     const { accion, cobro } = estado;

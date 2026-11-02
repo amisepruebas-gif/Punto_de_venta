@@ -11,14 +11,17 @@ import {
 import { fnCancelarCobroClip, fnCobrarConClip } from "@/firebase/callable";
 import { esperarCobroClip } from "./esperarCobroClip";
 
+/** Sin conexión con el servidor: `sinRed` habilita "Salir y revisar después". */
+type Abierto = { aviso?: string; ocupado?: boolean; sinRed?: boolean };
+
 /** Lo que muestra la pantalla del cobro en la terminal. */
 export type VistaCobroClip =
   | { paso: "enviando"; monto: number }
-  | { paso: "esperando"; monto: number; cobro: CobroClip; aviso?: string; ocupado?: boolean }
-  | { paso: "incierto"; monto: number; cobro: CobroClip; aviso?: string; ocupado?: boolean }
+  | ({ paso: "esperando"; monto: number; cobro: CobroClip } & Abierto)
+  | ({ paso: "incierto"; monto: number; cobro: CobroClip } & Abierto)
   | { paso: "sin-pago"; monto: number; cobro: CobroClip }
   | { paso: "revisar"; monto: number; mensaje: string }
-  | { paso: "error"; monto: number; mensaje: string; ocupado?: boolean; aviso?: string }
+  | ({ paso: "error"; monto: number; mensaje: string } & Abierto)
   | { paso: "aprobado"; monto: number; tarjeta: string }
   | {
       paso: "descuento";
@@ -27,8 +30,17 @@ export type VistaCobroClip =
       quitar: "cashback" | "regalo";
       descuento: number;
       mensaje: string;
+      /** Error de red: no se sabe si el descuento se aplicó. */
+      incierto?: boolean;
     }
   | { paso: "guardando"; monto: number; tarjeta: string };
+
+/**
+ * El cajero salió sin poder confirmar con el servidor en qué quedó el cobro
+ * (sin conexión). El cobro sigue guardado en la tablet: al volver la red, la
+ * caja lo revisa (RecuperarCobroClip) y nada se pierde.
+ */
+export class CobroSinResolver extends Error {}
 
 type EnCurso = {
   cobroId: string;
@@ -130,6 +142,13 @@ export function useCobroTerminal(sesion: { negocioId?: string | null; sucursalId
         detener();
         setVista({ paso: "revisar", monto: a.monto, mensaje: textoRevisar(c) });
         return;
+      case "manual": {
+        // Confirmado a mano en la terminal (sin verificar con Clip).
+        const x = soltar();
+        setVista({ paso: "aprobado", monto: a.monto, tarjeta: "Tarjeta (confirmado en la terminal)" });
+        x?.resolve(pagoClipManual(a.cobroId));
+        return;
+      }
       case "incierto":
         setVista({ paso: "incierto", monto: a.monto, cobro: c, aviso: a.aviso });
         esperar();
@@ -226,18 +245,56 @@ export function useCobroTerminal(sesion: { negocioId?: string | null; sucursalId
       a.aviso = "No se pudo cancelar (sin conexión). Revisa la terminal y vuelve a intentarlo.";
       setVista((v) =>
         v && (v.paso === "esperando" || v.paso === "incierto" || v.paso === "error")
-          ? { ...v, ocupado: false, aviso: a.aviso }
+          ? { ...v, ocupado: false, aviso: a.aviso, sinRed: true }
           : v,
       );
     }
   }
 
-  /** Se perdió la respuesta, pero la terminal sí cobró: el cajero lo confirma. */
-  function yaSeCobro() {
-    const a = soltar();
+  /**
+   * Se perdió la respuesta, pero la terminal sí cobró: el cajero lo confirma.
+   * El servidor lo cierra como "manual" (libera la terminal); si mientras
+   * tanto Clip ya lo ligó, manda lo de Clip.
+   */
+  async function yaSeCobro() {
+    const a = actual.current;
     if (!a) return;
-    setVista({ paso: "aprobado", monto: a.monto, tarjeta: "Tarjeta (confirmado en la terminal)" });
-    a.resolve(pagoClipManual(a.cobroId));
+    setVista((v) => (v && v.paso === "incierto" ? { ...v, ocupado: true } : v));
+    try {
+      const c = (await fnCancelarCobroClip({ cobroId: a.cobroId, comoPagado: true })).data;
+      if (actual.current !== a) return;
+      if (c.estado === "manual" || c.estado === "aprobado") return mostrar(c);
+      a.aviso = c.aviso ?? "Clip ya tiene este cobro: espera aquí el resultado.";
+      mostrar(c);
+    } catch {
+      // Sin conexión: el cajero lo vio aprobado. El servidor lo cierra cuando
+      // el aviso de Clip lo ligue (o el candado vence).
+      if (actual.current !== a) return;
+      mostrar({
+        cobroId: a.cobroId,
+        estado: "manual",
+        intento: a.intento,
+        monto: String(a.monto),
+        montoCentavos: Math.round(a.monto * 100),
+        pinpadRequestId: null,
+        tarjeta: null,
+        pagadoCentavos: 0,
+        alerta: null,
+        error: null,
+        actualizadoEn: null,
+      });
+    }
+  }
+
+  /** Sin conexión: sale de la pantalla y deja el cobro guardado para revisarlo. */
+  function salir() {
+    const a = soltar();
+    setVista(null);
+    a?.reject(
+      new CobroSinResolver(
+        "Sin conexión: revisa la terminal (si muestra el cobro, cancélalo ahí). Al volver la red, la caja revisa este cobro.",
+      ),
+    );
   }
 
   /** La tarjeta ya se cobró pero un descuento falló: reintentar o efectivo. */
@@ -262,7 +319,8 @@ export function useCobroTerminal(sesion: { negocioId?: string | null; sucursalId
     cancelar,
     reintentar: () => void enviar(false),
     reintentarIncierto: () => void enviar(true),
-    yaSeCobro,
+    yaSeCobro: () => void yaSeCobro(),
+    salir,
     // Siempre pasa por el servidor: si mientras tanto se aprobó, se guarda la
     // venta en vez de dejar al cliente cobrado sin venta.
     otraForma: () => void cancelar(),

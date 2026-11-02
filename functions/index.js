@@ -3026,12 +3026,13 @@ async function llamarClip(method, path, {body, detalle} = {}) {
  * transiciones de lib/clip.js (un aprobado nunca se pierde) y, al llegar a
  * un estado final, libera el candado de la terminal si es de este intento.
  */
-async function actualizarIntento(ref, n, cambios) {
+async function actualizarIntento(ref, n, cambios, {soloDesde} = {}) {
   const ahora = Date.now();
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return null;
     const c = snap.data();
+    if (soloDesde && !soloDesde.includes(c.estado)) return c;
     const final = clip.ESTADOS_FINALES.includes(cambios.estado);
     const candadoRef = final && c.serial ? candadoClipRef(c.negocioId, c.serial) : null;
     const candSnap = candadoRef ? await tx.get(candadoRef) : null;
@@ -3058,6 +3059,29 @@ async function actualizarIntento(ref, n, cambios) {
 }
 
 /**
+ * Marca del intento `n` cuya respuesta se perdió: Clip pudo crearlo sin que
+ * sepamos su id. Mientras haya intentos así (por 2 h: un cobro en la terminal
+ * se resuelve en minutos), el aviso consulta a Clip por ids desconocidos para
+ * ligarlos (ver adoptarIntentoClip); si no, no gasta consultas con ids
+ * inventados.
+ */
+const SIN_ID_MS = 2 * 60 * 60_000;
+const sinId = (n) => ({sinIdHasta: Date.now() + SIN_ID_MS,
+  intentosSinId: FieldValue.arrayUnion(n)});
+
+/** Reintenta una escritura que falló (Firestore no disponible un momento). */
+async function reintentarEscritura(fn, veces = 3) {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= veces) throw e;
+      await new Promise((r) => setTimeout(r, 400 * i));
+    }
+  }
+}
+
+/**
  * Pregunta a Clip en qué quedó el intento abierto y lo guarda. `minMs` evita
  * consultar a Clip más de una vez cada tanto (la caja consulta seguido).
  */
@@ -3068,7 +3092,7 @@ async function refrescarCobroClip(ref, {minMs = 2000} = {}) {
   const ahora = Date.now();
   if (c.estado === "enviando" &&
       ahora - (Number(c.actualizadoEn) || 0) > clip.ENVIANDO_VENCE_MS) {
-    return actualizarIntento(ref, c.intento, {estado: "incierto",
+    return actualizarIntento(ref, c.intento, {estado: "incierto", ...sinId(c.intento),
       error: {code: "SIN_RESPUESTA", mensaje: "El envío a la terminal no terminó"}});
   }
   if (c.estado !== "pendiente" || !c.pinpadRequestId) return c;
@@ -3086,22 +3110,21 @@ async function refrescarCobroClip(ref, {minMs = 2000} = {}) {
  * terminal ya está cobrando, o no se pudo hablar con Clip, no sigue.
  */
 async function limpiarTerminalClip(serial) {
+  let err = null;
   try {
     await llamarClip("DELETE",
         `/f2f/pinpad/v1/payment/serial-number/${encodeURIComponent(serial)}`);
-    return {ok: true};
   } catch (e) {
-    const det = (e && e.details) || {};
-    if (det.clipCode === "PAYMENT_PENDING") {
-      return {ok: false, aviso: "La terminal está cobrando el intento anterior. " +
-        "Espera a que termine y revisa si se aprobó."};
-    }
-    if (clip.envioIncierto(e)) {
-      return {ok: false, aviso: "No se pudo revisar la terminal (sin conexión con Clip). " +
-        "Intenta de nuevo."};
-    }
-    return {ok: true}; // no había nada que cancelar
+    err = e;
   }
+  const r = clip.resultadoLimpieza(err);
+  if (r === "libre") return {ok: true};
+  if (r === "ocupada") {
+    return {ok: false, aviso: "La terminal está cobrando el intento anterior. " +
+      "Espera a que termine y revisa si se aprobó."};
+  }
+  return {ok: false, aviso: `No se pudo revisar la terminal (${err.message}). ` +
+    "Intenta de nuevo."};
 }
 
 // Manda a la terminal de la caja el cobro de una venta. Idempotente por
@@ -3159,6 +3182,11 @@ exports.cobrarConClip = onCall(
             estado: "enviando", intento: n, referencia: refClip, pinpadRequestId: null,
             intentos, tarjeta: null, pagadoCentavos: 0, alerta: null, error: null,
             creadoEn: (cobro && cobro.creadoEn) || ahora, actualizadoEn: ahora, consultadoEn: 0,
+            // De los intentos anteriores: sus ids y los envíos sin id siguen
+            // valiendo (un pago tardío de ellos se liga a este cobro).
+            pinpadIds: (cobro && cobro.pinpadIds) || [],
+            intentosSinId: (cobro && cobro.intentosSinId) || [],
+            sinIdHasta: (cobro && cobro.sinIdHasta) || 0,
           });
           tx.set(candadoRef, {cobroPath: ref.path, intento: n, nodoId: caja.nodoId, desde: ahora});
         }
@@ -3179,21 +3207,28 @@ exports.cobrarConClip = onCall(
       if (!d.apartado) return clip.cobroPublico((await ref.get()).data());
 
       const n = d.intento;
+      let r;
       try {
-        const r = await llamarClip("POST", "/f2f/pinpad/v1/payment", {
+        r = await llamarClip("POST", "/f2f/pinpad/v1/payment", {
           body: clip.cuerpoCobro({monto: montoTxt, referencia: clip.referencia(cobroId, n),
             serial, webhookUrl: CLIP_WEBHOOK_URL}),
         });
-        const id = typeof r.pinpad_request_id === "string" ? r.pinpad_request_id : "";
-        await actualizarIntento(ref, n, id ?
-          {estado: "pendiente", pinpadRequestId: id} :
-          {estado: "incierto", error: {code: "SIN_ID", mensaje: "Clip no devolvió el id del cobro"}});
       } catch (e) {
         const det = (e && e.details) || {};
         await actualizarIntento(ref, n, clip.envioIncierto(e) ?
-          {estado: "incierto", error: {code: det.clipCode || "SIN_RESPUESTA", mensaje: e.message}} :
+          {estado: "incierto", ...sinId(n),
+            error: {code: det.clipCode || "SIN_RESPUESTA", mensaje: e.message}} :
           {estado: "fallido", error: {code: det.clipCode || e.code || "ERROR", mensaje: e.message}});
+        return clip.cobroPublico((await ref.get()).data());
       }
+      // Clip ya tiene el cobro: guardarlo nunca lo vuelve "fallido". Si la
+      // escritura falla del todo, el intento sigue "enviando", en un minuto
+      // pasa a incierto y el aviso de Clip lo liga por su referencia.
+      const id = typeof r.pinpad_request_id === "string" ? r.pinpad_request_id : "";
+      await reintentarEscritura(() => actualizarIntento(ref, n, id ?
+        {estado: "pendiente", pinpadRequestId: id, pinpadIds: FieldValue.arrayUnion(id)} :
+        {estado: "incierto", ...sinId(n),
+          error: {code: "SIN_ID", mensaje: "Clip no devolvió el id del cobro"}}));
       return clip.cobroPublico((await ref.get()).data());
     },
 );
@@ -3229,11 +3264,14 @@ exports.consultarCobroClip = onCall(
 
 // Cancela el cobro de la venta. Clip solo lo permite antes de que la
 // terminal lo tome; después hay que cancelarlo en la terminal (se avisa).
+// Con `comoPagado` (un envío incierto que el cajero vio aprobado en la
+// terminal) el cobro se cierra como "manual" y libera la terminal; si luego
+// llega el aviso de Clip, el pago se liga (ver aplicarPagoTardio).
 exports.cancelarCobroClip = onCall(
     {secrets: [CLIP_API_KEY, CLIP_API_SECRET], timeoutSeconds: 40, memory: "256MiB"},
     async (request) => {
       const caja = await requireCaja(request.auth);
-      const {cobroId} = request.data || {};
+      const {cobroId, comoPagado} = request.data || {};
       if (!clip.cobroIdValido(cobroId)) {
         throw new HttpsError("invalid-argument", "cobroId inválido");
       }
@@ -3247,6 +3285,8 @@ exports.cancelarCobroClip = onCall(
         throw new HttpsError("permission-denied", "El cobro es de otra caja");
       }
       if (c.estado === "pendiente" && c.pinpadRequestId) {
+        // Abierto con su id: confirmarlo a mano no aplica, lo dice Clip.
+        if (comoPagado === true) return clip.cobroPublico(c);
         try {
           await llamarClip("DELETE",
               `/f2f/pinpad/v1/payment/${encodeURIComponent(c.pinpadRequestId)}`);
@@ -3276,13 +3316,87 @@ exports.cancelarCobroClip = onCall(
           aviso: "El cobro se está enviando a la terminal: espera un momento."};
       }
       if (c.estado === "incierto" || c.estado === "enviando") {
+        if (comoPagado === true) {
+          return clip.cobroPublico(await actualizarIntento(ref, c.intento,
+              {estado: "manual"}, {soloDesde: ["incierto", "enviando"]}));
+        }
         const limpia = await limpiarTerminalClip(c.serial);
         if (!limpia.ok) return {...clip.cobroPublico(c), aviso: limpia.aviso};
-        return clip.cobroPublico(await actualizarIntento(ref, c.intento, {estado: "cancelado"}));
+        // Solo si sigue incierto: el aviso de Clip pudo haberlo ligado ya.
+        return clip.cobroPublico(await actualizarIntento(ref, c.intento,
+            {estado: "cancelado"}, {soloDesde: ["incierto", "enviando"]}));
       }
       return clip.cobroPublico(c);
     },
 );
+
+/**
+ * Dinero en un intento que ya no es el abierto (el aviso llegó tarde, o se
+ * reintentó un incierto que sí se cobró). Nunca se tira (lib/clip.js,
+ * decidirPagoTardio): si el cobro no estaba aprobado, queda aprobado con este
+ * pago (o en revisión si no cuadra) y se cancela en Clip el intento que siga
+ * abierto; si ya lo estaba, es un cobro doble marcado para devolverlo a mano.
+ */
+async function aplicarPagoTardio(ref, id, r) {
+  const ev = clip.evaluarIntentoClip(r, clip.centavos(r.amount));
+  if (ev.estado !== "aprobado" && ev.estado !== "revisar") return;
+  const ahora = Date.now();
+  const res = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return null;
+    const c = snap.data();
+    const accion = clip.decidirPagoTardio(c, id);
+    if (accion === "ignorar") return null;
+    const pago = {id, pagadoCentavos: ev.pagadoCentavos, en: ahora,
+      ...(ev.tarjeta ? {tarjeta: ev.tarjeta} : {})};
+    if (accion === "extra") {
+      tx.update(ref, {alerta: "varias-aprobaciones", actualizadoEn: ahora,
+        aprobacionesExtra: FieldValue.arrayUnion(pago), pinpadIds: FieldValue.arrayUnion(id)});
+      return {accion, c};
+    }
+    const candadoRef = c.serial ? candadoClipRef(c.negocioId, c.serial) : null;
+    const candSnap = candadoRef ? await tx.get(candadoRef) : null;
+    const cuadra = ev.estado === "aprobado" && ev.pagadoCentavos >= c.montoCentavos;
+    tx.update(ref, {
+      estado: cuadra ? "aprobado" : "revisar",
+      pinpadRequestId: id,
+      pinpadIds: FieldValue.arrayUnion(id),
+      tarjeta: ev.tarjeta || null,
+      pagadoCentavos: ev.pagadoCentavos,
+      alerta: cuadra ?
+        (ev.alerta || (c.estado === "manual" ? null : "aprobado-tarde")) :
+        "pago-de-menos",
+      pagoTardio: {id, estadoAntes: c.estado, intentoAbierto: c.intento, en: ahora},
+      actualizadoEn: ahora,
+    });
+    if (candSnap && candSnap.exists && candSnap.data().cobroPath === ref.path) {
+      tx.delete(candadoRef);
+    }
+    return {accion, c};
+  });
+  if (!res) return;
+  logger.error("clip: pago tardío (revisar en Clip)",
+      {cobroId: res.c.cobroId, id, accion: res.accion, estadoAntes: res.c.estado});
+  // El cobro ya se pagó: si otro intento sigue abierto en la terminal, fuera.
+  if (res.accion === "aprobar" && res.c.estado === "pendiente" &&
+      res.c.pinpadRequestId && res.c.pinpadRequestId !== id) {
+    await llamarClip("DELETE",
+        `/f2f/pinpad/v1/payment/${encodeURIComponent(res.c.pinpadRequestId)}`)
+        .catch(() => {});
+  }
+}
+
+/** Un id viejo de nuestros cobros: si trae dinero, aplicarPagoTardio. */
+async function revisarIntentoViejoClip(ref, id) {
+  let r;
+  try {
+    r = await llamarClip("GET", rutaPagoClip(id), {detalle: true});
+  } catch (e) {
+    logger.warn("webhookClip: no se pudo consultar un intento viejo", {id, error: e.message});
+    return;
+  }
+  await aplicarPagoTardio(ref, id, r);
+}
 
 /**
  * Aviso de un cobro cuyo id no tenemos: se perdió la respuesta del envío y
@@ -3312,16 +3426,42 @@ async function adoptarIntentoClip(id) {
   if (q.empty) return reportar("cobro no encontrado");
   const doc = q.docs[0];
   const c = doc.data();
-  if (c.intento !== ref.intento || !["incierto", "enviando"].includes(c.estado)) {
-    return reportar("intento que no está abierto", {intento: c.intento, estado: c.estado});
+  const eraSinId = (c.intentosSinId || []).includes(ref.intento);
+  if (eraSinId) await ligarIntentoSinId(doc.ref, ref.intento, id);
+  if (c.intento === ref.intento && ["incierto", "enviando"].includes(c.estado)) {
+    await actualizarIntento(doc.ref, c.intento,
+        {estado: "pendiente", pinpadRequestId: id, pinpadIds: FieldValue.arrayUnion(id)});
+    await refrescarCobroClip(doc.ref, {minMs: 0});
+    return;
   }
-  await actualizarIntento(doc.ref, c.intento, {estado: "pendiente", pinpadRequestId: id});
-  await refrescarCobroClip(doc.ref, {minMs: 0});
+  // El cajero lo dio por pagado a mano y Clip dice que no hubo pago: revisar.
+  const ev = clip.evaluarIntentoClip(r, clip.centavos(r.amount));
+  if (c.estado === "manual" && c.intento === ref.intento &&
+      (ev.estado === "fallido" || ev.estado === "cancelado")) {
+    await doc.ref.update({alerta: "manual-sin-pago", actualizadoEn: Date.now()});
+    logger.error("clip: confirmado a mano pero Clip no lo cobró", {cobroId: c.cobroId, id});
+    return;
+  }
+  // No es el intento abierto: si trae dinero, no se tira.
+  if (!eraSinId) reportar("intento que no está abierto", {intento: c.intento, estado: c.estado});
+  await aplicarPagoTardio(doc.ref, id, r);
+}
+
+/** El intento `n` ya tiene id: deja de contar como "sin id". */
+async function ligarIntentoSinId(ref, n, id) {
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const quedan = (snap.data().intentosSinId || []).filter((x) => x !== n);
+    tx.update(ref, {intentosSinId: quedan,
+      ...(quedan.length === 0 ? {sinIdHasta: 0} : {}),
+      pinpadIds: FieldValue.arrayUnion(id)});
+  });
 }
 
 // Aviso de Clip: {id, origin, event_type}, sin firma y una sola vez. Nunca
-// se cree: solo dispara la consulta a Clip, y solo para cobros nuestros
-// abiertos. Siempre responde 200.
+// se cree: solo dispara la consulta a Clip, y solo para ids nuestros (o si
+// hay un envío incierto que ligar). Siempre responde 200.
 exports.webhookClip = onRequest(
     {secrets: [CLIP_API_KEY, CLIP_API_SECRET], maxInstances: 2, timeoutSeconds: 30,
       memory: "256MiB"},
@@ -3337,11 +3477,21 @@ exports.webhookClip = onRequest(
       }
       try {
         const q = await db.collectionGroup(COL_PAGOS_CLIP)
-            .where("pinpadRequestId", "==", id).limit(1).get();
-        if (q.empty) {
-          await adoptarIntentoClip(id);
-        } else if (q.docs[0].data().estado === "pendiente") {
-          await refrescarCobroClip(q.docs[0].ref, {minMs: 0});
+            .where("pinpadIds", "array-contains", id).limit(1).get();
+        if (!q.empty) {
+          const c = q.docs[0].data();
+          if (c.pinpadRequestId !== id) {
+            await revisarIntentoViejoClip(q.docs[0].ref, id);
+          } else if (c.estado === "pendiente") {
+            await refrescarCobroClip(q.docs[0].ref, {minMs: 0});
+          }
+        } else {
+          // Un id que no tenemos solo puede ser un envío cuya respuesta se
+          // perdió. Si no hay envíos así, no se consulta a Clip: ids
+          // inventados no nos hacen gastar consultas con la clave del negocio.
+          const sinIdQ = await db.collectionGroup(COL_PAGOS_CLIP)
+              .where("sinIdHasta", ">", Date.now()).limit(1).get();
+          if (!sinIdQ.empty) await adoptarIntentoClip(id);
         }
       } catch (e) {
         logger.error("webhookClip", {id, error: e.message});

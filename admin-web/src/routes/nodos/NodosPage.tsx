@@ -12,6 +12,7 @@ import { useNegocio } from "@/hooks/useNegocio";
 import { useAuth } from "@/hooks/useAuth";
 import { useNodos } from "@/features/nodos/useNodos";
 import { useSucursales } from "@/features/sucursales/useSucursales";
+import { CobrosClipPorRevisar } from "@/features/nodos/CobrosClipPorRevisar";
 import {
   fnGenerarCodigoCaja,
   fnRevocarNodo,
@@ -298,6 +299,14 @@ export function NodosPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {negocioId && nodos.some((n) => n.clipSerial) && (
+        <CobrosClipPorRevisar
+          negocioId={negocioId}
+          sucursales={sucursales}
+          nombreCaja={(id) => nodos.find((n) => n.nodoId === id)?.nombre ?? id}
+        />
       )}
 
       {detalle && <NodoDetalleModal nodo={detalle} onClose={() => setDetalle(null)} />}

@@ -52,6 +52,7 @@ describe("monto y cruce con la venta", () => {
   it("estados finales", () => {
     expect(cobroClipFinal("aprobado")).toBe(true);
     expect(cobroClipFinal("cancelado")).toBe(true);
+    expect(cobroClipFinal("manual")).toBe(true);
     expect(cobroClipFinal("pendiente")).toBe(false);
     expect(cobroClipFinal("incierto")).toBe(false);
   });
@@ -100,6 +101,8 @@ describe("al abrir la caja con un cobro a medias", () => {
     expect(accionRecuperacionClip("terminal", cobro(), venta)).toBe("terminar-venta");
     expect(accionRecuperacionClip("terminal", cobro(), { montoPago: "300" })).toBe("revisar");
     expect(accionRecuperacionClip("terminal", cobro({ estado: "revisar" }), venta)).toBe("revisar");
+    // Confirmado a mano en la terminal y la app se cerró antes de guardar.
+    expect(accionRecuperacionClip("terminal", cobro({ estado: "manual" }), venta)).toBe("terminar-venta");
   });
 
   it("sin pago o sin llegar al servidor se retoma; pasada la aprobación se termina", () => {

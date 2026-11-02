@@ -371,6 +371,10 @@ export type CobrarConClipInput = {
   reintentarIncierto?: boolean;
 };
 export type CobroClipInput = { cobroId: string };
+export type CancelarCobroClipInput = CobroClipInput & {
+  /** "Ya se cobró en la terminal": cierra un envío incierto como pagado a mano. */
+  comoPagado?: boolean;
+};
 export const fnCobrarConClip = callable<CobrarConClipInput, CobroClip>("cobrarConClip");
 export const fnConsultarCobroClip = callable<CobroClipInput, CobroClip>("consultarCobroClip");
-export const fnCancelarCobroClip = callable<CobroClipInput, CobroClip>("cancelarCobroClip");
+export const fnCancelarCobroClip = callable<CancelarCobroClipInput, CobroClip>("cancelarCobroClip");

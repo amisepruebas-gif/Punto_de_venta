@@ -18,6 +18,8 @@ const {
   errorClip,
   envioIncierto,
   cobroPublico,
+  resultadoLimpieza,
+  decidirPagoTardio,
   CANDADO_VENCE_MS,
   ENVIANDO_VENCE_MS,
 } = require("../lib/clip");
@@ -251,4 +253,34 @@ test("cobroPublico: sin serie ni historial", () => {
   assert.equal(c.intentos, undefined);
   assert.equal(c.pinpadRequestId, "pinpad-1");
   assert.equal(cobroPublico(null), null);
+});
+
+test("transiciones: confirmar a mano solo desde un envío incierto", () => {
+  assert.equal(transicionValida("incierto", "manual"), true);
+  assert.equal(transicionValida("enviando", "manual"), true);
+  assert.equal(transicionValida("pendiente", "manual"), false);
+  assert.equal(transicionValida("manual", "aprobado"), false);
+});
+
+test("limpiar la terminal: solo libre deja seguir", () => {
+  assert.equal(resultadoLimpieza(null), "libre");
+  assert.equal(resultadoLimpieza(errorClip(400, {code: "PAYMENT_REQUEST_ISSUE"})), "libre");
+  assert.equal(resultadoLimpieza(errorClip(404, {})), "libre");
+  assert.equal(resultadoLimpieza(errorClip(400, {code: "PAYMENT_PENDING"})), "ocupada");
+  // Lo que no se entiende no cuenta como cancelado: 429, 401, otro 400, red.
+  for (const e of [errorClip(429, {}), errorClip(401, {}), errorClip(400, {code: "X"}),
+    errorClip(0, null), errorClip(503, {})]) {
+    assert.equal(resultadoLimpieza(e), "error", e.message);
+  }
+});
+
+test("pago tardío: nunca se tira; cobro doble se marca", () => {
+  for (const estado of ["pendiente", "incierto", "fallido", "cancelado", "manual", "revisar"]) {
+    assert.equal(decidirPagoTardio({estado, pinpadRequestId: "pinpad-2"}, "pinpad-1"), "aprobar", estado);
+  }
+  assert.equal(decidirPagoTardio({estado: "aprobado", pinpadRequestId: "pinpad-1"}, "pinpad-1"), "ignorar");
+  assert.equal(decidirPagoTardio({estado: "aprobado", pinpadRequestId: "pinpad-2"}, "pinpad-1"), "extra");
+  assert.equal(decidirPagoTardio({estado: "aprobado", pinpadRequestId: "pinpad-2",
+    aprobacionesExtra: [{id: "pinpad-1"}]}, "pinpad-1"), "ignorar");
+  assert.equal(decidirPagoTardio(null, "pinpad-1"), "ignorar");
 });

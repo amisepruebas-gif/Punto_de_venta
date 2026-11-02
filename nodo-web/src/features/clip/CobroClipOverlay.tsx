@@ -59,8 +59,12 @@ export function CobroClipOverlay({ terminal }: { terminal: CobroTerminal }) {
       titulo = "No sabemos si la terminal recibió el cobro";
       cuerpo = (
         <ul className="list-disc space-y-1 pl-5 text-left">
-          <li>Si la terminal muestra el cobro, deja que el cliente pague: aquí se verá solo.</li>
-          <li>Si la terminal está en su pantalla de espera, toca Reintentar.</li>
+          <li>
+            Si la terminal imprimió el comprobante o muestra el pago aprobado, ya se cobró: toca
+            “Ya se cobró en la terminal”.
+          </li>
+          <li>Si muestra el cobro y el cliente no ha pagado, deja que pague: aquí se verá solo.</li>
+          <li>Solo si no hay cobro ni comprobante, toca Reintentar.</li>
         </ul>
       );
       botones = confirmarManual ? (
@@ -146,10 +150,18 @@ export function CobroClipOverlay({ terminal }: { terminal: CobroTerminal }) {
       icono = <AlertTriangle className="size-9 text-aviso" aria-hidden />;
       titulo = `La tarjeta ya se cobró (${pesos(vista.monto)})`;
       cuerpo = (
-        <p>
-          {vista.mensaje} Reintenta, o cobra los {pesos(vista.descuento)}{" "}
-          {vista.quitar === "cashback" ? "del cashback" : "del crédito de regalo"} en efectivo.
-        </p>
+        <>
+          <p>
+            {vista.mensaje} Reintenta, o cobra los {pesos(vista.descuento)}{" "}
+            {vista.quitar === "cashback" ? "del cashback" : "del crédito de regalo"} en efectivo.
+          </p>
+          {vista.incierto && (
+            <p className="mt-2 font-medium text-aviso">
+              Sin conexión no se sabe si ya se descontó. Mejor reintenta; si cobras en efectivo y sí
+              se descontó, hay que devolverlo al cliente en amise.
+            </p>
+          )}
+        </>
       );
       botones = (
         <>
@@ -164,10 +176,21 @@ export function CobroClipOverlay({ terminal }: { terminal: CobroTerminal }) {
       break;
   }
 
-  const aviso =
-    (vista.paso === "esperando" || vista.paso === "incierto" || vista.paso === "error") && vista.aviso
-      ? vista.aviso
-      : null;
+  const abierto =
+    vista.paso === "esperando" || vista.paso === "incierto" || vista.paso === "error" ? vista : null;
+  const aviso = abierto?.aviso ?? null;
+  // Sin conexión con el servidor, la caja no queda atrapada: sale y el cobro
+  // sigue guardado en la tablet para revisarlo al volver la red.
+  if (abierto?.sinRed) {
+    botones = (
+      <>
+        {botones}
+        <button type="button" className={secundario} onClick={terminal.salir}>
+          Salir y revisar después
+        </button>
+      </>
+    );
+  }
 
   return (
     <div

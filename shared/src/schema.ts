@@ -193,7 +193,9 @@ export type EstadoCobroClip =
   | "aprobado"
   | "fallido"
   | "cancelado"
-  | "revisar";
+  | "revisar"
+  /** El cajero confirmó en la terminal un envío incierto (sin verificar). */
+  | "manual";
 
 /** Datos no sensibles de la tarjeta con que se pagó en la terminal. */
 export type TarjetaClip = {

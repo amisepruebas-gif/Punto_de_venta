@@ -14,8 +14,9 @@
 
 const {HttpsError} = require("firebase-functions/v2/https");
 
-/** Estados del cobro guardado en `pagos_clip_web_new_version`. */
-const ESTADOS_FINALES = ["aprobado", "fallido", "cancelado", "revisar"];
+/** Estados del cobro guardado en `pagos_clip_web_new_version`. "manual": el
+ *  cajero confirmó en la terminal un intento incierto (no se pudo verificar). */
+const ESTADOS_FINALES = ["aprobado", "fallido", "cancelado", "revisar", "manual"];
 
 // Estados de Clip que cierran una intención sin pago. Cualquier otro que no
 // sea COMPLETED (PENDING, IN_PROCESS o uno nuevo) se toma como "aún no".
@@ -31,15 +32,17 @@ const ENVIANDO_VENCE_MS = 60_000;
 
 // Cambios de estado permitidos. Los finales no se mueven, salvo un aprobado
 // que se vuelve a confirmar. "incierto" → "pendiente" es cuando el aviso de
-// Clip revela el id de un envío cuya respuesta se perdió.
+// Clip revela el id de un envío cuya respuesta se perdió. El dinero que llega
+// tarde a un intento cerrado no pasa por aquí: ver decidirPagoTardio.
 const TRANSICIONES = {
-  enviando: ["enviando", "pendiente", "incierto", "fallido", "cancelado"],
+  enviando: ["enviando", "pendiente", "incierto", "fallido", "cancelado", "manual"],
   pendiente: ["pendiente", "aprobado", "fallido", "cancelado", "revisar"],
-  incierto: ["incierto", "pendiente", "cancelado"],
+  incierto: ["incierto", "pendiente", "cancelado", "manual"],
   aprobado: ["aprobado"],
   fallido: [],
   cancelado: [],
   revisar: [],
+  manual: [],
 };
 
 /** ¿Puede el cobro pasar de `de` a `a`? */
@@ -269,6 +272,39 @@ function envioIncierto(err) {
   return d.clipStatus === 0 || Number(d.clipStatus) >= 500;
 }
 
+/**
+ * Qué significa lo que respondió Clip al cancelar por número de serie (null =
+ * respondió 200): "libre" si canceló o no había nada que cancelar, "ocupada"
+ * si la terminal ya está cobrando, "error" si no se sabe (401, 429, red…).
+ * Solo "libre" deja mandar otro intento o dar el cobro por cancelado.
+ */
+function resultadoLimpieza(err) {
+  if (!err) return "libre";
+  const d = (err && err.details) || {};
+  if (d.clipCode === "PAYMENT_PENDING") return "ocupada";
+  if (d.clipStatus === 404 ||
+      (d.clipStatus === 400 && d.clipCode === "PAYMENT_REQUEST_ISSUE")) {
+    return "libre";
+  }
+  return "error";
+}
+
+/**
+ * Dinero en un intento que ya no es el abierto (el aviso llegó tarde, o se
+ * reintentó un incierto que sí se cobró). Nunca se tira:
+ * - "aprobar": el cobro aún no estaba aprobado → queda aprobado con ese pago
+ *   (aunque se hubiera dado por cancelado o confirmado a mano).
+ * - "extra": ya estaba aprobado con otro pago → cobro doble, a devolver a mano.
+ * - "ignorar": ese pago ya está contado.
+ */
+function decidirPagoTardio(cobro, id) {
+  if (!cobro) return "ignorar";
+  if (cobro.estado !== "aprobado") return "aprobar";
+  if (cobro.pinpadRequestId === id) return "ignorar";
+  if ((cobro.aprobacionesExtra || []).some((x) => x && x.id === id)) return "ignorar";
+  return "extra";
+}
+
 /** Lo que la caja necesita del cobro (sin serie ni historial). */
 function cobroPublico(c) {
   if (!c) return null;
@@ -306,5 +342,7 @@ module.exports = {
   decidirCobro,
   errorClip,
   envioIncierto,
+  resultadoLimpieza,
+  decidirPagoTardio,
   cobroPublico,
 };

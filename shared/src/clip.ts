@@ -13,6 +13,7 @@ export const ESTADOS_FINALES_CLIP: readonly EstadoCobroClip[] = [
   "fallido",
   "cancelado",
   "revisar",
+  "manual",
 ];
 
 export function cobroClipFinal(estado: EstadoCobroClip | string | null | undefined): boolean {
@@ -118,6 +119,9 @@ export function accionRecuperacionClip(
       return "incierto";
     case "aprobado":
       return puedeCrearVentaConClip(cobro, preview) ? "terminar-venta" : "revisar";
+    case "manual":
+      // El cajero ya lo confirmó en la terminal: solo falta guardar la venta.
+      return "terminar-venta";
     case "revisar":
       return "revisar";
     default:
