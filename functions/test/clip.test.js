@@ -59,15 +59,25 @@ test("centavos y basicAuth", () => {
 });
 
 test("referencia: liga intento y venta, y se puede leer de vuelta", () => {
-  assert.equal(referencia("Vta_123", 2), "Vta_123-2");
-  assert.deepEqual(leerReferencia("Vta_123-2"), {cobroId: "Vta_123", intento: 2});
+  assert.equal(referencia("Vta123", 2), "Vta123-2");
+  assert.deepEqual(leerReferencia("Vta123-2"), {cobroId: "Vta123", intento: 2});
   assert.deepEqual(leerReferencia("ab-cd-ef-1"), {cobroId: "ab-cd-ef", intento: 1});
   assert.equal(leerReferencia("test-demo"), null);
+  assert.equal(leerReferencia("Vta_123-2"), null);
   assert.equal(leerReferencia(""), null);
 });
 
+test("referencia: cabe en lo que acepta Clip (≤ 100, letras, números y guiones)", () => {
+  // Como los ids de venta de la caja (generarID): fecha y hora + 3 al azar.
+  assert.match(referencia("20261102171430123abc", 1), /^[A-Za-z0-9-]{1,100}$/);
+  const id = "a".repeat(64);
+  assert.equal(cobroIdValido(id), true);
+  assert.ok(referencia(id, 999).length <= 100);
+});
+
 test("cobroIdValido y serieValida", () => {
-  assert.equal(cobroIdValido("abcDEF12_-"), true);
+  assert.equal(cobroIdValido("abcDEF12-"), true);
+  assert.equal(cobroIdValido("abc_DEF12"), false);
   assert.equal(cobroIdValido("a/b"), false);
   assert.equal(cobroIdValido("abc"), false);
   assert.equal(cobroIdValido(123), false);
@@ -114,6 +124,15 @@ test("evaluar: COMPLETED con lo exacto es aprobado, con los datos de la tarjeta"
     transaccionId: "tx-1", aprobadoEn: "2026-11-02T18:00:00Z"});
 });
 
+test("evaluar: APPROVED (como lo nombra soporte de Clip) vale igual que COMPLETED", () => {
+  const ev = evaluarIntentoClip(resp("APPROVED", [aprobado(35)], "35.00"), 3500);
+  assert.equal(ev.estado, "aprobado");
+  assert.equal(ev.tarjeta.ultimos4, "4242");
+  // Lo pagado también tiene que cuadrar.
+  assert.equal(evaluarIntentoClip(resp("APPROVED", [aprobado(20)], "20.00"), 3500).estado, "revisar");
+  assert.equal(evaluarIntentoClip(resp("APPROVED", [], "0.00"), 3500).estado, "revisar");
+});
+
 test("evaluar: rechazada y luego aprobada (reintento) es aprobado con la tarjeta buena", () => {
   const ev = evaluarIntentoClip(resp("COMPLETED", [rechazado(), aprobado(35)], "35.00"), 3500);
   assert.equal(ev.estado, "aprobado");
@@ -143,6 +162,10 @@ test("evaluar: cerrada sin pago es fallido o cancelado; con pago, revisión", ()
   assert.equal(evaluarIntentoClip(resp("CANCELED", [], "0.00"), 3500).estado, "cancelado");
   assert.equal(evaluarIntentoClip(resp("CANCELLED", [], "0.00"), 3500).estado, "cancelado");
   assert.equal(evaluarIntentoClip(resp("EXPIRED", [], "0.00"), 3500).estado, "fallido");
+  assert.equal(evaluarIntentoClip(resp("REJECTED", [rechazado()], "0.00"), 3500).estado, "fallido");
+  assert.equal(evaluarIntentoClip(resp("TIMEOUT_CANCELED", [], "0.00"), 3500).estado, "cancelado");
+  const tarde = evaluarIntentoClip(resp("TIMEOUT_CANCELED", [aprobado(35)], "35.00"), 3500);
+  assert.equal(tarde.estado, "revisar");
   const raro = evaluarIntentoClip(resp("FAILED", [aprobado(35)], "35.00"), 3500);
   assert.equal(raro.estado, "revisar");
   assert.equal(raro.alerta, "pago-en-intento-cerrado");

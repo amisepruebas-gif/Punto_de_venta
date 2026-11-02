@@ -7,6 +7,8 @@
 // API de PinPad. Lo que importa aquí:
 // - Solo existe producción: no hay ambiente de pruebas.
 // - El monto va como texto con dos decimales ("199.50").
+// - La referencia admite hasta 100 caracteres: letras, números y guiones
+//   medios (lo confirmó soporte de Clip, nov-2026).
 // - El aviso (webhook) trae solo {id, origin, event_type}, sin firma, y se
 //   manda una sola vez: solo dispara una consulta; la consulta es la que manda.
 // - ERR10_04: terminal apagada, app PinPad cerrada u otro cobro en curso.
@@ -18,10 +20,13 @@ const {HttpsError} = require("firebase-functions/v2/https");
  *  cajero confirmó en la terminal un intento incierto (no se pudo verificar). */
 const ESTADOS_FINALES = ["aprobado", "fallido", "cancelado", "revisar", "manual"];
 
-// Estados de Clip que cierran una intención sin pago. Cualquier otro que no
-// sea COMPLETED (PENDING, IN_PROCESS o uno nuevo) se toma como "aún no".
-const CLIP_SIN_PAGO = ["FAILED", "CANCELED", "CANCELLED", "EXPIRED", "REJECTED",
-  "DECLINED", "ERROR"];
+// Estados de la intención en Clip. La documentación trae de ejemplo
+// COMPLETED, PENDING y FAILED; soporte de Clip (nov-2026) dio APPROVED,
+// REJECTED, CANCELED y TIMEOUT_CANCELED. Se aceptan los dos juegos. Cualquier
+// otro (PENDING, IN_PROCESS o uno nuevo) se toma como "aún no".
+const CLIP_PAGADO = ["COMPLETED", "APPROVED"];
+const CLIP_SIN_PAGO = ["FAILED", "CANCELED", "CANCELLED", "TIMEOUT_CANCELED",
+  "TIMEOUT_CANCELLED", "EXPIRED", "REJECTED", "DECLINED", "ERROR"];
 
 // Un candado de terminal ajeno se ignora pasado este tiempo: Clip mismo
 // rechaza (ERR10_04) un segundo cobro si la terminal sigue ocupada.
@@ -74,20 +79,22 @@ function basicAuth(key, secret) {
   return "Basic " + Buffer.from(`${key}:${secret}`).toString("base64");
 }
 
-/** Referencia para Clip: liga cada intento con su venta (cobroId = ventaId). */
+/** Referencia para Clip: liga cada intento con su venta (cobroId = ventaId).
+ *  Con un cobroId válido queda muy por debajo de los 100 caracteres de Clip. */
 function referencia(cobroId, intento) {
   return `${cobroId}-${intento}`;
 }
 
 /** "abc123-2" → {cobroId: "abc123", intento: 2}; null si no es nuestra. */
 function leerReferencia(ref) {
-  const m = /^([A-Za-z0-9_-]{6,64})-(\d{1,3})$/.exec(String(ref || ""));
+  const m = /^([A-Za-z0-9-]{6,64})-(\d{1,3})$/.exec(String(ref || ""));
   return m ? {cobroId: m[1], intento: Number(m[2])} : null;
 }
 
-/** El cobroId es el idempotencyKey de la venta. */
+/** El cobroId es el idempotencyKey de la venta. Sin guion bajo ni otros
+ *  signos: Clip solo admite letras, números y guiones en la referencia. */
 function cobroIdValido(id) {
-  return typeof id === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(id);
+  return typeof id === "string" && /^[A-Za-z0-9-]{6,64}$/.test(id);
 }
 
 /** Número de serie de la terminal, como lo guarda admin. */
@@ -156,11 +163,12 @@ function tarjetaDe(r) {
 
 /**
  * Lee la respuesta de GET /payment (con detalle) y dice en qué quedó.
- * - aprobado: COMPLETED y lo pagado ≥ lo esperado. Si pagaron de más o hubo
- *   dos aprobaciones, se marca una alerta para revisarlo a mano.
+ * - aprobado: COMPLETED o APPROVED, y lo pagado ≥ lo esperado. Si pagaron de
+ *   más o hubo dos aprobaciones, se marca una alerta para revisarlo a mano.
  * - revisar: hubo dinero pero no cuadra (pagaron de menos, o una intención
  *   cerrada trae un pago). No se crea la venta sola.
- * - fallido / cancelado: cerrada sin pago.
+ * - fallido / cancelado: cerrada sin pago. TIMEOUT_CANCELED (la terminal lo
+ *   canceló por tiempo) cuenta como cancelado.
  * - pendiente: aún no (PENDING, IN_PROCESS o un estado que no conocemos).
  */
 function evaluarIntentoClip(resp, esperadoCentavos) {
@@ -175,7 +183,7 @@ function evaluarIntentoClip(resp, esperadoCentavos) {
   const ultimo = aprobados[aprobados.length - 1];
   const tarjeta = ultimo ? tarjetaDe(ultimo) : null;
 
-  if (status === "COMPLETED") {
+  if (CLIP_PAGADO.includes(status)) {
     if (pagado <= 0) {
       return {estado: "revisar", pagadoCentavos: 0, alerta: "completado-sin-pago", tarjeta};
     }
@@ -191,7 +199,7 @@ function evaluarIntentoClip(resp, esperadoCentavos) {
       return {estado: "revisar", pagadoCentavos: pagado, alerta: "pago-en-intento-cerrado", tarjeta};
     }
     return {
-      estado: status.startsWith("CANCEL") ? "cancelado" : "fallido",
+      estado: status.includes("CANCEL") ? "cancelado" : "fallido",
       pagadoCentavos: 0, alerta: null, tarjeta: null,
     };
   }
