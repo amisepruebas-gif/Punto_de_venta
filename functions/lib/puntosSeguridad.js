@@ -2,9 +2,9 @@
 // ============================================================
 // Lealtad: identidad del cliente y datos que salen hacia la caja
 // ============================================================
-// Reglas del dueño (oct 2026):
-//   - usar cashback exige escanear la tarjeta del cliente;
-//   - el crédito de regalo se usa con la tarjeta, o con teléfono + correo;
+// Reglas del dueño (oct 2026; la tarjeta es OPCIONAL desde el 2026-11-02):
+//   - el cashback y el crédito de regalo se usan con la tarjeta, o con
+//     teléfono + correo (la tarjeta es decorativa y útil, no obligatoria);
 //   - activar, reponer o desbloquear una tarjeta y recuperar la contraseña
 //     piden el correo completo del cliente (para recuperar también sirve la
 //     tarjeta).

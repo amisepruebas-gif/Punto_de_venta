@@ -2468,8 +2468,10 @@ exports.consultarSaldoPuntos = onCall(
 );
 
 // Canjea (debita) cashback ($) al cobrar. Idempotente por idempotencyKey (= ventaId).
-// Input: { phone, codigo, money, idempotencyKey } → { ok, redeemed, balance, money }.
-// `codigo` es la tarjeta escaneada: debe ser del monedero de ese teléfono.
+// Input: { phone, codigo? | email?, money, idempotencyKey } → { ok, redeemed, balance, money }.
+// La tarjeta es opcional (decisión del dueño, 2026-11-02): se usa con la tarjeta
+// escaneada o con el correo del cliente; cualquiera debe ser del monedero de ese
+// teléfono. Misma regla que el crédito de regalo.
 exports.canjearPuntos = onCall(
     {secrets: [LOYALTY_POS_SECRET], timeoutSeconds: 30, memory: "256MiB"},
     async (request) => {
@@ -2485,14 +2487,14 @@ exports.canjearPuntos = onCall(
       if (!email && !phone) {
         throw new HttpsError("invalid-argument", "email o phone requerido");
       }
-      // Usar cashback exige la tarjeta del cliente. Se verifica ANTES de
-      // debitar: un rechazo no mueve dinero.
-      const v = await puntosSeg.verificarIdentidad({phone, codigo}, consultarBalance);
+      // Usar cashback pide la tarjeta del cliente o su correo (la tarjeta manda
+      // si vienen las dos). Se verifica ANTES de debitar: un rechazo no mueve dinero.
+      const v = await puntosSeg.verificarIdentidad({phone, codigo, email}, consultarBalance);
       registrarVerificacion("canjearPuntos", v, t, phone);
       if (puntosSeg.rechazar(v)) {
         throw new HttpsError("permission-denied", v.motivo === "sin_dato" ?
-            "Para usar el cashback escanea la tarjeta del cliente" :
-            "La tarjeta no corresponde al cliente");
+            "Para usar el cashback escanea la tarjeta del cliente o confirma su correo" :
+            "La tarjeta o el correo no corresponden al cliente");
       }
       const data = await llamarAmise("/api/loyalty/redeem", {
         email, phone, money: m, idempotencyKey,
