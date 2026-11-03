@@ -3292,10 +3292,20 @@ exports.cancelarCobroClip = onCall(
               `/f2f/pinpad/v1/payment/${encodeURIComponent(c.pinpadRequestId)}`);
         } catch (e) {
           const det = (e && e.details) || {};
-          const actual = await refrescarCobroClip(ref, {minMs: 0}).catch(() => c);
+          let noExiste = false;
+          const actual = await refrescarCobroClip(ref, {minMs: 0}).catch((err) => {
+            noExiste = clip.noExisteEnClip(err);
+            return c;
+          });
           if (det.clipCode === "PAYMENT_PENDING") {
             return {...clip.cobroPublico(actual),
               aviso: "La terminal ya tomó el cobro: cancélalo en la terminal."};
+          }
+          if (noExiste) {
+            // Clip ya no la tiene: borra sola la intención que nunca llegó a
+            // la terminal, y esa ya no se puede cobrar.
+            return clip.cobroPublico(await actualizarIntento(ref, c.intento,
+                {estado: "cancelado"}, {soloDesde: ["pendiente"]}));
           }
           return {...clip.cobroPublico(actual),
             ...(actual.estado === "pendiente" ?

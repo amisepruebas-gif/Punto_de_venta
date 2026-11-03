@@ -19,6 +19,7 @@ const {
   envioIncierto,
   cobroPublico,
   resultadoLimpieza,
+  noExisteEnClip,
   decidirPagoTardio,
   CANDADO_VENCE_MS,
   ENVIANDO_VENCE_MS,
@@ -295,6 +296,15 @@ test("limpiar la terminal: solo libre deja seguir", () => {
     errorClip(0, null), errorClip(503, {})]) {
     assert.equal(resultadoLimpieza(e), "error", e.message);
   }
+});
+
+test("no existe en Clip: solo un 404 con PAYMENT_NOT_FOUND", () => {
+  assert.equal(noExisteEnClip(errorClip(404, {code: "PAYMENT_NOT_FOUND"})), true);
+  assert.equal(noExisteEnClip(errorClip(404, {code: "NOT_FOUND"})), false);
+  assert.equal(noExisteEnClip(errorClip(404, {})), false);
+  assert.equal(noExisteEnClip(errorClip(400, {code: "PAYMENT_REQUEST_ISSUE"})), false);
+  assert.equal(noExisteEnClip(errorClip(0, null)), false);
+  assert.equal(noExisteEnClip(null), false);
 });
 
 test("pago tardío: nunca se tira; cobro doble se marca", () => {

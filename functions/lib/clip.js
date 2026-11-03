@@ -298,6 +298,16 @@ function resultadoLimpieza(err) {
 }
 
 /**
+ * ¿Clip dice que la intención no existe (404 con PAYMENT_NOT_FOUND)? Clip
+ * borra sola la que nunca llegó a la terminal (soporte, nov-2026): esa ya no
+ * se puede cobrar. Otro 404 (una ruta equivocada, por ejemplo) no cuenta.
+ */
+function noExisteEnClip(err) {
+  const d = (err && err.details) || {};
+  return d.clipStatus === 404 && d.clipCode === "PAYMENT_NOT_FOUND";
+}
+
+/**
  * Dinero en un intento que ya no es el abierto (el aviso llegó tarde, o se
  * reintentó un incierto que sí se cobró). Nunca se tira:
  * - "aprobar": el cobro aún no estaba aprobado → queda aprobado con ese pago
@@ -351,6 +361,7 @@ module.exports = {
   errorClip,
   envioIncierto,
   resultadoLimpieza,
+  noExisteEnClip,
   decidirPagoTardio,
   cobroPublico,
 };
