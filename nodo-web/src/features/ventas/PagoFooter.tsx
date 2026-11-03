@@ -62,8 +62,11 @@ export type CobrarPayload = {
   /** Canje de cashback (POS): $ descuento aplicado + cliente para acreditar/debitar. */
   descuentoPuntos?: string;
   puntosTelefono?: string;
-  /** Tarjeta escaneada con la que se consultó: usar cashback la exige. */
+  /** Usar cashback pide la tarjeta escaneada con la que se consultó o, sin
+   *  ella, el correo del cliente (ya comprobado contra su teléfono; el
+   *  servidor lo vuelve a verificar antes de debitar). */
   puntosCodigo?: string;
+  puntosEmail?: string;
   /** Fase 3 — crédito de regalo usado como descuento (NO es ingreso) +
    *  identificador para debitarlo: la tarjeta, o teléfono + correo. */
   descuentoRegalo?: string;
@@ -128,11 +131,12 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   const [error, setError] = useState<string | null>(null);
   // Canje de puntos: descuento (pesos) + cliente identificado para acreditar.
   const [descuentoPuntos, setDescuentoPuntos] = useState(0);
-  // `codigo`: la tarjeta escaneada con la que se consultó (solo con ella se
-  // puede usar saldo).
+  // `codigo`: la tarjeta escaneada con la que se consultó; `email`: sin ella,
+  // el correo del cliente. Usar saldo pide uno de los dos.
   const [clientePuntos, setClientePuntos] = useState<{
     telefono: string;
     codigo?: string;
+    email?: string;
   } | null>(null);
   // Aviso al cambiar de cliente con un descuento puesto: el descuento del
   // cliente anterior se quita (nunca se debita a uno lo aplicado a otro).
@@ -293,7 +297,9 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
             descuentoPuntos: String(descuentoPuntos),
             ...(descuentoPuntos > 0 && clientePuntos.codigo
               ? { puntosCodigo: clientePuntos.codigo }
-              : {}),
+              : descuentoPuntos > 0 && clientePuntos.email
+                ? { puntosEmail: clientePuntos.email }
+                : {}),
           }
         : {}),
       ...(descuentoRegalo > 0 && regaloId
@@ -383,7 +389,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
         open={usarPuntosOpen}
         maxTotal={maxCashbackAplicable}
         onClose={() => setUsarPuntosOpen(false)}
-        onAplicar={({ telefono, codigo, descuento, soloLigar }) => {
+        onAplicar={({ telefono, codigo, email, descuento, soloLigar }) => {
           setUsarPuntosOpen(false);
           const mismo =
             !!clientePuntos && telefonosIguales(clientePuntos.telefono, telefono);
@@ -397,7 +403,11 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
               : null,
           );
           setDescuentoPuntos(descuento);
-          setClientePuntos({ telefono, ...(codigo ? { codigo } : {}) });
+          setClientePuntos({
+            telefono,
+            ...(codigo ? { codigo } : {}),
+            ...(email ? { email } : {}),
+          });
           setDescuentoInvalidado(false);
         }}
       />

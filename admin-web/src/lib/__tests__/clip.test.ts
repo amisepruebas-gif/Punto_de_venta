@@ -143,6 +143,16 @@ describe("descuento que no se pudo aplicar con la tarjeta ya cobrada", () => {
     expect(Number(dd.tarjeta) + Number(dd.efectivo) + Number(dd.transferencia)).toBe(Number(r.montoCobro));
   });
 
+  it("sin el cashback usado con el correo: también se quita el correo", () => {
+    const porCorreo = { ...base, puntosCodigo: undefined, puntosEmail: "cliente@correo.com" };
+    const r = ventaSinDescuentoConEfectivo(porCorreo, "cashback");
+    expect(r.montoCobro).toBe("500");
+    expect(r.descuentoPuntos).toBeUndefined();
+    expect(r.puntosEmail).toBeUndefined();
+    // Sin el correo ni la tarjeta, el cliente sigue acumulando por su compra.
+    expect(r.puntosTelefono).toBe("5511111111");
+  });
+
   it("si después falla también el regalo, se suma al efectivo", () => {
     const conRegalo = { ...base, montoCobro: "350", montoPago: "364", descuentoRegalo: "50", regaloCodigo: "7502000000019" };
     const r1 = ventaSinDescuentoConEfectivo(conRegalo, "cashback");

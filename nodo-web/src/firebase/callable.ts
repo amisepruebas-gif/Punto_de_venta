@@ -169,8 +169,9 @@ export const fnConsultarSaldoPuntos = callable<
 export type CanjearPuntosInput = {
   email?: string;
   phone?: string;
-  /** Tarjeta escaneada: usar cashback la exige (el servidor verifica que sea
-   *  del monedero de ese teléfono). */
+  /** Usar cashback pide la tarjeta escaneada (`codigo`) o el correo del
+   *  cliente (`email`); el servidor verifica que sea del monedero de ese
+   *  teléfono. Si llegan los dos, manda la tarjeta. */
   codigo?: string;
   /** $ de cashback a canjear. */
   money: number;

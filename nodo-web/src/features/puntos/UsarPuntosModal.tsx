@@ -25,8 +25,10 @@ import { formatearTicketRecuperacion } from "./ticketRecuperacion";
 
 export type AplicarPuntos = {
   telefono: string;
-  /** Tarjeta escaneada con la que se consultó: usar saldo la exige. */
+  /** Usar saldo pide la tarjeta escaneada con la que se consultó o, sin ella,
+   *  el correo completo del cliente (ya comprobado contra su teléfono). */
   codigo?: string;
+  email?: string;
   /** Cashback en pesos a usar como descuento (0 = solo acumular). */
   descuento: number;
   /** Solo ligar al cliente a la venta (al activar o reponer su tarjeta): si ya
@@ -53,7 +55,7 @@ const digitos = (s: string) => s.replace(/\D/g, "");
  */
 type Consultado = {
   telefono: string;
-  /** Por dónde se consultó: solo con la tarjeta se puede usar el saldo. */
+  /** Por dónde se consultó: sin la tarjeta, usar el saldo pide el correo. */
   via: "telefono" | "tarjeta";
   /** Tarjeta escaneada (solo si via === "tarjeta"). */
   codigo?: string;
@@ -66,7 +68,9 @@ type Consultado = {
 /**
  * Cashback en el POS. El cajero consulta al cliente por teléfono o escaneando
  * su tarjeta (siempre se muestra el EQUIVALENTE EN DINERO).
- *  - Usar saldo exige haber escaneado la tarjeta; por teléfono solo se acumula.
+ *  - Usar saldo pide la tarjeta escaneada o, si se consultó por teléfono, el
+ *    correo completo del cliente (la tarjeta es opcional). El correo debe ser
+ *    del mismo monedero que el teléfono; el servidor lo vuelve a comprobar.
  *  - Activar, reponer o desbloquear la tarjeta y recuperar la contraseña piden
  *    el correo completo del cliente: debe ser del mismo monedero que el
  *    teléfono (para recuperar también basta la tarjeta escaneada).
@@ -82,6 +86,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   // antes de editar la casilla) se ignora.
   const consultaId = useRef(0);
   const [monto, setMonto] = useState("");
+  // Usar el saldo sin la tarjeta: el correo del cliente, comprobado al aplicar.
+  const [correoUsar, setCorreoUsar] = useState("");
+  const [verificando, setVerificando] = useState(false);
+  const [usarMsg, setUsarMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
   // Activar/reponer tarjeta física.
@@ -108,6 +116,9 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     setConsultando(false);
     setConsultado(null);
     setMonto("");
+    setCorreoUsar("");
+    setVerificando(false);
+    setUsarMsg(null);
     setExito(null);
     setModoTarjeta(false);
     setNuevoBarcode("");
@@ -123,6 +134,8 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
 
   // El componente queda montado (return null abajo) → el estado local persiste.
   // Limpiar al ABRIR para no arrastrar el teléfono/saldo del cliente anterior.
+  // Al CERRAR se descarta lo que siga en curso: un correo que termina de
+  // verificarse con el modal ya cerrado no aplica el descuento.
   useEffect(() => {
     if (open) {
       setTelefono("");
@@ -131,6 +144,8 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
       setRecovered(null);
       setPrintMsg(null);
       limpiarConsulta();
+    } else {
+      consultaId.current += 1;
     }
   }, [open]);
 
@@ -143,17 +158,14 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
   // Cashback 1:1 en $: el descuento es el monto pedido, tope incluido.
   const pedido = Math.floor(Math.min(Number(monto) || 0, tope));
   const porTarjeta = consultado?.via === "tarjeta" && !!consultado.codigo;
-  const puedeUsar = porTarjeta && tope > 0;
+  // Sin la tarjeta también se puede: al aplicar se pide el correo del cliente.
+  const puedeUsar = tope > 0;
   // Motivo JUNTO a los botones (no arriba del modal): si algo impide usar el
   // saldo, el cajero lo lee donde está mirando.
   const motivoBloqueo =
-    !consultado || usable < 1
+    !consultado || usable < 1 || tope > 0
       ? null
-      : !porTarjeta
-        ? "Para usar el saldo, escanea la tarjeta del cliente. Con el teléfono solo se acumula."
-        : tope <= 0
-          ? `Tope disponible ${money(tope)}: esta venta no tiene subtotal de productos al que aplicar el descuento. Las tarjetas de regalo se pagan con dinero real.`
-          : null;
+      : `Tope disponible ${money(tope)}: esta venta no tiene subtotal de productos al que aplicar el descuento. Las tarjetas de regalo se pagan con dinero real.`;
 
   async function consultarTelefono(tel: string) {
     limpiarConsulta();
@@ -242,16 +254,42 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
     return Boolean(r.data.exists) && telefonosIguales(r.data.telefono, tel);
   }
 
-  function aplicarUsar() {
-    if (!consultado || !porTarjeta || !consultado.codigo) {
-      setError("Para usar el saldo, escanea la tarjeta del cliente.");
-      return;
-    }
+  async function aplicarUsar() {
+    if (!consultado) return;
     if (pedido <= 0) {
-      setError("Indica cuánto usar (mayor a 0).");
+      setUsarMsg("Indica cuánto usar (mayor a 0).");
       return;
     }
-    onAplicar({ telefono: consultado.telefono, codigo: consultado.codigo, descuento: pedido });
+    if (porTarjeta && consultado.codigo) {
+      onAplicar({ telefono: consultado.telefono, codigo: consultado.codigo, descuento: pedido });
+      reset();
+      return;
+    }
+    // Sin la tarjeta: el correo completo del cliente, del monedero de este
+    // teléfono. El servidor lo vuelve a comprobar antes de debitar.
+    const tel = consultado.telefono;
+    const correo = correoUsar.trim().toLowerCase();
+    if (!correoValido(correo)) {
+      setUsarMsg("Sin la tarjeta, escribe el correo completo del cliente.");
+      return;
+    }
+    const id = consultaId.current;
+    setUsarMsg(null);
+    setVerificando(true);
+    try {
+      const esSuyo = await correoDelCliente(correo, tel);
+      if (id !== consultaId.current) return;
+      if (!esSuyo) {
+        setUsarMsg("El correo no corresponde a este cliente.");
+        return;
+      }
+    } catch {
+      if (id === consultaId.current) setUsarMsg("No se pudo verificar el correo (sin conexión).");
+      return;
+    } finally {
+      if (id === consultaId.current) setVerificando(false);
+    }
+    onAplicar({ telefono: tel, email: correo, descuento: pedido });
     reset();
   }
 
@@ -515,7 +553,7 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
               </span>
             </div>
 
-            {usable >= 1 && porTarjeta && (
+            {usable >= 1 && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">¿Cuánto usar en esta venta?</label>
                 <Input
@@ -535,11 +573,29 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                 )}
               </div>
             )}
+            {usable >= 1 && !porTarjeta && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Correo completo del cliente</label>
+                <Input
+                  type="email"
+                  placeholder="cliente@correo.com"
+                  value={correoUsar}
+                  onChange={(e) => {
+                    setCorreoUsar(e.target.value);
+                    setUsarMsg(null);
+                  }}
+                />
+                <p className="text-[12px] text-text-soft">
+                  Sin la tarjeta, el cashback se usa con su teléfono y su correo.
+                </p>
+              </div>
+            )}
             {motivoBloqueo && (
               <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-900">
                 {motivoBloqueo}
               </p>
             )}
+            {usarMsg && <p className="text-[13px] text-destructive">{usarMsg}</p>}
             <div className="flex gap-2 pt-1">
               <Button type="button" variant="outline" className="flex-1" onClick={soloAcumular}>
                 Acumular en esta venta
@@ -548,10 +604,10 @@ export function UsarPuntosModal({ open, maxTotal, onClose, onAplicar }: Props) {
                 <Button
                   type="button"
                   className="flex-1"
-                  disabled={!puedeUsar}
-                  onClick={aplicarUsar}
+                  disabled={!puedeUsar || verificando}
+                  onClick={() => void aplicarUsar()}
                 >
-                  Usar cashback
+                  {verificando ? "Verificando…" : "Usar cashback"}
                 </Button>
               )}
             </div>

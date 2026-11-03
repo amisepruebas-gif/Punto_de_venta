@@ -138,6 +138,7 @@ export type VentaConDescuentos = {
   datosPagoDividido?: Record<string, unknown>;
   descuentoPuntos?: string;
   puntosCodigo?: string;
+  puntosEmail?: string;
   descuentoRegalo?: string;
   regaloCodigo?: string;
   regaloPhone?: string;
@@ -175,6 +176,7 @@ export function ventaSinDescuentoConEfectivo<T extends VentaConDescuentos>(
   if (quitar === "cashback") {
     delete r.descuentoPuntos;
     delete r.puntosCodigo;
+    delete r.puntosEmail;
   } else {
     delete r.descuentoRegalo;
     delete r.regaloCodigo;

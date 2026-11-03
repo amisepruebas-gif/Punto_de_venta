@@ -156,7 +156,7 @@ class DescuentoFallido extends Error {
  * cobrada la tarjeta, un descuento casi no puede fallar.
  */
 async function revisarSaldosAntesDeTerminal(
-  codigoCashback: string | undefined,
+  cashbackIdent: { codigo?: string; phone?: string },
   cashbackUsar: number,
   regaloUsar: number,
   regaloIdent: { codigo?: string; phone?: string } | null,
@@ -164,7 +164,11 @@ async function revisarSaldosAntesDeTerminal(
   if (cashbackUsar > 0) {
     let disponible: number;
     try {
-      const r = await fnConsultarSaldoPuntos({ codigo: codigoCashback });
+      // Con la tarjeta, por la tarjeta; sin ella (se usa con el correo), por el
+      // teléfono: las dos dan el saldo del mismo monedero.
+      const r = await fnConsultarSaldoPuntos(
+        cashbackIdent.codigo ? { codigo: cashbackIdent.codigo } : { phone: cashbackIdent.phone },
+      );
       disponible = r.data.exists ? Number(r.data.saldoUsable ?? r.data.saldoDinero) || 0 : 0;
     } catch {
       throw new Error("No se pudo revisar el cashback (sin conexión). Quítalo o reintenta.");
@@ -492,11 +496,11 @@ export function Ventas() {
     if (cashbackUsar > 0 && !puntosTel) {
       throw new Error("No se puede aplicar cashback sin teléfono del cliente. Quítalo y reintenta.");
     }
-    // Usar cashback exige la tarjeta del cliente escaneada (el servidor
-    // verifica que sea de ese monedero). Sin ella, se detiene sin debitar.
-    if (cashbackUsar > 0 && !p.puntosCodigo) {
+    // Usar cashback pide la tarjeta del cliente o su correo (el servidor
+    // verifica que sea de ese monedero). Sin ninguno, se detiene sin debitar.
+    if (cashbackUsar > 0 && !p.puntosCodigo && !p.puntosEmail) {
       throw new Error(
-        "Para usar cashback hay que escanear la tarjeta del cliente. Quita el descuento y aplícalo con la tarjeta.",
+        "Para usar cashback hace falta la tarjeta del cliente o su correo. Quita el descuento y vuelve a aplicarlo.",
       );
     }
     // Fase 5 (mínima-segura) — candado de canje: el servidor previene el DOBLE
@@ -516,7 +520,12 @@ export function Ventas() {
         setRecuperarClip(true);
         throw new Error("Hay un cobro con tarjeta anterior sin terminar. Resuélvelo primero.");
       }
-      await revisarSaldosAntesDeTerminal(p.puntosCodigo, cashbackUsar, regaloUsar, regaloIdent);
+      await revisarSaldosAntesDeTerminal(
+        { codigo: p.puntosCodigo, phone: puntosTel },
+        cashbackUsar,
+        regaloUsar,
+        regaloIdent,
+      );
       const st = useClientePuntos.getState();
       useCobroClip.getState().iniciar({
         cobroId,
@@ -589,9 +598,11 @@ export function Ventas() {
           }
         }
         try {
+          // Con la tarjeta, o con teléfono + correo (el servidor verifica que
+          // sean de ese monedero antes de debitar).
           await fnCanjearPuntos({
             phone: puntosTel,
-            codigo: p.puntosCodigo,
+            ...(p.puntosCodigo ? { codigo: p.puntosCodigo } : { email: p.puntosEmail }),
             money: cashbackUsar,
             idempotencyKey: cobroId,
             pendingLock: true, // activa el candado del servidor (anti doble-débito)
@@ -602,7 +613,7 @@ export function Ventas() {
           const msg = e instanceof Error ? e.message : "";
           throw new DescuentoFallido(
             codigoErrorPuntos(e) === "permission-denied"
-              ? "La tarjeta no corresponde al cliente. Quita el descuento y vuelve a escanear."
+              ? "La tarjeta o el correo no corresponden al cliente. Quita el descuento y vuelve a aplicarlo."
               : msg.includes("canje en curso")
                 ? "Ya hay un canje en curso para este cliente. Espera unos minutos y reintenta."
                 : "No se pudo usar el cashback (sin conexión o saldo). Quítalo o reintenta.",
