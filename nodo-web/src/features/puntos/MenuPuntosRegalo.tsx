@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Gift, UserPlus, UserX, WalletCards } from "lucide-react";
 import { claseBotonAccion } from "@/features/ventas/BarraAcciones";
 import { cn } from "@/lib/utils";
+import { REGALO_HABILITADO } from "./regalo";
 
 type Props = {
   onPreRegistro: () => void;
@@ -17,6 +18,7 @@ type Props = {
  * acciones de lealtad que no se usan en cada venta (pre-registrar cliente,
  * vender y recargar tarjeta de regalo). Con un cliente en espera lleva un
  * punto y permite quitarlo. El menú abre hacia arriba, sobre la lista.
+ * Con `REGALO_HABILITADO` en false no muestra las opciones de regalo.
  */
 export function MenuPuntosRegalo({
   onPreRegistro,
@@ -51,18 +53,22 @@ export function MenuPuntosRegalo({
       color: "bg-indigo-600",
       onClick: onPreRegistro,
     },
-    {
-      label: "Vender tarjeta de regalo",
-      Icono: Gift,
-      color: "bg-amber-500",
-      onClick: onVenderRegalo,
-    },
-    {
-      label: "Recargar tarjeta de regalo",
-      Icono: WalletCards,
-      color: "bg-amber-700",
-      onClick: onRecargarRegalo,
-    },
+    ...(REGALO_HABILITADO
+      ? [
+          {
+            label: "Vender tarjeta de regalo",
+            Icono: Gift,
+            color: "bg-amber-500",
+            onClick: onVenderRegalo,
+          },
+          {
+            label: "Recargar tarjeta de regalo",
+            Icono: WalletCards,
+            color: "bg-amber-700",
+            onClick: onRecargarRegalo,
+          },
+        ]
+      : []),
     ...(pendienteCorreo && onQuitarPendiente
       ? [
           {
@@ -80,13 +86,13 @@ export function MenuPuntosRegalo({
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
-        aria-label="Cashback y tarjetas de regalo"
+        aria-label={REGALO_HABILITADO ? "Cashback y tarjetas de regalo" : "Cashback"}
         aria-haspopup="menu"
         aria-expanded={abierto}
         className={cn(claseBotonAccion, "border-lealtad-borde text-lealtad-texto")}
       >
         <Gift className="h-5 w-5 shrink-0" aria-hidden />
-        <span className="line-clamp-2">Cashback y regalo</span>
+        <span className="line-clamp-2">{REGALO_HABILITADO ? "Cashback y regalo" : "Cashback"}</span>
         {pendienteCorreo && (
           <span
             className="absolute right-2 top-1.5 h-3 w-3 rounded-full border-2 border-card bg-lealtad"

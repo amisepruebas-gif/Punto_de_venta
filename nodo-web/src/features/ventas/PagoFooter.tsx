@@ -15,6 +15,7 @@ import { useNodoSession } from "@/hooks/useNodoSession";
 import { useSucursal } from "@/features/sucursal/useSucursal";
 import { UsarPuntosModal } from "@/features/puntos/UsarPuntosModal";
 import { UsarRegaloModal } from "@/features/puntos/UsarRegaloModal";
+import { REGALO_HABILITADO } from "@/features/puntos/regalo";
 import { useTerminalClip } from "@/features/clip/useTerminalClip";
 import { telefonosIguales, type MovimientoPago, type VentaArticulo } from "@shared";
 
@@ -444,7 +445,12 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
               </p>
             )}
           </div>
-          <div className="grid w-[12.5rem] shrink-0 grid-rows-2 gap-2 min-[860px]:w-auto min-[860px]:grid-cols-2 min-[860px]:grid-rows-1">
+          {/* Sin tarjetas de regalo (REGALO_HABILITADO = false) queda solo Cashback. */}
+          <div
+            className={`grid w-[12.5rem] shrink-0 gap-2 min-[860px]:w-auto ${
+              REGALO_HABILITADO ? "grid-rows-2 min-[860px]:grid-cols-2 min-[860px]:grid-rows-1" : ""
+            }`}
+          >
             <BotonLealtad
               activo={descuentoPuntos > 0}
               Icono={descuentoPuntos > 0 || clientePuntos ? Check : Coins}
@@ -455,16 +461,18 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
               }
               onClick={() => setUsarPuntosOpen(true)}
             />
-            <BotonLealtad
-              activo={descuentoRegalo > 0}
-              Icono={descuentoRegalo > 0 ? Check : Gift}
-              etiqueta={
-                descuentoRegalo > 0
-                  ? `Regalo −${pesos(descuentoRegalo)}`
-                  : "Crédito de regalo"
-              }
-              onClick={() => setUsarRegaloOpen(true)}
-            />
+            {REGALO_HABILITADO && (
+              <BotonLealtad
+                activo={descuentoRegalo > 0}
+                Icono={descuentoRegalo > 0 ? Check : Gift}
+                etiqueta={
+                  descuentoRegalo > 0
+                    ? `Regalo −${pesos(descuentoRegalo)}`
+                    : "Crédito de regalo"
+                }
+                onClick={() => setUsarRegaloOpen(true)}
+              />
+            )}
           </div>
         </div>
 
