@@ -2496,8 +2496,11 @@ exports.canjearPuntos = onCall(
             "Para usar el cashback escanea la tarjeta del cliente o confirma su correo" :
             "La tarjeta o el correo no corresponden al cliente");
       }
+      // A amise: el teléfono (la tarjeta o el correo ya se verificaron contra
+      // él), igual que redimirCreditoRegalo; el correo solo si no hay teléfono.
+      const ident = phone ? {phone} : {email};
       const data = await llamarAmise("/api/loyalty/redeem", {
-        email, phone, money: m, idempotencyKey,
+        ...ident, money: m, idempotencyKey,
         pendingLock: request.data.pendingLock === true,
         sucursalId: t.sucursalId || request.data.sucursalId || null,
         nodoId: t.nodoId || request.data.nodoId || null,
