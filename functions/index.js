@@ -3292,24 +3292,26 @@ exports.cancelarCobroClip = onCall(
               `/f2f/pinpad/v1/payment/${encodeURIComponent(c.pinpadRequestId)}`);
         } catch (e) {
           const det = (e && e.details) || {};
+          // Lo que respondió Clip, para saber por qué no canceló.
+          logger.warn("cancelarCobroClip: Clip no canceló", {cobroId,
+            clipStatus: det.clipStatus, clipCode: det.clipCode, error: e.message});
           let noExiste = false;
           const actual = await refrescarCobroClip(ref, {minMs: 0}).catch((err) => {
             noExiste = clip.noExisteEnClip(err);
             return c;
           });
-          if (det.clipCode === "PAYMENT_PENDING") {
-            return {...clip.cobroPublico(actual),
-              aviso: "La terminal ya tomó el cobro: cancélalo en la terminal."};
-          }
-          if (noExiste) {
+          if (noExiste && det.clipCode !== "PAYMENT_PENDING") {
             // Clip ya no la tiene: borra sola la intención que nunca llegó a
             // la terminal, y esa ya no se puede cobrar.
             return clip.cobroPublico(await actualizarIntento(ref, c.intento,
                 {estado: "cancelado"}, {soloDesde: ["pendiente"]}));
           }
+          // Clip cancela por API solo antes de que la terminal muestre el
+          // cobro, y la terminal lo muestra casi al instante (probado el
+          // 2-nov-2026): entonces se cancela en la terminal.
           return {...clip.cobroPublico(actual),
-            ...(actual.estado === "pendiente" ?
-              {aviso: "No se pudo cancelar: revisa la terminal."} : {})};
+            ...(actual.estado === "pendiente" ? {aviso: "El cobro ya está en la terminal: " +
+              "cancélalo ahí. La caja se actualiza sola."} : {})};
         }
         // Clip lo canceló. Se confirma con la consulta; si aún dice PENDING,
         // se marca aquí (ya no puede cobrarse).
