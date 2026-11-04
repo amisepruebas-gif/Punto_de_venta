@@ -18,3 +18,15 @@ Requiere Java (para el emulador) y firebase-tools. Debe imprimir `OK: N/N reglas
 - `system/auth_kick_switch` con read público (se lee pre-login en admin-web) y write bloqueado.
 
 El archivo `test.mjs` lee la candidata por ruta ABSOLUTA; ajústala si mueves el repo.
+
+## Storage (`storage.test.mjs`)
+
+Valida `../storage.rules` contra el emulador de Storage. Se corre desde la **raíz** del repo
+(usa el `firebase.json` de la raíz):
+```
+npx firebase emulators:exec --project demo-test --only storage "node rules-test/storage.test.mjs"
+```
+Debe imprimir `OK: N/N casos`. Cubre: solo admin, superadmin y mercancía BORRAN imágenes de
+artículos (`media_web_new_version/articulos/**`); anónimo, sin rol, nodo, colaborador y revocado
+no. Leer, subir y reemplazar siguen abiertos, y el resto del bucket queda como antes.
+`REGLAS=<archivo>` prueba otra versión de las reglas (p. ej. la de main, para ver qué cambia).

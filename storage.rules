@@ -1,9 +1,15 @@
 rules_version = '2';
 
 // ============================================================
-// ⚠️  REGLAS ABIERTAS (DESARROLLO)
+// ⚠️  REGLAS ABIERTAS (DESARROLLO) — con UNA excepción
 // ============================================================
-// Lectura y escritura sin restricciones a TODOS los buckets.
+// Lectura y escritura sin restricciones, salvo BORRAR imágenes de
+// artículos (`media_web_new_version/articulos/**`): eso solo lo puede
+// hacer el staff de la caja (admin, superadmin, mercancía).
+//
+// Por qué: los artículos guardan la URL de su imagen. Si alguien de fuera
+// borra el archivo, el artículo queda apuntando a nada y la imagen se ve
+// rota en la caja. Subir y reemplazar imágenes sigue igual que antes.
 //
 // Pendiente de re-aplicar antes de pasar a producción:
 //   docs/13-rules-pendientes-produccion.md
@@ -15,8 +21,27 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function esStaffDeLaCaja() {
+      return request.auth != null
+        && request.auth.token.role in ['admin', 'superadmin', 'mercancia'];
+    }
+
+    function esImagenDeArticulo(nombre) {
+      return nombre.matches('media_web_new_version/articulos/.*');
+    }
+
+    // Imágenes de artículos: solo el staff de la caja las borra.
+    match /media_web_new_version/articulos/{archivo=**} {
+      allow read, create, update: if true;
+      allow delete: if esStaffDeLaCaja();
+    }
+
+    // Todo lo demás, como antes. Este bloque también aplica a las imágenes
+    // de artículos (Storage permite si CUALQUIER bloque permite), por eso
+    // su delete las excluye.
     match /{allPaths=**} {
-      allow read, write: if true;
+      allow read, create, update: if true;
+      allow delete: if !esImagenDeArticulo(resource.name);
     }
   }
 }
