@@ -84,10 +84,17 @@ class ArchivoFalso {
     return [datos];
   }
 
+  async exists() {
+    return [this.bucket.objetos.has(this.name)];
+  }
+
   async save(datos, opciones = {}) {
     const obj = this.bucket.objetos.get(this.name);
     const esperada = opciones.preconditionOpts && opciones.preconditionOpts.ifGenerationMatch;
-    if (
+    // ifGenerationMatch 0 = "solo si no existe" (como en Cloud Storage).
+    if (esperada === 0 || esperada === '0') {
+      if (obj) throw errorGcs(412, 'Precondition Failed');
+    } else if (
       esperada !== undefined &&
       (!obj || String(obj.metadata.generation) !== String(esperada))
     ) {

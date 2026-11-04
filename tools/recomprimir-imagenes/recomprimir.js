@@ -434,5 +434,6 @@ module.exports = {
   recomprimirArchivo,
   ejecutar,
   main,
+  silenciarAvisoDeListeners,
   PREFIJO,
 };

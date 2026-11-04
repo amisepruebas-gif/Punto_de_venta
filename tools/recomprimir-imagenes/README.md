@@ -72,6 +72,38 @@ node recomprimir.js --bucket amisetienda-c7eab.appspot.com --backup-dir C:\respa
   30 días por URL) seguirán mostrando la versión anterior hasta que expire. Nada se rompe: la URL
   no cambia.
 
+## Recuperar imágenes borradas por la tienda (`recuperar-de-tienda.js`)
+
+La tienda amise.mx vincula artículos de la caja copiando sus URLs de imagen. Entre el 24 de junio
+y el 4 de julio de 2026, al reemplazar imágenes en la tienda (p. ej. "fondo blanco IA"), la tienda
+borró las de la caja: los artículos quedaron apuntando a archivos que ya no existen.
+
+Este script recupera cada imagen faltante con la copia que la tienda guardó en su propio bucket:
+
+- Busca el producto vinculado (`products.sourceArticuloId`) y su imagen actual: la principal o la
+  de la variación con el mismo código. Solo usa imágenes del bucket de la **tienda**.
+- La deja en WebP de 500 KB o menos (si ya lo es, tal cual) y la sube al **mismo path** de la caja
+  con el **mismo token** de la URL guardada en el artículo: la URL vuelve a funcionar y no se toca
+  Firestore. Nunca pisa un archivo que ya exista (`ifGenerationMatch: 0`).
+- Lista aparte las imágenes sin copia en la tienda, para resubirlas a mano.
+
+```bash
+# 1. Simulacro (solo lectura): cuenta, descarga y convierte, pero no sube nada.
+node recuperar-de-tienda.js --reporte C:\ruta\simulacro.json --muestras C:\ruta\muestras
+
+# 2. Probar con unas pocas
+node recuperar-de-tienda.js --ejecutar --limit 3
+
+# 3. Todas
+node recuperar-de-tienda.js --ejecutar --reporte C:\ruta\recuperacion.json
+```
+
+Usa los proyectos de producción por defecto (`amisetienda-c7eab` y `pagina-tienda-b02af`); se
+pueden cambiar con `--caja-proyecto`, `--caja-bucket`, `--negocio`, `--tienda-proyecto` y
+`--tienda-bucket`. La cuenta de ADC necesita leer Firestore y Storage de los dos proyectos y crear
+objetos en el bucket de la caja. Las tablets que aún tengan la imagen rota en caché la vuelven a
+pedir solas: la URL es la misma.
+
 ## Pruebas
 
 ```bash
