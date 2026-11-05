@@ -80,7 +80,6 @@ const CHAT_AMISE = ["nodo", "colaborador", "admin", "superadmin"];
 const ADMIN_AMISE = ["admin", "superadmin"];
 const CHAT_OTRO = ["nodoOtro", "adminOtro", "superadmin"];
 const ADMIN_OTRO = ["adminOtro", "superadmin"];
-const ADMINS = ["admin", "adminOtro", "superadmin"];
 
 const BYTES = new Uint8Array([82, 73, 70, 70, 0, 0, 0, 0, 87, 69, 66, 80]);
 const WEBP = { contentType: "image/webp" };
@@ -105,11 +104,7 @@ const ZONAS = [
   { nombre: "chat nuevo de amise (chat directo)", base: `chat_media_web_new_version/${NID}/a1__c1`, ...deChat(CHAT_AMISE, ADMIN_AMISE) },
   { nombre: "chat nuevo de otro negocio", base: `chat_media_web_new_version/${OTRO}/n9`, ...deChat(CHAT_OTRO, ADMIN_OTRO) },
   { nombre: "chat nuevo con subcarpeta de más", base: `chat_media_web_new_version/${NID}/n1/sub`, ...cerrado },
-  {
-    nombre: "chat_media (escritorio GOMU v1.6.2)",
-    base: "chat_media/chat1",
-    get: TODOS, list: NADIE, create: TODOS, encima: NADIE, update: NADIE, delete: ADMINS,
-  },
+  { nombre: "chat_media (escritorio GOMU v1.6.2, cerrado)", base: "chat_media/chat1", ...cerrado },
   { nombre: "mensajes_media (chat viejo)", base: `mensajes_media/${NID}`, ...cerrado },
   { nombre: "carpeta vieja con ID", base: "4Zv-EZe", ...soloLeer },
   { nombre: "fotos_articulos (vieja)", base: "fotos_articulos", ...soloLeer },
@@ -229,23 +224,20 @@ for (const r of ["nodo", "admin", "colaborador"]) {
 await caso("nodo SÍ sube imagen de casi 5 MB al chat nuevo", () =>
   assertSucceeds(uploadBytes(en("nodo", nuevo(CHAT)), new Uint8Array(5 * MB - 1), WEBP)),
 );
-for (const [ext, tipo] of [
-  ["pdf", "application/pdf"],
-  ["rar", "application/x-rar-compressed"],
-  ["bin", "application/octet-stream"],
-  ["png", "image/png"],
-]) {
-  await caso(`anon SÍ sube ${ext} al chat de escritorio`, () =>
-    assertSucceeds(uploadBytes(en("anon", nuevo("chat_media/chat1", ext)), BYTES, { contentType: tipo })),
-  );
+// chat_media quedó cerrado: ningún tipo de archivo, con o sin sesión.
+for (const r of ["anon", "colaborador", "admin", "superadmin"]) {
+  await caso(`${r} NO sube ningún tipo de archivo a chat_media`, async () => {
+    for (const [ext, tipo] of [
+      ["pdf", "application/pdf"],
+      ["rar", "application/x-rar-compressed"],
+      ["bin", "application/octet-stream"],
+      ["png", "image/png"],
+    ]) {
+      await assertFails(uploadBytes(en(r, nuevo("chat_media/chat1", ext)), BYTES, { contentType: tipo }));
+    }
+    await assertFails(uploadBytes(en(r, nuevo("chat_media", "png")), BYTES, { contentType: "image/png" }));
+  });
 }
-avance("100 MB al chat de escritorio");
-await caso("anon NO sube 100 MB o más al chat de escritorio", () =>
-  assertFails(uploadBytes(en("anon", nuevo("chat_media/chat1", "bin")), new Uint8Array(100 * MB), { contentType: "application/octet-stream" })),
-);
-await caso("anon NO sube al chat de escritorio fuera de una carpeta de chat", () =>
-  assertFails(uploadBytes(en("anon", nuevo("chat_media", "png")), BYTES, { contentType: "image/png" })),
-);
 
 // --- 3. El flujo real de cada app: subir y luego pedir la URL ---
 avance("flujos de cada app");
@@ -257,8 +249,9 @@ const flujos = [
   ["admin", "admin-web: imagen al chat de un nodo", `${CHAT}/huella2.webp`, true],
   ["admin", "admin-web: imagen a un chat directo", `chat_media_web_new_version/${NID}/a1__c1/huella3.webp`, true],
   ["superadmin", "admin-web (superadmin): imagen al chat", `${CHAT}/huella4.webp`, true],
-  ["colaborador", "GOMU escritorio v2 (en desarrollo): imagen al chat", `${CHAT}/huella5.webp`, true],
-  ["anon", "GOMU escritorio v1.6.2 (sin sesión): archivo al chat", "chat_media/chat1/1771972083028_wjtx.png", true],
+  ["colaborador", "GOMU escritorio v2 (en desarrollo): imagen al chat nuevo", `${CHAT}/huella5.webp`, true],
+  ["anon", "GOMU escritorio v1.6.2 (sin sesión): archivo a chat_media (cerrado)", "chat_media/chat1/1771972083028_wjtx.png", false],
+  ["colaborador", "GOMU escritorio v2 hoy: archivo a chat_media (cerrado)", "chat_media/chat1/1771972083029_abcd.png", false],
   ["admin", "GOMU web con cuenta de admin: imagen de artículo", "media/articulos/123.webp", true],
   ["sinRol", "GOMU web con cuenta sin claims: imagen de artículo", "media/articulos/124.webp", false],
   ["anon", "GOMU escritorio v1.6.2 (sin sesión): imagen de artículo", "media/articulos/125.webp", false],

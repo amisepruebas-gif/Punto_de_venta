@@ -16,8 +16,9 @@ rules_version = '2';
 //   - admin-web y mercancia-web: imágenes de artículos.
 //   - admin-web y nodo-web: imágenes del chat nuevo.
 //   - GOMU web (amisetienda-c7eab.web.app): imágenes en media/articulos.
-//   - Chat de escritorio GOMU v1.6.2 (Electron, SIN sesión): chat_media.
 //   - functions y tools/ usan el Admin SDK: no pasan por estas reglas.
+// Cerrado el 4-nov-2026: chat_media, donde el chat de escritorio GOMU
+// v1.6.2 (Electron) subía archivos sin sesión. Ya no se usa.
 //
 // Pruebas (emulador): rules-test/storage.test.mjs
 // ============================================================
@@ -63,6 +64,7 @@ service firebase.storage {
 
     function esDeUnChatPrivado(nombre) {
       return nombre.matches('chat_media_web_new_version/.*')
+        || nombre.matches('chat_media/.*')
         || nombre.matches('mensajes_media/.*');
     }
 
@@ -94,23 +96,11 @@ service firebase.storage {
       allow delete: if esAdminDelNegocio(negocioId);
     }
 
-    // ---------- Chat de escritorio viejo (GOMU v1.6.2, Electron) ----------
-    // chat_media/{chat}/{archivo}. Entra SIN sesión: por eso subir archivos
-    // nuevos sigue abierto (cualquier tipo, menos de 100 MB) y leer por nombre
-    // también (pide la URL justo después de subir). Nadie lista ni reemplaza;
-    // borrar, solo admin y superadmin.
-    // Último archivo subido: 30-abr-2026. Si ya nadie lo usa, cerrar este bloque.
-    match /chat_media/{chatId}/{archivo} {
-      allow get: if true;
-      allow create: if resource == null
-        && request.resource.size < 100 * 1024 * 1024;
-      allow delete: if tieneRol(['admin', 'superadmin']);
-    }
-
     // ---------- Todo lo demás ----------
-    // Carpetas viejas (2020-2025), mensajes_media y rutas que nadie usa:
-    // nadie sube, reemplaza, borra ni lista. Leer por nombre exacto sigue
-    // como hoy, menos en los chats.
+    // Carpetas viejas (2020-2025), chat_media, mensajes_media y rutas que
+    // nadie usa: nadie sube, reemplaza, borra ni lista. Leer por nombre
+    // exacto sigue como hoy, menos en los chats (el nuevo, chat_media y
+    // mensajes_media): esos solo se ven con su URL con token.
     // OJO: Storage deja pasar si CUALQUIER bloque lo permite. Este bloque
     // también cubre las rutas de arriba: por eso no da más que leer y deja
     // fuera los chats privados.
