@@ -1,47 +1,121 @@
 rules_version = '2';
 
 // ============================================================
-// ⚠️  REGLAS ABIERTAS (DESARROLLO) — con UNA excepción
+// Reglas de Storage de la caja (proyecto amisetienda-c7eab)
 // ============================================================
-// Lectura y escritura sin restricciones, salvo BORRAR imágenes de
-// artículos (`media_web_new_version/articulos/**`): eso solo lo puede
-// hacer el staff de la caja (admin, superadmin, mercancía).
+// OJO: las URLs de descarga con token (las que guardan los artículos y los
+// mensajes) se sirven SIN pasar por estas reglas: mostrar imágenes no
+// depende de ellas. Estas reglas solo cuentan para el SDK: subir,
+// reemplazar, borrar, listar y pedir metadatos o la URL (getDownloadURL).
 //
-// Por qué: los artículos guardan la URL de su imagen. Si alguien de fuera
-// borra el archivo, el artículo queda apuntando a nada y la imagen se ve
-// rota en la caja. Subir y reemplazar imágenes sigue igual que antes.
+// En Storage, subir un archivo encima de otro también es `create`; `update`
+// es solo cambiar metadatos. Para que algo no se pueda reemplazar hay que
+// pedir `resource == null` (que aún no exista).
 //
-// Pendiente de re-aplicar antes de pasar a producción:
-//   docs/13-rules-pendientes-produccion.md
+// Quién escribe hoy (detalle en docs/13-rules-pendientes-produccion.md):
+//   - admin-web y mercancia-web: imágenes de artículos.
+//   - admin-web y nodo-web: imágenes del chat nuevo.
+//   - GOMU web (amisetienda-c7eab.web.app): imágenes en media/articulos.
+//   - Chat de escritorio GOMU v1.6.2 (Electron, SIN sesión): chat_media.
+//   - functions y tools/ usan el Admin SDK: no pasan por estas reglas.
 //
-// La versión hardened previa validaba isAuthenticated + image/* + < 5 MB
-// y había un namespace separado para mensajes_media y catálogo. Está
-// todo documentado en el MD.
+// Pruebas (emulador): rules-test/storage.test.mjs
 // ============================================================
 
 service firebase.storage {
   match /b/{bucket}/o {
-    function esStaffDeLaCaja() {
+
+    // ---------- Quién es quién (claims del token) ----------
+
+    function tieneRol(roles) {
       return request.auth != null
-        && request.auth.token.role in ['admin', 'superadmin', 'mercancia'];
+        && request.auth.token.get('role', '') in roles;
     }
 
-    function esImagenDeArticulo(nombre) {
-      return nombre.matches('media_web_new_version/articulos/.*');
+    function esDelNegocio(negocioId) {
+      return request.auth != null
+        && request.auth.token.get('negocioId', '') == negocioId;
     }
 
-    // Imágenes de artículos: solo el staff de la caja las borra.
+    // Los que dan de alta artículos: admin, superadmin y mercancía.
+    function esStaffDeLaCaja() {
+      return tieneRol(['admin', 'superadmin', 'mercancia']);
+    }
+
+    // Los del chat de un negocio: su admin, sus nodos y sus colaboradores.
+    // El superadmin no trae negocioId: entra a todos.
+    function esDelChat(negocioId) {
+      return tieneRol(['superadmin'])
+        || (tieneRol(['admin', 'nodo', 'colaborador']) && esDelNegocio(negocioId));
+    }
+
+    function esAdminDelNegocio(negocioId) {
+      return tieneRol(['superadmin'])
+        || (tieneRol(['admin']) && esDelNegocio(negocioId));
+    }
+
+    // ---------- Qué se sube ----------
+
+    function esImagenDeMenosDe(mb) {
+      return request.resource.contentType.matches('image/.*')
+        && request.resource.size < mb * 1024 * 1024;
+    }
+
+    function esDeUnChatPrivado(nombre) {
+      return nombre.matches('chat_media_web_new_version/.*')
+        || nombre.matches('mensajes_media/.*');
+    }
+
+    // ---------- Imágenes de artículos ----------
+    // Las suben admin-web y mercancia-web (WebP de ~500 KB).
+    // Leer por nombre: cualquiera (son fotos públicas; la caja y la tienda
+    // las muestran). Subir, reemplazar, borrar y listar: solo el staff.
     match /media_web_new_version/articulos/{archivo=**} {
-      allow read, create, update: if true;
-      allow delete: if esStaffDeLaCaja();
+      allow get: if true;
+      allow list, delete: if esStaffDeLaCaja();
+      allow create, update: if esStaffDeLaCaja() && esImagenDeMenosDe(5);
     }
 
-    // Todo lo demás, como antes. Este bloque también aplica a las imágenes
-    // de artículos (Storage permite si CUALQUIER bloque permite), por eso
-    // su delete las excluye.
-    match /{allPaths=**} {
-      allow read, create, update: if true;
-      allow delete: if !esImagenDeArticulo(resource.name);
+    // Ruta vieja de imágenes de artículos. La usan GOMU web (cuenta de
+    // Google) y el chat de escritorio. Hoy está vacía. Mismas reglas: una
+    // cuenta sin rol de staff ya no puede subir aquí.
+    match /media/articulos/{archivo=**} {
+      allow get: if true;
+      allow list, delete: if esStaffDeLaCaja();
+      allow create, update: if esStaffDeLaCaja() && esImagenDeMenosDe(5);
+    }
+
+    // ---------- Chat nuevo (nodo-web y admin-web) ----------
+    // chat_media_web_new_version/{negocio}/{chat}/{huella}.webp
+    // Solo los del negocio. Borrar: su admin.
+    match /chat_media_web_new_version/{negocioId}/{chatId}/{archivo} {
+      allow read: if esDelChat(negocioId);
+      allow create, update: if esDelChat(negocioId) && esImagenDeMenosDe(5);
+      allow delete: if esAdminDelNegocio(negocioId);
+    }
+
+    // ---------- Chat de escritorio viejo (GOMU v1.6.2, Electron) ----------
+    // chat_media/{chat}/{archivo}. Entra SIN sesión: por eso subir archivos
+    // nuevos sigue abierto (cualquier tipo, menos de 100 MB) y leer por nombre
+    // también (pide la URL justo después de subir). Nadie lista ni reemplaza;
+    // borrar, solo admin y superadmin.
+    // Último archivo subido: 30-abr-2026. Si ya nadie lo usa, cerrar este bloque.
+    match /chat_media/{chatId}/{archivo} {
+      allow get: if true;
+      allow create: if resource == null
+        && request.resource.size < 100 * 1024 * 1024;
+      allow delete: if tieneRol(['admin', 'superadmin']);
+    }
+
+    // ---------- Todo lo demás ----------
+    // Carpetas viejas (2020-2025), mensajes_media y rutas que nadie usa:
+    // nadie sube, reemplaza, borra ni lista. Leer por nombre exacto sigue
+    // como hoy, menos en los chats.
+    // OJO: Storage deja pasar si CUALQUIER bloque lo permite. Este bloque
+    // también cubre las rutas de arriba: por eso no da más que leer y deja
+    // fuera los chats privados.
+    match /{ruta=**} {
+      allow get: if !esDeUnChatPrivado(resource.name);
     }
   }
 }

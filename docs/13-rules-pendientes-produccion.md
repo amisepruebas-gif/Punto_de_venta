@@ -2,7 +2,8 @@
 
 ## Estado actual (DESARROLLO)
 
-`firestore.rules` y `storage.rules` están **completamente abiertos**:
+`firestore.rules` está **completamente abierto** (`storage.rules` ya no: está cerrado por ruta
+desde el 4-nov-2026; ver la sección Storage):
 
 ```
 allow read, write: if true;
@@ -120,36 +121,48 @@ Plan al cerrar reglas:
    trivial sin rate limit). Usar `firebase-functions/v2` con bloqueo después de 5
    intentos en 1 min por IP.
 
-### Storage — endurecer cuando se vuelva a producción
+### Storage — reglas cerradas (publicadas el 4-nov-2026)
 
-Versión previa validaba imágenes:
+- **Publicado (4-nov-2026 22:52, ruleset `a9d01545-ad91-4db7-8967-faddefcb0040`)**: `storage.rules`,
+  probada con `rules-test/storage.test.mjs` (1034/1034). Contra las anteriores fallan 751 casos y
+  todos son "ahora NO, antes sí": no da ningún permiso nuevo.
+  - Verificado en producción sin sesión (13/13): leer imágenes de artículos, carpetas viejas y el
+    chat de escritorio, sí; leer el chat nuevo, listar, subir y borrar, no. Las URLs con token
+    siguen sirviendo.
+- **Anterior, para volver atrás (4-nov 18:24, ruleset `6418349f-b2f3-4861-afff-3e3467eb3f7e`)**:
+  todo abierto, salvo borrar imágenes de artículos (solo staff).
 
-```
-function isAuthenticated()  { return request.auth != null; }
-function isImage()          { return request.resource.contentType.matches('image/.*'); }
-function under5MB()         { return request.resource.size < 5 * 1024 * 1024; }
+Quién escribe hoy (código revisado y listado del bucket de producción, 4-nov-2026):
 
-match /b/{bucket}/o {
-  match /media_web_new_version/articulos/{fileName} {
-    allow read:   if isAuthenticated();
-    allow write:  if isAuthenticated() && isImage() && under5MB();
-    allow delete: if isAuthenticated();
-  }
-  match /mensajes_media/{negocioId}/{fileName} {
-    allow read:   if isAuthenticated();
-    allow write:  if isAuthenticated() && isImage() && under5MB();
-    allow delete: if isAuthenticated();
-  }
-  match /media/articulos/{fileName} {  // legacy, read-only durante migración
-    allow read:   if isAuthenticated();
-    allow write:  if false;
-    allow delete: if false;
-  }
-  match /{allPaths=**} {                // fail-closed por default
-    allow read, write: if false;
-  }
-}
-```
+| Ruta | Quién | Sesión | Qué hace |
+|---|---|---|---|
+| `media_web_new_version/articulos/{id}.webp` y `{id}_{codigo}.webp` | admin-web, mercancia-web | admin/superadmin; mercancía (PIN → token con `role`) | sube, reemplaza, borra, pide la URL |
+| `chat_media_web_new_version/{negocio}/{chat}/{huella}.webp` | nodo-web (chat de su nodo), admin-web (grupos y directos) | nodo, admin, superadmin | sube y pide la URL |
+| `media/articulos/{id}.{ext}` | GOMU web (`amisetienda-c7eab.web.app`) y chat de escritorio v1.6.2 | GOMU web: Google; escritorio: ninguna | sube y borra; hoy vacía (0 archivos) |
+| `chat_media/{chat}/{archivo}` | chat de escritorio GOMU v1.6.2 (Electron) | **ninguna** | sube cualquier archivo y pide la URL; último: 30-abr-2026 |
+| `mensajes_media/`, carpetas viejas con ID, `fotos_articulos/`, `contnet_init_index/`, `web_index_y_vinculo/` | nadie hoy (apps viejas, 2020–2025) | — | solo se leen por URL |
+| cualquiera | functions (`migrarSubvariacionesLegacy`) y `tools/recomprimir-imagenes` | Admin SDK | no pasan por reglas |
+
+La tienda amise.mx (otro proyecto) solo muestra URLs con token, que no pasan por reglas.
+Ninguna app lista archivos. En Storage, subir encima de un archivo también es `create`
+(`update` es solo metadatos).
+
+Qué dejan las reglas nuevas:
+- **Artículos** (las dos rutas): leer por nombre, cualquiera. Subir, reemplazar, borrar y
+  listar: solo staff (admin, superadmin, mercancía), solo imágenes de menos de 5 MB.
+- **Chat nuevo**: solo los del negocio del token (`negocioId`): admin, nodo y colaborador; el
+  superadmin, todos. Solo imágenes de menos de 5 MB. Borrar: el admin del negocio.
+- **Chat de escritorio viejo**: subir archivos nuevos sigue abierto (menos de 100 MB) porque esa
+  app no tiene sesión; leer por nombre también. Nadie lista, reemplaza ni cambia metadatos;
+  borrar: admin y superadmin.
+- **Todo lo demás**: nadie sube, reemplaza, borra ni lista. Leer por nombre sigue como hoy,
+  menos en los chats.
+
+Pendiente:
+- Probar con sesión: subir imagen de artículo en admin-web y en mercancia-web, y mandar imagen
+  en el chat de nodo-web y de admin-web.
+- Decidir si el chat de escritorio viejo sigue en uso. Si no, cerrar también `chat_media/`.
+- Publicar reglas de Storage solo desde main o desde una rama que las traiga (si no, se revierten).
 
 ## Riesgos abiertos del set de fases (de la auditoría)
 
@@ -185,7 +198,7 @@ function isAnyNodo(nid) {
 
 - [ ] Confirmar que apps legacy se migraron al namespace `_web_new_version` o que ya no se usan.
 - [ ] Restaurar reglas Firestore con Fases 1, 2, 3A.
-- [ ] Restaurar reglas Storage con isAuthenticated + isImage + under5MB.
+- [x] Reglas de Storage cerradas por ruta, publicadas el 4-nov-2026 (sección Storage). Falta decidir `chat_media/`.
 - [ ] Configurar cuota dura del Gemini API en Google Cloud Console.
 - [ ] Verificar que `useVentasAdmin` (admin-web) y `useVentasMes` (nodo-web) siguen funcionando — son los que dependen de la rule de collection group `items`.
 - [ ] Probar un flujo end-to-end: venta normal, venta desde apartado, cancelación de apartado, ingreso de mercancía.

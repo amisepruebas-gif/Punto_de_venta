@@ -26,7 +26,14 @@ Valida `../storage.rules` contra el emulador de Storage. Se corre desde la **ra�
 ```
 npx firebase emulators:exec --project demo-test --only storage "node rules-test/storage.test.mjs"
 ```
-Debe imprimir `OK: N/N casos`. Cubre: solo admin, superadmin y mercancía BORRAN imágenes de
-artículos (`media_web_new_version/articulos/**`); anónimo, sin rol, nodo, colaborador y revocado
-no. Leer, subir y reemplazar siguen abiertos, y el resto del bucket queda como antes.
-`REGLAS=<archivo>` prueba otra versión de las reglas (p. ej. la de main, para ver qué cambia).
+Debe imprimir `OK: N/N casos` (~30 s). Prueba cada rol real (anónimo, sin claims, revocado,
+vendedor, nodo, colaborador, mercancía, admin, superadmin, y nodo/admin de otro negocio) contra
+cada ruta del bucket y cada operación: leer, listar, subir, subir encima, cambiar metadatos y
+borrar. Además el tipo y tamaño de lo que se sube y el flujo real de cada app (subir y pedir la URL).
+
+- `REGLAS=<archivo>` prueba otra versión de las reglas. Los casos esperan lo que hacen las de esta
+  rama, así que con otras reglas (p. ej. `git show main:storage.rules`) los que fallan son
+  justo lo que cambia.
+- `DETALLE=1` muestra el error de cada caso que falla.
+- Los casos van uno por uno a propósito: en paralelo, el emulador pierde respuestas y se cuelga.
+- En Storage, subir encima de un archivo también es `create`; `update` es solo metadatos.
