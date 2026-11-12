@@ -1,8 +1,10 @@
 import {
   doc,
+  getDocFromCache,
   runTransaction,
   setDoc,
   serverTimestamp,
+  type DocumentReference,
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
 import {
@@ -78,15 +80,54 @@ export type VentaResult = {
 };
 
 /**
+ * Tiempo para guardar la venta EN LÍNEA (número del día y stock) antes de
+ * guardarla sin internet. Con red la transacción tarda 1–2 s. Sin internet el
+ * SDK la reintenta 5 veces, y cada intento puede esperar hasta 15 s.
+ * Pasarse con una red lenta no hace daño: la venta queda OFFLINE y el servidor
+ * le pone número y descuenta su stock al llegar.
+ */
+const LIMITE_EN_LINEA_MS = 6_000;
+/**
+ * Si hace poco una venta no se pudo guardar en línea, la siguiente espera
+ * menos: con el módem sin internet (la tablet sigue "conectada") cada venta
+ * no tiene que esperar el límite completo. Si el internet ya volvió, la
+ * transacción cabe de sobra en este tiempo.
+ */
+const LIMITE_TRAS_FALLO_MS = 2_000;
+const VENTANA_FALLO_MS = 2 * 60_000;
+let ultimoFalloEnLinea = 0;
+/**
+ * Si la transacción ya mandó sus escrituras, la venta pudo quedar guardada en
+ * el servidor: se le da más tiempo para saberlo, porque guardarla sin internet
+ * pisaría esa venta con la versión OFFLINE.
+ */
+const LIMITE_ESCRIBIENDO_MS = 30_000;
+
+/** La venta no se pudo guardar en línea: no hay red o el servidor no contesta. */
+export class SinConexion extends Error {
+  constructor(motivo: string) {
+    super(motivo);
+    this.name = "SinConexion";
+  }
+}
+
+type ResultadoEnLinea = {
+  numeroDeVenta: string;
+  yaExistia: boolean;
+  sobreventa: boolean;
+};
+
+/**
  * Crea una venta de forma atómica:
  * 1. Transacción: lee/incrementa contador del día (por sucursal)
  * 2. Escribe el doc individual bajo ventas_n_web_new_version/{y}/{m}/{d}/items/{ventaId}
  * 3. Fuera de la transacción: actualiza huella_venta en datos_web_new_version/ventas_ac
  *
- * Si la transacción falla por falta de red, cae a modo OFFLINE:
- * numeroDeVenta = "OFFLINE-{nodoId}-{millis}", SIN descontar stock. Al
- * llegar al servidor, la Cloud Function `reconciliarVentasOffline` le asigna
- * número real y descuenta su stock (marca `stockAplicado`).
+ * Sin red, o si el servidor no contesta a tiempo, cae a modo OFFLINE:
+ * numeroDeVenta = "OFFLINE-{nodoId}-{millis}", SIN descontar stock. La venta
+ * queda guardada en la tablet y se sube sola al volver la red; al llegar al
+ * servidor, la Cloud Function `reconciliarVentasOffline` le asigna número
+ * real y descuenta su stock (marca `stockAplicado`).
  */
 export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
   const { negocioId, sucursalId, nodoId, idempotencyKey } = input;
@@ -111,16 +152,104 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
   // FASE 3A: si la venta cierra un apartado existente, el stock ya fue
   // reservado al crear ese apartado → no decrementar otra vez.
   const desdeApartado = input.apartado === "1" && !!input.idApartado;
+  const construir = (numero: string, sobreventa: boolean) =>
+    buildVenta({ ...input, numeroDeVenta: numero, huella, ventaId, now, y, m, d, sobreventa });
 
   try {
+    // Sin red (WiFi apagado o sin señal) ni se intenta en línea: la
+    // transacción necesita el servidor y solo reintentaría hasta rendirse.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      throw new SinConexion("La caja no tiene internet.");
+    }
+    const r = await guardarEnLinea({
+      input,
+      ventaRef,
+      contadorRef,
+      desdeApartado,
+      construir,
+      limiteMs:
+        Date.now() - ultimoFalloEnLinea < VENTANA_FALLO_MS
+          ? LIMITE_TRAS_FALLO_MS
+          : LIMITE_EN_LINEA_MS,
+    });
+    ultimoFalloEnLinea = 0;
+    numeroDeVenta = r.numeroDeVenta;
+    yaExistia = r.yaExistia;
+    huboSobreventa = r.sobreventa;
+  } catch (err) {
+    ultimoFalloEnLinea = Date.now();
+    if (input.permitirOffline === false) throw err;
+    // FIX A8: fallback offline. numeroDeVenta con prefijo OFFLINE-
+    // para ser reconciliado por Cloud Function al reconectar.
+    // FASE 2: usar la misma huella en el setDoc — si el cliente reintenta
+    // con misma idempotencyKey y el primer setDoc llegó al servidor, el
+    // segundo sobreescribe los mismos datos (no duplica). El reconciliador
+    // sigue siendo idempotente vía `numeroDeVenta.startsWith("OFFLINE-")`.
+    offline = true;
+    numeroDeVenta = `OFFLINE-${nodoId.slice(0, 6)}-${Date.now()}`;
+    await guardarEnLaTablet(ventaRef, construir(numeroDeVenta, false));
+    console.warn("Venta en modo OFFLINE:", (err as Error).message);
+  }
+
+  if (yaExistia) {
+    // El doc ya existía — devolvemos su path con offline=false (no se
+    // creó nada nuevo). El caller decide qué hacer (típicamente, mostrar
+    // el ticket existente como si la venta hubiera sido fresca).
+    return { venta: construir(numeroDeVenta, huboSobreventa), path: ventaRef.path, offline: false };
+  }
+
+  const venta = construir(numeroDeVenta, huboSobreventa);
+
+  // Actualizar huella fuera de la transacción (trigger de sync). Best-effort
+  // y sin esperar: sin red su promesa no se cumple hasta reconectar.
+  try {
+    const huellaRef = doc(
+      db,
+      `${COL_NEGOCIOS}/${negocioId}/${COL_DATOS}/${DOC_VENTAS_AC}`,
+    );
+    void setDoc(huellaRef, { huella_venta: generarID() }, { merge: true }).catch((e) =>
+      console.warn("No se pudo actualizar ventas_ac.huella_venta:", e),
+    );
+  } catch (e) {
+    console.warn("No se pudo actualizar ventas_ac.huella_venta:", e);
+  }
+
+  return { venta, path: ventaRef.path, offline };
+}
+
+/**
+ * Guarda la venta en línea: número del día, la venta y su stock en una
+ * transacción, con tiempo límite. Si se agota antes de que la transacción
+ * escriba, se abandona: la transacción revisa `abandonada` antes de escribir,
+ * así que ya no guardará nada y la venta OFFLINE no se cruza con ella.
+ */
+function guardarEnLinea(p: {
+  input: NuevaVentaInput;
+  ventaRef: DocumentReference;
+  contadorRef: DocumentReference;
+  desdeApartado: boolean;
+  construir: (numero: string, sobreventa: boolean) => Venta;
+  limiteMs: number;
+}): Promise<ResultadoEnLinea> {
+  const { input, ventaRef, contadorRef, desdeApartado, construir, limiteMs } = p;
+  const { negocioId, sucursalId } = input;
+  let abandonada = false;
+  let escribiendo = false;
+  const siAbandonada = () => {
+    if (abandonada) throw new SinConexion("El servidor no respondió a tiempo.");
+  };
+
+  const trabajo = (async (): Promise<ResultadoEnLinea> => {
     // Stock de la sucursal del nodo: resolver si es la default (`cantidad`)
     // o no (`cantidadPorSucursal[sid]`) ANTES de la tx — necesita leer la
-    // colección de sucursales. Dentro del try: si falla (sin red), la venta
-    // cae al modo OFFLINE igual que si fallara la transacción.
+    // colección de sucursales. Si falla (sin red), la venta cae al modo
+    // OFFLINE igual que si fallara la transacción.
     const ubicacion = desdeApartado
       ? null
       : await cargarUbicacionStock(negocioId, sucursalId);
-    await runTransaction(db, async (tx) => {
+    siAbandonada();
+    return runTransaction(db, async (tx): Promise<ResultadoEnLinea> => {
+      siAbandonada();
       // ---------- FASE DE LECTURAS ----------
       // Firestore exige que TODAS las reads vayan antes de cualquier write
       // dentro de la transacción. Ordenamos: ventaRef → contadorRef →
@@ -130,9 +259,7 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
       const ventaSnap = await tx.get(ventaRef);
       if (ventaSnap.exists()) {
         const prev = ventaSnap.data() as Venta;
-        numeroDeVenta = prev.numeroDeVenta;
-        yaExistia = true;
-        return;
+        return { numeroDeVenta: prev.numeroDeVenta, yaExistia: true, sobreventa: false };
       }
 
       const contadorSnap = await tx.get(contadorRef);
@@ -148,20 +275,24 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
       // insuficiente NO se aborta — se reduce hasta 0 (clamp). Antes lanzaba y la
       // venta caía a falso-"OFFLINE" aunque hubiera internet. Solo aborta por
       // artículo/variación inexistente (errores reales), no por falta de stock.
+      let sobreventa = false;
       if (!desdeApartado) {
         const r = planearDecremento(stockEstados, input.articulos, { permitirSobreventa: true });
-        huboSobreventa = r.sobreventa;
+        sobreventa = r.sobreventa;
       }
 
       // FASE 1: arrancar contador en 0 (primera venta = "1") en vez de -1.
       const prev = contadorSnap.exists()
         ? (contadorSnap.data().ultimoNumeroVenta as number | undefined) ?? 0
         : 0;
-      numeroDeVenta = String(prev + 1);
+      const numeroDeVenta = String(prev + 1);
 
       // ---------- FASE DE ESCRITURAS ----------
-      const v = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d, sobreventa: huboSobreventa });
-      tx.set(ventaRef, v);
+      // Desde aquí la venta puede quedar guardada en el servidor: ya no se
+      // abandona al primer límite (ver abajo).
+      siAbandonada();
+      escribiendo = true;
+      tx.set(ventaRef, construir(numeroDeVenta, sobreventa));
       tx.set(
         contadorRef,
         { ultimoNumeroVenta: prev + 1, actualizado: serverTimestamp() },
@@ -170,44 +301,53 @@ export async function crearVenta(input: NuevaVentaInput): Promise<VentaResult> {
       if (!desdeApartado) {
         aplicarStockEnTx(tx, stockEstados);
       }
+      return { numeroDeVenta, yaExistia: false, sobreventa };
     });
-  } catch (err) {
-    if (input.permitirOffline === false) throw err;
-    // FIX A8: fallback offline. numeroDeVenta con prefijo OFFLINE-
-    // para ser reconciliado por Cloud Function al reconectar.
-    // FASE 2: usar la misma huella en el setDoc — si el cliente reintenta
-    // con misma idempotencyKey y el primer setDoc llegó al servidor, el
-    // segundo sobreescribe los mismos datos (no duplica). El reconciliador
-    // sigue siendo idempotente vía `numeroDeVenta.startsWith("OFFLINE-")`.
-    offline = true;
-    numeroDeVenta = `OFFLINE-${nodoId.slice(0, 6)}-${Date.now()}`;
-    const v = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d, sobreventa: huboSobreventa });
-    await setDoc(ventaRef, v);
-    console.warn("Venta en modo OFFLINE:", (err as Error).message);
-  }
+  })();
 
-  if (yaExistia) {
-    // El doc ya existía — devolvemos su path con offline=false (no se
-    // creó nada nuevo). El caller decide qué hacer (típicamente, mostrar
-    // el ticket existente como si la venta hubiera sido fresca).
-    const venta = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d, sobreventa: huboSobreventa });
-    return { venta, path: ventaRef.path, offline: false };
-  }
-
-  const venta = buildVenta({ ...input, numeroDeVenta, huella, ventaId, now, y, m, d, sobreventa: huboSobreventa });
-
-  // Actualizar huella fuera de la transacción (trigger de sync). Best-effort.
-  try {
-    const huellaRef = doc(
-      db,
-      `${COL_NEGOCIOS}/${negocioId}/${COL_DATOS}/${DOC_VENTAS_AC}`,
+  return new Promise<ResultadoEnLinea>((resolve, reject) => {
+    const abandonar = () => {
+      abandonada = true;
+      reject(new SinConexion("El servidor no respondió a tiempo."));
+    };
+    let reloj = setTimeout(() => {
+      if (!escribiendo) return abandonar();
+      reloj = setTimeout(abandonar, LIMITE_ESCRIBIENDO_MS - limiteMs);
+    }, limiteMs);
+    trabajo.then(
+      (r) => {
+        clearTimeout(reloj);
+        resolve(r);
+      },
+      (e) => {
+        clearTimeout(reloj);
+        reject(e);
+      },
     );
-    await setDoc(huellaRef, { huella_venta: generarID() }, { merge: true });
-  } catch (e) {
-    console.warn("No se pudo actualizar ventas_ac.huella_venta:", e);
-  }
+  });
+}
 
-  return { venta, path: ventaRef.path, offline };
+/**
+ * Guarda la venta sin internet. El SDK la escribe al instante en la tablet
+ * (caché persistente) y la sube sola al volver la red, aunque la app se
+ * cierre antes. La promesa de `setDoc` solo se cumple cuando el SERVIDOR la
+ * confirma: sin red nunca terminaba y la caja se quedaba en "Procesando
+ * venta…". Aquí se espera solo a que quede en la tablet: la lectura del caché
+ * entra en la misma fila de trabajo del SDK, detrás de la escritura, así que
+ * cuando contesta la venta ya está guardada.
+ */
+async function guardarEnLaTablet(ref: DocumentReference, v: Venta): Promise<void> {
+  const escritura = setDoc(ref, v);
+  escritura.catch((e) =>
+    console.error("La venta guardada sin internet no se pudo subir:", e),
+  );
+  await Promise.race([
+    escritura,
+    getDocFromCache(ref).then(
+      () => undefined,
+      () => undefined,
+    ),
+  ]);
 }
 
 function buildVenta(p: NuevaVentaInput & {
