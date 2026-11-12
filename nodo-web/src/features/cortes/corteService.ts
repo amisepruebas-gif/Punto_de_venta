@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  getDocsFromServer,
   query,
   runTransaction,
   serverTimestamp,
@@ -10,6 +11,13 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/firebase/config";
+import {
+  SinConexion,
+  conLimite,
+  esFallaDeRed,
+  guardadoEnLaTablet,
+  hayRed,
+} from "@/lib/sinInternet";
 import {
   paths,
   COL_NEGOCIOS,
@@ -23,6 +31,14 @@ import {
   type Corte,
   type Venta,
 } from "@shared";
+
+/**
+ * Los totales del corte salen de las ventas del SERVIDOR: sin internet la
+ * tablet puede no tener todas las ventas del día (las que se guardaron con
+ * red no siempre quedan en su caché) y el corte saldría con totales de menos.
+ */
+const SIN_INTERNET_FINALIZAR =
+  "Sin internet no se puede cerrar el corte: los totales salen de las ventas del servidor. Inténtalo cuando vuelva la conexión.";
 
 export type IniciarCorteInput = {
   negocioId: string;
@@ -62,40 +78,7 @@ export async function iniciarCorte(input: IniciarCorteInput): Promise<Corte> {
     `${paths.corteDia(negocioId, sucursalId, y, m, d)}/items/${corteId}`,
   );
 
-  let numero = 0;
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(contadorRef);
-    const prev = snap.exists()
-      ? (snap.data().ultimoNumeroCorte as number | undefined) ?? -1
-      : -1;
-    numero = prev + 1;
-
-    const corte: Corte = {
-      corteId,
-      estado: "corte_enCurso",
-      idVenta_corte: "",
-      nombre_corte,
-      fecha_inicio: fechaISO_MX(now),
-      totalEfectivo: "0",
-      totalTransferencia: "0",
-      totalTarjeta: "0",
-      totalGeneral: "0",
-      fondoInicial: fondoSan,
-      negocioId,
-      nodoId,
-      sucursalId,
-      usuarioCreador,
-    };
-
-    tx.set(corteRef, corte);
-    tx.set(
-      contadorRef,
-      { ultimoNumeroCorte: numero, actualizado: serverTimestamp() },
-      { merge: true },
-    );
-  });
-
-  return {
+  const corte: Corte = {
     corteId,
     estado: "corte_enCurso",
     idVenta_corte: "",
@@ -111,6 +94,39 @@ export async function iniciarCorte(input: IniciarCorteInput): Promise<Corte> {
     sucursalId,
     usuarioCreador,
   };
+
+  let enLinea = hayRed();
+  if (enLinea) {
+    try {
+      await conLimite((ctl) =>
+        runTransaction(db, async (tx) => {
+          ctl.siAbandonada();
+          const snap = await tx.get(contadorRef);
+          const prev = snap.exists()
+            ? (snap.data().ultimoNumeroCorte as number | undefined) ?? -1
+            : -1;
+          ctl.vaAEscribir();
+          tx.set(corteRef, corte);
+          tx.set(
+            contadorRef,
+            { ultimoNumeroCorte: prev + 1, actualizado: serverTimestamp() },
+            { merge: true },
+          );
+        }),
+      );
+    } catch (e) {
+      if (!esFallaDeRed(e)) throw e;
+      enLinea = false;
+    }
+  }
+  if (!enLinea) {
+    // Sin internet el corte se guarda en la tablet y se sube solo al volver
+    // la red. Sin el contador `ultimoNumeroCorte`, que nada lee; el corte es
+    // el mismo doc que habría escrito la transacción, así que si esa alcanzó
+    // a guardarse, esto solo lo vuelve a escribir igual.
+    await guardadoEnLaTablet(setDoc(corteRef, corte), corteRef, "Corte iniciado sin internet");
+  }
+  return corte;
 }
 
 /**
@@ -134,7 +150,9 @@ async function calcularTotales(
     `${paths.ventaDia(negocioId, sucursalId, y, m, d)}/items`,
   );
   const q = query(itemsRef, where("nodoId", "==", nodoId));
-  const snap = await getDocs(q);
+  // Del servidor, no del caché: sin internet `getDocs` devolvería solo las
+  // ventas que la tablet tenga guardadas, y los totales saldrían de menos.
+  const snap = await getDocsFromServer(q);
 
   const fechaInicio = parseFechaFlexible(fechaInicioLegacy);
 
@@ -185,36 +203,49 @@ export type FinalizarCorteInput = {
 
 export async function finalizarCorte(input: FinalizarCorteInput): Promise<Corte> {
   const { negocioId, sucursalId, corte, y, m, d } = input;
-  const totales = await calcularTotales(
-    negocioId,
-    sucursalId,
-    corte.nodoId,
-    corte.fecha_inicio,
-    y,
-    m,
-    d,
-  );
+  if (!hayRed()) throw new SinConexion(SIN_INTERNET_FINALIZAR);
+  let totales: Awaited<ReturnType<typeof calcularTotales>>;
+  try {
+    // Límite amplio: cerrar el corte no tiene prisa, y con muchas ventas o
+    // red lenta la consulta tarda más que una transacción.
+    totales = await conLimite(
+      () => calcularTotales(negocioId, sucursalId, corte.nodoId, corte.fecha_inicio, y, m, d),
+      { limiteMs: 15_000 },
+    );
+  } catch (e) {
+    if (esFallaDeRed(e)) throw new SinConexion(SIN_INTERNET_FINALIZAR);
+    throw e;
+  }
 
   const corteRef = doc(
     db,
     `${paths.corteDia(negocioId, sucursalId, y, m, d)}/items/${corte.corteId}`,
   );
 
+  // Los totales ya están: se espera solo a que el cierre quede en la tablet
+  // (si la red se cae justo aquí, se sube solo al volver).
   const fecha_fin = fechaISO_MX(new Date());
-  await updateDoc(corteRef, {
-    estado: "corte_finalizado",
-    fecha_fin,
-    idVenta_corte: input.idVenta_corte ?? "",
-    ...totales,
-  });
+  await guardadoEnLaTablet(
+    updateDoc(corteRef, {
+      estado: "corte_finalizado",
+      fecha_fin,
+      idVenta_corte: input.idVenta_corte ?? "",
+      ...totales,
+    }),
+    corteRef,
+    "Cierre de corte",
+  );
 
-  // Actualizar huella_venta para que otros clientes se enteren del cambio
+  // Actualizar huella_venta para que otros clientes se enteren del cambio.
+  // Best-effort y sin esperar.
   try {
     const huellaRef = doc(
       db,
       `${COL_NEGOCIOS}/${negocioId}/${COL_DATOS}/${DOC_VENTAS_AC}`,
     );
-    await setDoc(huellaRef, { huella_venta: generarID() }, { merge: true });
+    void setDoc(huellaRef, { huella_venta: generarID() }, { merge: true }).catch((e) =>
+      console.warn("No se pudo actualizar huella_venta tras corte:", e),
+    );
   } catch (e) {
     console.warn("No se pudo actualizar huella_venta tras corte:", e);
   }
