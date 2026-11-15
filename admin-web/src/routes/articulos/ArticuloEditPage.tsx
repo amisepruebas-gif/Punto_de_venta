@@ -9,6 +9,7 @@ import { useArticulo } from "@/features/articulos/useArticulos";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useAuth } from "@/hooks/useAuth";
 import { CategoriaInlineSelect } from "@/features/categorias/CategoriaInlineSelect";
+import { GeneroInlineSelect } from "@/features/categorias/GeneroInlineSelect";
 import { EscalonesMayoreoEditor } from "@/features/mayoreo/EscalonesMayoreoEditor";
 import { ZonaPrecioSelect } from "@/features/zonas-precio/ZonaPrecioSelect";
 import { useZonasPrecio } from "@/features/zonas-precio/useZonasPrecio";
@@ -41,6 +42,8 @@ type FormState = {
   precioVenta: string;
   categoriaId: string;
   subcategoriaId: string;
+  /** Género (temática). "" = sin género. */
+  generoId: string;
   etiquetas: string[];
   imagenUrl: string;
   tallas: string;
@@ -66,6 +69,7 @@ const FORM_EMPTY: FormState = {
   precioVenta: "",
   categoriaId: "",
   subcategoriaId: "",
+  generoId: "",
   etiquetas: [],
   imagenUrl: "",
   tallas: "",
@@ -142,6 +146,7 @@ export function ArticuloEditPage() {
       precioVenta: articulo.precioVenta ?? "",
       categoriaId: articulo.categoriaId ?? "",
       subcategoriaId: articulo.subcategoriaId ?? "",
+      generoId: articulo.generoId ?? "",
       etiquetas: articulo.etiquetas ?? [],
       imagenUrl: articulo.imagenUrl ?? "",
       tallas: articulo.tallas ?? "",
@@ -344,6 +349,12 @@ export function ArticuloEditPage() {
               categoriaId={form.categoriaId}
               subcategoriaId={form.subcategoriaId}
               onChange={(v) => setForm((s) => ({ ...s, ...v }))}
+            />
+          </div>
+          <div className="sm:col-span-1">
+            <GeneroInlineSelect
+              generoId={form.generoId}
+              onChange={(g) => set("generoId", g)}
             />
           </div>
           <div className="sm:col-span-2 space-y-1.5">

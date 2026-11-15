@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   FolderTree,
+  Palette,
   Pencil,
   Plus,
   Tags,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useCategorias } from "@/features/categorias/useCategorias";
+import { useGeneros } from "@/features/categorias/useGeneros";
 import {
   borrarCategoria,
   borrarSubcategoria,
@@ -19,16 +21,22 @@ import {
   renombrarCategoria,
   renombrarSubcategoria,
 } from "@/features/categorias/categoriaService";
+import {
+  borrarGenero,
+  crearGenero,
+  renombrarGenero,
+} from "@/features/categorias/generoService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { Categoria, Subcategoria } from "@shared";
+import type { Categoria, Genero, Subcategoria } from "@shared";
 
 const HUERFANO_KEY = "__huerfano__";
 
 export function CategoriasPage() {
   const { negocioId } = useNegocio();
   const { categorias, subcategorias, loading } = useCategorias();
+  const { generos, loading: cargandoGeneros } = useGeneros();
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<ModalState | null>(null);
 
@@ -79,12 +87,23 @@ export function CategoriasPage() {
     if (negocioId) await borrarSubcategoria(negocioId, sc.subcategoriaId);
   }
 
+  async function onBorrarGenero(g: Genero) {
+    if (
+      !confirm(
+        `¿Borrar el género "${g.nombre}"? Los artículos que lo tienen quedarán "(sin género)".`,
+      )
+    ) {
+      return;
+    }
+    if (negocioId) await borrarGenero(negocioId, g.generoId);
+  }
+
   return (
     <div className="container max-w-4xl space-y-4 py-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            Categorías y Subcategorías
+            Categorías y géneros
           </h1>
           <p className="text-sm text-muted-foreground">
             Catálogo universal del negocio. {categorias.length}{" "}
@@ -242,6 +261,62 @@ export function CategoriasPage() {
         </ul>
       )}
 
+      {/* Géneros: temáticas (Anime, K-pop…) aparte de la categoría. */}
+      <section className="space-y-2 pt-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Géneros</h2>
+            <p className="text-sm text-muted-foreground">
+              La temática del artículo, aparte de la categoría: un llavero y un
+              peluche pueden ser los dos "Anime". {generos.length}{" "}
+              {generos.length === 1 ? "género" : "géneros"}.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setModal({ tipo: "nuevo-genero" })}>
+            <Plus className="mr-2 h-4 w-4" /> Nuevo género
+          </Button>
+        </div>
+        {cargandoGeneros ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">Cargando…</p>
+        ) : generos.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-8 text-center">
+            <Palette className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">Sin géneros todavía</p>
+          </div>
+        ) : (
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {generos.map((g) => (
+              <li
+                key={g.generoId}
+                className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm"
+              >
+                <Palette className="h-4 w-4 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{g.nombre}</p>
+                  <p className="truncate text-[10px] text-muted-foreground">#{g.generoId}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setModal({ tipo: "editar-genero", genero: g })}
+                  aria-label={`Editar ${g.nombre}`}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onBorrarGenero(g)}
+                  aria-label={`Borrar ${g.nombre}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       {modal && negocioId && (
         <CategoriaModal
           state={modal}
@@ -293,7 +368,9 @@ type ModalState =
   | { tipo: "nueva-categoria" }
   | { tipo: "editar-categoria"; categoria: Categoria }
   | { tipo: "nueva-subcategoria"; categoriaId: string }
-  | { tipo: "editar-subcategoria"; subcategoria: Subcategoria };
+  | { tipo: "editar-subcategoria"; subcategoria: Subcategoria }
+  | { tipo: "nuevo-genero" }
+  | { tipo: "editar-genero"; genero: Genero };
 
 function CategoriaModal({
   state,
@@ -311,7 +388,9 @@ function CategoriaModal({
       ? state.categoria.nombre
       : state.tipo === "editar-subcategoria"
         ? state.subcategoria.nombre
-        : "";
+        : state.tipo === "editar-genero"
+          ? state.genero.nombre
+          : "";
   const initialCatId =
     state.tipo === "nueva-subcategoria"
       ? state.categoriaId
@@ -324,14 +403,16 @@ function CategoriaModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const titulo =
-    state.tipo === "nueva-categoria"
-      ? "Nueva categoría"
-      : state.tipo === "editar-categoria"
-        ? "Editar categoría"
-        : state.tipo === "nueva-subcategoria"
-          ? "Nueva subcategoría"
-          : "Editar subcategoría";
+  const titulo = {
+    "nueva-categoria": "Nueva categoría",
+    "editar-categoria": "Editar categoría",
+    "nueva-subcategoria": "Nueva subcategoría",
+    "editar-subcategoria": "Editar subcategoría",
+    "nuevo-genero": "Nuevo género",
+    "editar-genero": "Editar género",
+  }[state.tipo];
+  const esGenero = state.tipo === "nuevo-genero" || state.tipo === "editar-genero";
+  const esNuevo = state.tipo.startsWith("nuev");
 
   const requiereCategoriaPadre =
     state.tipo === "nueva-subcategoria" || state.tipo === "editar-subcategoria";
@@ -377,6 +458,12 @@ function CategoriaModal({
             );
           }
           break;
+        case "nuevo-genero":
+          await crearGenero(negocioId, nombre.trim());
+          break;
+        case "editar-genero":
+          await renombrarGenero(negocioId, state.genero.generoId, nombre.trim());
+          break;
       }
       onClose();
     } catch (err) {
@@ -408,7 +495,9 @@ function CategoriaModal({
             onChange={(e) => setNombre(e.target.value)}
             required
             autoFocus
-            placeholder="Ej. Camisas, Pantalones, Accesorios"
+            placeholder={
+              esGenero ? "Ej. Anime, K-pop, Películas" : "Ej. Camisas, Pantalones, Accesorios"
+            }
           />
         </div>
 
@@ -444,11 +533,7 @@ function CategoriaModal({
             Cancelar
           </Button>
           <Button type="submit" disabled={submitting}>
-            {submitting
-              ? "Guardando…"
-              : state.tipo.startsWith("nueva")
-                ? "Crear"
-                : "Guardar"}
+            {submitting ? "Guardando…" : esNuevo ? "Crear" : "Guardar"}
           </Button>
         </div>
       </form>

@@ -69,7 +69,9 @@ export function CategoriaInlineSelect({
   );
 }
 
-function CampoConNuevo({
+/** Select de un catálogo con "+ Nueva" para crear en el momento. Lo usan
+ *  categoría, subcategoría y género. */
+export function CampoConNuevo({
   etiqueta,
   placeholderNuevo,
   valor,
@@ -77,6 +79,7 @@ function CampoConNuevo({
   vacio,
   deshabilitado = false,
   ayudaDeshabilitado,
+  textoNuevo = "Nueva",
   onElegir,
   onCrear,
 }: {
@@ -87,9 +90,14 @@ function CampoConNuevo({
   vacio: string;
   deshabilitado?: boolean;
   ayudaDeshabilitado?: string;
+  /** Texto del botón de crear ("Nueva" / "Nuevo"). */
+  textoNuevo?: string;
   onElegir: (id: string) => void;
   onCrear: (nombre: string) => Promise<void>;
 }) {
+  // Un id que ya no está en el catálogo (se borró) se muestra como tal en vez
+  // de aparentar "sin …" mientras el artículo lo sigue guardando.
+  const huerfano = !!valor && !opciones.some((o) => o.id === valor);
   const [creando, setCreando] = useState(false);
   const [nombre, setNombre] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -146,6 +154,7 @@ function CampoConNuevo({
             className={SELECT_CLS}
           >
             <option value="">{vacio}</option>
+            {huerfano && <option value={valor}>(ya no existe)</option>}
             {opciones.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.nombre}
@@ -158,9 +167,9 @@ function CampoConNuevo({
             variant="outline"
             onClick={() => setCreando(true)}
             disabled={deshabilitado}
-            title="Crear nueva"
+            title={`Crear ${textoNuevo.toLowerCase()}`}
           >
-            <Plus className="h-3.5 w-3.5" /> Nueva
+            <Plus className="h-3.5 w-3.5" /> {textoNuevo}
           </Button>
         </div>
       )}

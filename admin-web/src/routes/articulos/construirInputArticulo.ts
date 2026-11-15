@@ -15,6 +15,8 @@ export type FormStateInput = {
   precioVenta: string;
   categoriaId: string;
   subcategoriaId: string;
+  /** Género (temática). "" = sin género. */
+  generoId: string;
   etiquetas: string[];
   imagenUrl: string;
   tallas: string;
@@ -76,9 +78,13 @@ export function construirInputArticulo(args: ConstruirInputArgs): ArticuloInput 
     precioVenta: form.precioVenta,
     utilidad: String(utilidad),
     utilidadTotal: String(utilidadTotal),
-    ...(form.categoriaId && { categoriaId: form.categoriaId }),
-    ...(form.subcategoriaId && { subcategoriaId: form.subcategoriaId }),
-    ...(form.etiquetas.length > 0 && { etiquetas: form.etiquetas }),
+    // Clasificación: siempre explícita para poder QUITARLA (el service mezcla
+    // con el doc existente; `borrarLlavesVacias` borra los "" y el []). Antes,
+    // quitar la categoría o las etiquetas no se guardaba.
+    categoriaId: form.categoriaId,
+    subcategoriaId: form.categoriaId ? form.subcategoriaId : "",
+    generoId: form.generoId,
+    etiquetas: form.etiquetas,
     // FIX D3: si el user quitó la imagen, pasar imagenUrl: "" explícito
     // para que el service lo respete en vez de fallback al existente.
     ...(imagenRemoved

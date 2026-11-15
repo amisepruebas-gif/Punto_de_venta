@@ -1,17 +1,27 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Package, Layers, ClipboardList } from "lucide-react";
+import { Plus, Package, Layers, ClipboardList, ListChecks, Check } from "lucide-react";
 import { useArticulos } from "@/features/articulos/useArticulos";
 import { useCategorias } from "@/features/categorias/useCategorias";
+import { useGeneros } from "@/features/categorias/useGeneros";
 import { useSucursales } from "@/features/sucursales/useSucursales";
 import { useNegocio } from "@/hooks/useNegocio";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
+  FILTRO_SIN,
+  clasificacionVigente,
+  coincidePalabras,
+  normalizarEtiqueta,
+  normalizarTexto,
+  palabrasDeConsulta,
+  pasaFiltrosVigente,
   resolverEscalones,
   resolverSucursalDefaultId,
   resolverUbicacionStock,
   type Articulo,
   type ArticuloSubvariacion,
+  type CatalogosVigentes,
 } from "@shared";
 
 /** Filtro por tipo: con precio de mayoreo (incluye el legacy de un
@@ -20,20 +30,32 @@ type FiltroTipo = "" | "mayoreo" | "solo" | "fabricado";
 import { resolverTrios, StockTrio } from "@/features/articulos/stockHelpers";
 import { ArticulosSearchBar } from "@/features/articulos/ArticulosSearchBar";
 import { ExistenciasSucursalEditor } from "@/features/articulos/ExistenciasSucursalEditor";
+import { AsignarEnBloqueDialog } from "@/features/articulos/AsignarEnBloqueDialog";
 
-const FILTRO_SIN_CATEGORIA = "__sin__";
+/** "(sin …)": sin el dato o con un id que ya no existe (`FILTRO_SIN`). */
+const FILTRO_SIN_CATEGORIA = FILTRO_SIN;
 const FILTRO_TODAS = "";
+
+/** En modo selección, la tarjeta marca/desmarca en vez de abrir el artículo. */
+type Seleccion = { activo: boolean; onToggle: () => void };
 
 export function ArticulosPage() {
   const navigate = useNavigate();
   const { articulos, loading } = useArticulos();
-  const { categorias, subcategorias } = useCategorias();
+  const { categorias, subcategorias, loading: loadingCategorias } = useCategorias();
+  const { generos, loading: loadingGeneros } = useGeneros();
   const { sucursales, loading: loadingSucursales } = useSucursales();
   const { negocio, negocioId, loading: loadingNegocio } = useNegocio();
   const [q, setQ] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState(FILTRO_TODAS);
   const [filtroSubcategoria, setFiltroSubcategoria] = useState(FILTRO_TODAS);
+  const [filtroGenero, setFiltroGenero] = useState(FILTRO_TODAS);
   const [filtroEtiqueta, setFiltroEtiqueta] = useState(FILTRO_TODAS);
+  // Asignación en bloque: modo selección (las tarjetas marcan en vez de abrir).
+  const [seleccionando, setSeleccionando] = useState(false);
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const [asignando, setAsignando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("");
   const [filtroVariaciones, setFiltroVariaciones] = useState<"" | "con" | "sin">(
     "",
@@ -86,30 +108,62 @@ export function ArticulosPage() {
     [filtroCategoria, subcategorias],
   );
 
-  // Universo de etiquetas presentes en el catálogo (para el dropdown).
+  // Universo de etiquetas presentes en el catálogo (para el dropdown), sin
+  // repetir por mayúsculas, # o acentos: clave normalizada → como se ve.
   const etiquetasDisponibles = useMemo(() => {
-    const set = new Set<string>();
+    const m = new Map<string, string>();
     for (const a of articulos) {
-      for (const t of a.etiquetas ?? []) set.add(t);
+      for (const t of a.etiquetas ?? []) {
+        const k = normalizarEtiqueta(t);
+        if (k && !m.has(k)) m.set(k, t);
+      }
     }
-    return [...set].sort((a, b) => a.localeCompare(b, "es"));
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], "es"));
   }, [articulos]);
 
+  // Ids vigentes de los catálogos: un id borrado cuenta como "(sin …)". Hasta
+  // que cargan no se valida (para no mostrar todo como huérfano un instante).
+  const catalogos = useMemo<CatalogosVigentes>(
+    () =>
+      loadingCategorias || loadingGeneros
+        ? {}
+        : {
+            categorias: new Set(categorias.map((c) => c.categoriaId)),
+            subcategorias: new Set(subcategorias.map((sc) => sc.subcategoriaId)),
+            generos: new Set(generos.map((g) => g.generoId)),
+          },
+    [loadingCategorias, loadingGeneros, categorias, subcategorias, generos],
+  );
+  const nombres = useMemo(
+    () => ({
+      categoria: new Map(categorias.map((c) => [c.categoriaId, c.nombre])),
+      subcategoria: new Map(subcategorias.map((sc) => [sc.subcategoriaId, sc.nombre])),
+      genero: new Map(generos.map((g) => [g.generoId, g.nombre])),
+    }),
+    [categorias, subcategorias, generos],
+  );
+  /** "Llavero · Anime" para la tarjeta. */
+  function textoClasificacion(a: Articulo): string {
+    return [
+      a.categoriaId ? nombres.categoria.get(a.categoriaId) : undefined,
+      a.generoId ? nombres.genero.get(a.generoId) : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   const resultados = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const palabras = palabrasDeConsulta(q);
+    const filtros = {
+      categoriaId: filtroCategoria || undefined,
+      // La subcategoría solo aplica con una categoría elegida.
+      subcategoriaId: filtroSubcategoria || undefined,
+      generoId: filtroGenero || undefined,
+      etiqueta: filtroEtiqueta || undefined,
+    };
     return articulos.filter((a) => {
-      // Filtro por categoría
-      if (filtroCategoria === FILTRO_SIN_CATEGORIA) {
-        if (a.categoriaId) return false;
-      } else if (filtroCategoria) {
-        if (a.categoriaId !== filtroCategoria) return false;
-      }
-      // Filtro por subcategoría (solo aplica si hay categoría seleccionada)
-      if (filtroSubcategoria && a.subcategoriaId !== filtroSubcategoria) {
-        return false;
-      }
-      // Filtro por etiqueta
-      if (filtroEtiqueta && !(a.etiquetas ?? []).includes(filtroEtiqueta)) {
+      // Categoría, subcategoría, género y etiqueta
+      if (!pasaFiltrosVigente(clasificacionVigente(a, catalogos), filtros)) {
         return false;
       }
       // Filtro por presencia de variaciones
@@ -125,29 +179,72 @@ export function ArticulosPage() {
       }
       if (filtroTipo === "solo" && !a.soloMayoreo) return false;
       if (filtroTipo === "fabricado" && !a.fabricado) return false;
-      // Búsqueda por texto libre
-      if (!s) return true;
-      return (
-        a.nombre?.toLowerCase().includes(s) ||
-        a.sigla?.toLowerCase().includes(s) ||
-        a.id?.includes(s) ||
-        a.referencia?.toLowerCase().includes(s) ||
-        (a.etiquetas ?? []).some((t) => t.includes(s))
+      // Texto libre: por palabras y sin acentos, también por el nombre de la
+      // categoría, la subcategoría y el género.
+      if (palabras.length === 0) return true;
+      const texto = normalizarTexto(
+        [
+          a.nombre,
+          a.sigla,
+          a.id,
+          a.referencia,
+          ...(a.etiquetas ?? []),
+          a.categoriaId ? nombres.categoria.get(a.categoriaId) : "",
+          a.subcategoriaId ? nombres.subcategoria.get(a.subcategoriaId) : "",
+          a.generoId ? nombres.genero.get(a.generoId) : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
+      return coincidePalabras(texto, palabras);
     });
   }, [
     q,
     filtroCategoria,
     filtroSubcategoria,
+    filtroGenero,
     filtroEtiqueta,
     filtroVariaciones,
     filtroTipo,
     articulos,
+    catalogos,
+    nombres,
   ]);
+
+  const seleccionados = useMemo(
+    () => (seleccion.size === 0 ? [] : articulos.filter((a) => seleccion.has(a.id))),
+    [articulos, seleccion],
+  );
+
+  function alternarSeleccion(id: string) {
+    setSeleccion((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function seleccionDe(id: string): Seleccion | undefined {
+    return seleccionando
+      ? { activo: seleccion.has(id), onToggle: () => alternarSeleccion(id) }
+      : undefined;
+  }
+  function seleccionarFiltrados() {
+    setSeleccion((prev) => {
+      const next = new Set(prev);
+      for (const a of resultados) next.add(a.id);
+      return next;
+    });
+  }
+  function terminarSeleccion() {
+    setSeleccionando(false);
+    setSeleccion(new Set());
+  }
 
   function limpiarFiltros() {
     setFiltroCategoria(FILTRO_TODAS);
     setFiltroSubcategoria(FILTRO_TODAS);
+    setFiltroGenero(FILTRO_TODAS);
     setFiltroEtiqueta(FILTRO_TODAS);
     setFiltroVariaciones("");
     setFiltroTipo("");
@@ -157,6 +254,7 @@ export function ArticulosPage() {
   const hayFiltrosActivos =
     !!filtroCategoria ||
     !!filtroSubcategoria ||
+    !!filtroGenero ||
     !!filtroEtiqueta ||
     !!filtroVariaciones ||
     !!filtroTipo ||
@@ -172,10 +270,33 @@ export function ArticulosPage() {
             {articulos.length === 1 ? "artículo" : "artículos"}
           </p>
         </div>
-        <Button onClick={() => navigate("/articulos/nuevo")}>
-          <Plus className="mr-2 h-4 w-4" /> Nuevo artículo
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {!seleccionando && !editandoExistencias && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAviso(null);
+                setSeleccionando(true);
+              }}
+              title="Poner categoría, género o etiquetas a muchos artículos a la vez"
+            >
+              <ListChecks className="mr-2 h-4 w-4" /> Seleccionar
+            </Button>
+          )}
+          <Button onClick={() => navigate("/articulos/nuevo")}>
+            <Plus className="mr-2 h-4 w-4" /> Nuevo artículo
+          </Button>
+        </div>
       </div>
+
+      {aviso && (
+        <p
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+          role="status"
+        >
+          {aviso}
+        </p>
+      )}
 
       {/* Buscador + autocomplete. `q` controlado para que también filtre la
           lista de abajo. El componente maneja su propio dropdown / highlight. */}
@@ -185,7 +306,7 @@ export function ArticulosPage() {
         filtroSucursal={filtroSucursal}
       />
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <select
           value={filtroCategoria}
           onChange={(e) => {
@@ -218,13 +339,27 @@ export function ArticulosPage() {
           ))}
         </select>
         <select
+          value={filtroGenero}
+          onChange={(e) => setFiltroGenero(e.target.value)}
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+          aria-label="Género"
+        >
+          <option value={FILTRO_TODAS}>Todos los géneros</option>
+          <option value={FILTRO_SIN}>(sin género)</option>
+          {generos.map((g) => (
+            <option key={g.generoId} value={g.generoId}>
+              {g.nombre}
+            </option>
+          ))}
+        </select>
+        <select
           value={filtroEtiqueta}
           onChange={(e) => setFiltroEtiqueta(e.target.value)}
           className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
         >
           <option value={FILTRO_TODAS}>Todas las etiquetas</option>
-          {etiquetasDisponibles.map((t) => (
-            <option key={t} value={t}>
+          {etiquetasDisponibles.map(([k, t]) => (
+            <option key={k} value={k}>
               {t}
             </option>
           ))}
@@ -269,7 +404,7 @@ export function ArticulosPage() {
 
       {(hayFiltrosActivos || puedeEditarExistencias) && (
         <div className="flex flex-wrap justify-end gap-2">
-          {puedeEditarExistencias && !editandoExistencias && (
+          {puedeEditarExistencias && !editandoExistencias && !seleccionando && (
             <Button
               variant="outline"
               size="sm"
@@ -284,6 +419,35 @@ export function ArticulosPage() {
               Limpiar filtros
             </Button>
           )}
+        </div>
+      )}
+
+      {seleccionando && (
+        <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 shadow-sm">
+          <span className="px-1 text-sm font-medium">
+            {seleccion.size.toLocaleString("es-MX")}{" "}
+            {seleccion.size === 1 ? "seleccionado" : "seleccionados"}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={seleccionarFiltrados}
+            disabled={resultados.length === 0}
+          >
+            Seleccionar los {resultados.length.toLocaleString("es-MX")} de este filtro
+          </Button>
+          {seleccion.size > 0 && (
+            <Button size="sm" variant="ghost" onClick={() => setSeleccion(new Set())}>
+              Quitar selección
+            </Button>
+          )}
+          <div className="flex-1" />
+          <Button size="sm" onClick={() => setAsignando(true)} disabled={seleccion.size === 0}>
+            Asignar a {seleccion.size.toLocaleString("es-MX")}…
+          </Button>
+          <Button size="sm" variant="ghost" onClick={terminarSeleccion}>
+            Terminar
+          </Button>
         </div>
       )}
 
@@ -334,6 +498,8 @@ export function ArticulosPage() {
                     articulo={a}
                     filtroSucursal={filtroSucursal}
                     defaultSucursalId={defaultSucursalId}
+                    clasificacion={textoClasificacion(a)}
+                    seleccion={seleccionDe(a.id)}
                   />
                 ))}
             </div>
@@ -347,11 +513,78 @@ export function ArticulosPage() {
                 articulo={a}
                 filtroSucursal={filtroSucursal}
                 defaultSucursalId={defaultSucursalId}
+                clasificacion={textoClasificacion(a)}
+                seleccion={seleccionDe(a.id)}
               />
             ))}
         </div>
       )}
+
+      {asignando && negocioId && (
+        <AsignarEnBloqueDialog
+          negocioId={negocioId}
+          articulos={seleccionados}
+          categorias={categorias}
+          subcategorias={subcategorias}
+          generos={generos}
+          onCerrar={() => setAsignando(false)}
+          onListo={(n) => {
+            setAsignando(false);
+            terminarSeleccion();
+            setAviso(
+              n === 1 ? "Listo: 1 artículo actualizado." : `Listo: ${n.toLocaleString("es-MX")} artículos actualizados.`,
+            );
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Enlace al artículo o, en modo selección, botón que lo marca/desmarca (con
+ * una palomita arriba a la izquierda).
+ */
+function EnlaceOSeleccion({
+  to,
+  seleccion,
+  className,
+  children,
+}: {
+  to: string;
+  seleccion?: Seleccion;
+  className: string;
+  children: ReactNode;
+}) {
+  if (!seleccion) {
+    return (
+      <Link to={to} className={className}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={seleccion.onToggle}
+      aria-pressed={seleccion.activo}
+      className={cn(
+        className,
+        "relative text-left",
+        seleccion.activo && "ring-2 ring-primary ring-offset-1",
+      )}
+    >
+      <span
+        className={cn(
+          "absolute left-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background shadow-sm",
+          seleccion.activo && "border-primary bg-primary text-primary-foreground",
+        )}
+        aria-hidden
+      >
+        {seleccion.activo && <Check className="h-3.5 w-3.5" />}
+      </span>
+      {children}
+    </button>
   );
 }
 
@@ -372,10 +605,14 @@ function ArticuloConVariaciones({
   articulo,
   filtroSucursal,
   defaultSucursalId,
+  clasificacion,
+  seleccion,
 }: {
   articulo: Articulo;
   filtroSucursal: string;
   defaultSucursalId: string | undefined;
+  clasificacion: string;
+  seleccion?: Seleccion;
 }) {
   const subs = articulo.subvariaciones ?? [];
   const trio = subs.reduce(
@@ -390,20 +627,27 @@ function ArticuloConVariaciones({
     { suc: 0, bod: 0, tot: 0 },
   );
   return (
-    <section className="rounded-lg border bg-card">
+    <section
+      className={cn(
+        "rounded-lg border bg-card",
+        seleccion?.activo && "ring-2 ring-primary ring-offset-1",
+      )}
+    >
       <header className="flex items-center gap-3 border-b px-4 py-3">
         <Layers className="h-4 w-4 text-muted-foreground" />
-        <Link
+        <EnlaceOSeleccion
           to={`/articulos/${articulo.id}`}
-          className="min-w-0 flex-1 hover:underline"
+          seleccion={seleccion}
+          className={cn("min-w-0 flex-1 hover:underline", seleccion && "pl-8")}
         >
           <p className="truncate font-medium">{articulo.nombre}</p>
           <p className="truncate text-xs text-muted-foreground">
             #{articulo.id} · {articulo.sigla} · ${articulo.precioVenta} ·{" "}
             {subs.length} {subs.length === 1 ? "variación" : "variaciones"}
+            {clasificacion && ` · ${clasificacion}`}
           </p>
           <MarcasMayoreo articulo={articulo} />
-        </Link>
+        </EnlaceOSeleccion>
         <StockTrio trio={trio} />
       </header>
       <div className="grid gap-3 p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
@@ -414,6 +658,7 @@ function ArticuloConVariaciones({
             sv={sv}
             filtroSucursal={filtroSucursal}
             defaultSucursalId={defaultSucursalId}
+            onSeleccionar={seleccion?.onToggle}
           />
         ))}
       </div>
@@ -426,19 +671,21 @@ function SubvariacionCard({
   sv,
   filtroSucursal,
   defaultSucursalId,
+  onSeleccionar,
 }: {
   articulo: Articulo;
   sv: ArticuloSubvariacion;
   filtroSucursal: string;
   defaultSucursalId: string | undefined;
+  /** En modo selección: tocar la variación marca a su padre. */
+  onSeleccionar?: () => void;
 }) {
   const trio = resolverTrios(sv, filtroSucursal, defaultSucursalId);
   const imagen = sv.imagenUrl ?? articulo.imagenUrl;
-  return (
-    <Link
-      to={`/articulos/${articulo.id}`}
-      className="group flex flex-col overflow-hidden rounded-md border bg-background transition-colors hover:bg-accent/50"
-    >
+  const clase =
+    "group flex flex-col overflow-hidden rounded-md border bg-background text-left transition-colors hover:bg-accent/50";
+  const contenido = (
+    <>
       {imagen ? (
         <img
           src={imagen}
@@ -466,6 +713,15 @@ function SubvariacionCard({
           <StockTrio trio={trio} compact />
         </div>
       </div>
+    </>
+  );
+  return onSeleccionar ? (
+    <button type="button" onClick={onSeleccionar} className={clase}>
+      {contenido}
+    </button>
+  ) : (
+    <Link to={`/articulos/${articulo.id}`} className={clase}>
+      {contenido}
     </Link>
   );
 }
@@ -474,15 +730,21 @@ function ArticuloCard({
   articulo,
   filtroSucursal,
   defaultSucursalId,
+  clasificacion,
+  seleccion,
 }: {
   articulo: Articulo;
   filtroSucursal: string;
   defaultSucursalId: string | undefined;
+  /** "Llavero · Anime" (vacío si no tiene). */
+  clasificacion: string;
+  seleccion?: Seleccion;
 }) {
   const trio = resolverTrios(articulo, filtroSucursal, defaultSucursalId);
   return (
-    <Link
+    <EnlaceOSeleccion
       to={`/articulos/${articulo.id}`}
+      seleccion={seleccion}
       className="group flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent/50"
     >
       {articulo.imagenUrl ? (
@@ -502,6 +764,9 @@ function ArticuloCard({
         <p className="text-xs text-muted-foreground">
           #{articulo.id} · {articulo.sigla}
         </p>
+        {clasificacion && (
+          <p className="truncate text-xs font-medium text-muted-foreground">{clasificacion}</p>
+        )}
         {(articulo.etiquetas ?? []).length > 0 && (
           <div className="flex flex-wrap gap-1">
             {(articulo.etiquetas ?? []).slice(0, 3).map((t) => (
@@ -522,7 +787,7 @@ function ArticuloCard({
           <StockTrio trio={trio} />
         </div>
       </div>
-    </Link>
+    </EnlaceOSeleccion>
   );
 }
 

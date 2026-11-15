@@ -12,6 +12,7 @@ import { useArticulos } from "@/features/articulos/useArticulos";
 import { ImageUpload } from "@/features/articulos/ImageUpload";
 import { crearArticulo } from "@/features/articulos/articuloService";
 import { CategoriaInlineSelect } from "@/features/categorias/CategoriaInlineSelect";
+import { GeneroInlineSelect } from "@/features/categorias/GeneroInlineSelect";
 import { ZonaPrecioSelect } from "@/features/zonas-precio/ZonaPrecioSelect";
 import { useZonasPrecio } from "@/features/zonas-precio/useZonasPrecio";
 import { EtiquetasInput } from "@/features/fabricacion/EtiquetasInput";
@@ -45,6 +46,7 @@ export function RegistrarProduccionPage() {
   const [nombre, setNombre] = useState("");
   const [sigla, setSigla] = useState("");
   const [categoria, setCategoria] = useState({ categoriaId: "", subcategoriaId: "" });
+  const [generoId, setGeneroId] = useState("");
   const [etiquetas, setEtiquetas] = useState<string[]>([]);
   const [zonaPrecioId, setZonaPrecioId] = useState("");
   const [costo, setCosto] = useState("");
@@ -128,6 +130,7 @@ export function RegistrarProduccionPage() {
           ...(categoria.subcategoriaId
             ? { subcategoriaId: categoria.subcategoriaId }
             : {}),
+          ...(generoId ? { generoId } : {}),
           ...(etiquetas.length > 0 ? { etiquetas } : {}),
           zonaPrecioId: zona.zonaId,
           escalonesMayoreo: zona.escalones,
@@ -334,6 +337,9 @@ export function RegistrarProduccionPage() {
             onChange={setCategoria}
             categoriaRequerida
           />
+          <div className="sm:w-1/2 sm:pr-1.5">
+            <GeneroInlineSelect generoId={generoId} onChange={setGeneroId} />
+          </div>
           <ZonaPrecioSelect
             value={zonaPrecioId}
             onChange={(z) => setZonaPrecioId(z?.zonaId ?? "")}

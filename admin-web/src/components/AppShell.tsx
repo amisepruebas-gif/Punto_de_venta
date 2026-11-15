@@ -42,7 +42,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/articulos", label: "Artículos", icon: Package },
-  { to: "/categorias", label: "Categorías", icon: FolderTree },
+  { to: "/categorias", label: "Categorías y géneros", icon: FolderTree },
   { to: "/ingreso-mercancia", label: "Ingreso", icon: Truck },
   { to: "/resurtidos", label: "Resurtidos", icon: ArrowRightLeft },
   { to: "/fabricacion", label: "Fabricación", icon: Factory },

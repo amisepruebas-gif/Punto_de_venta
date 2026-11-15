@@ -14,6 +14,7 @@ const FORM_BASE: FormStateInput = {
   precioVenta: "150",
   categoriaId: "",
   subcategoriaId: "",
+  generoId: "",
   etiquetas: [],
   imagenUrl: "https://firebasestorage.googleapis.com/v0/b/x.appspot.com/o/media_web_new_version%2Farticulos%2F123.webp?alt=media&token=abc",
   tallas: "",
@@ -158,5 +159,40 @@ describe("construirInputArticulo — mayoreo, zona y solo mayoreo", () => {
     });
     expect(con.soloMayoreo).toBe(true);
     expect(con.zonaPrecioId).toBe("llaveros");
+  });
+});
+
+describe("construirInputArticulo — clasificación", () => {
+  it("vacía va explícita (para poder QUITARLA al editar)", () => {
+    const input = construirInputArticulo(ARGS_BASE);
+    expect(input.categoriaId).toBe("");
+    expect(input.subcategoriaId).toBe("");
+    expect(input.generoId).toBe("");
+    expect(input.etiquetas).toEqual([]);
+  });
+
+  it("con valores los manda tal cual", () => {
+    const input = construirInputArticulo({
+      ...ARGS_BASE,
+      form: {
+        ...FORM_BASE,
+        categoriaId: "llavero",
+        subcategoriaId: "metal",
+        generoId: "anime",
+        etiquetas: ["naruto"],
+      },
+    });
+    expect(input.categoriaId).toBe("llavero");
+    expect(input.subcategoriaId).toBe("metal");
+    expect(input.generoId).toBe("anime");
+    expect(input.etiquetas).toEqual(["naruto"]);
+  });
+
+  it("sin categoría no manda subcategoría", () => {
+    const input = construirInputArticulo({
+      ...ARGS_BASE,
+      form: { ...FORM_BASE, categoriaId: "", subcategoriaId: "metal" },
+    });
+    expect(input.subcategoriaId).toBe("");
   });
 });

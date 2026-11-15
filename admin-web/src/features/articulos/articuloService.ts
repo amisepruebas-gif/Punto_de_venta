@@ -150,7 +150,7 @@ async function borrarImagen(path: string): Promise<void> {
 // deviceId. Escribimos únicamente la huella (contrato del schema) — si en
 // el futuro reaparecen clientes legacy (Android/Electron) que lo requieran,
 // se re-introduce el campo de flags por nodo.
-async function marcarArticuloEnSync(negocioId: string): Promise<void> {
+export async function marcarArticuloEnSync(negocioId: string): Promise<void> {
   const acRef = doc(
     db,
     `${paths.negocio(negocioId)}/${COL_DATOS}/${DOC_ARTICULOS_AC}`,
@@ -466,12 +466,17 @@ export async function actualizarArticulo(
   return actualizado;
 }
 
-/** `""` = "sin valor" en mayoreo legacy y zona: el builder los manda
- *  vacíos para poder quitarlos y aquí se borran del doc. */
+/** `""` = "sin valor" en mayoreo legacy, zona y clasificación (categoría,
+ *  subcategoría, género; etiquetas `[]`): el builder los manda vacíos para
+ *  poder quitarlos y aquí se borran del doc. */
 function borrarLlavesVacias(a: Articulo): void {
   if (a.mayoreo === "") delete a.mayoreo;
   if (a.cantMayoreo === "") delete a.cantMayoreo;
   if (a.zonaPrecioId === "") delete a.zonaPrecioId;
+  if (a.categoriaId === "") delete a.categoriaId;
+  if (a.subcategoriaId === "") delete a.subcategoriaId;
+  if (a.generoId === "") delete a.generoId;
+  if (Array.isArray(a.etiquetas) && a.etiquetas.length === 0) delete a.etiquetas;
 }
 
 export async function eliminarArticulo(
