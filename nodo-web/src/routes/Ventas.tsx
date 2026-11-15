@@ -11,6 +11,10 @@ import {
 } from "@/features/ventas/BuscadorArticulo";
 import { VariacionPickerModal } from "@/features/ventas/VariacionPickerModal";
 import { SenaPickerModal } from "@/features/ventas/SenaPickerModal";
+import {
+  FiltrosArticulosPanel,
+  type FiltrosPanelHandle,
+} from "@/features/ventas/FiltrosArticulosPanel";
 import { CarritoPanel } from "@/features/ventas/CarritoPanel";
 import { PagoFooter, type CobrarPayload } from "@/features/ventas/PagoFooter";
 import { NoRegistradoModal } from "@/features/ventas/NoRegistradoModal";
@@ -268,6 +272,13 @@ export function Ventas() {
   // cerrar VariacionPickerModal o SenaPickerModal. Sin esto, después de
   // cada escaneo que abre modal el siguiente scan se pierde en `body`.
   const buscadorRef = useRef<BuscadorArticuloHandle>(null);
+  // Panel de búsqueda por filtros (categoría, género, etiqueta). Mientras
+  // está abierto, al cerrar los modales de variación/seña el foco vuelve a
+  // SU buscador (el de la caja queda detrás).
+  const [filtrosOpen, setFiltrosOpen] = useState(false);
+  const panelFiltrosRef = useRef<FiltrosPanelHandle>(null);
+  const devolverFoco = () =>
+    filtrosOpen ? panelFiltrosRef.current?.focus() : buscadorRef.current?.focus();
   // Avisos de la venta en curso (tarjeta, regalo) para el mensaje final.
   const avisosVentaRef = useRef<string[]>([]);
 
@@ -325,11 +336,17 @@ export function Ventas() {
         setVarPickerPadre(null);
         // Restaurar foco al buscador para que el siguiente scan no se
         // pierda — mismo motivo que en onClose/onSelect del modal.
-        buscadorRef.current?.focus();
+        devolverFoco();
         return true;
       }
       if (senaPadre) {
         setSenaPadre(null);
+        devolverFoco();
+        return true;
+      }
+      // El panel de filtros va debajo de los modales de variación y seña.
+      if (filtrosOpen) {
+        setFiltrosOpen(false);
         buscadorRef.current?.focus();
         return true;
       }
@@ -383,6 +400,7 @@ export function Ventas() {
       salidaOpen,
       varPickerPadre,
       senaPadre,
+      filtrosOpen,
       pinOpen,
       registrosOpen,
       apartadosOpen,
@@ -1364,6 +1382,7 @@ export function Ventas() {
                 ref={buscadorRef}
                 onPedirVariacion={setVarPickerPadre}
                 onPedirSena={setSenaPadre}
+                onAbrirFiltros={() => setFiltrosOpen(true)}
               />
             </div>
 
@@ -1489,11 +1508,23 @@ export function Ventas() {
         open={salidaOpen}
         onCancel={() => setSalidaOpen(false)}
       />
+      {/* z-40: los modales de variación y seña (z-50) van encima. */}
+      {filtrosOpen && (
+        <FiltrosArticulosPanel
+          ref={panelFiltrosRef}
+          onCerrar={() => {
+            setFiltrosOpen(false);
+            buscadorRef.current?.focus();
+          }}
+          onPedirVariacion={setVarPickerPadre}
+          onPedirSena={setSenaPadre}
+        />
+      )}
       <VariacionPickerModal
         padre={varPickerPadre}
         onClose={() => {
           setVarPickerPadre(null);
-          buscadorRef.current?.focus();
+          devolverFoco();
         }}
         onSelect={(padre, sv) => {
           const imagenUrl = sv.imagenUrl ?? padre.imagenUrl;
@@ -1503,7 +1534,7 @@ export function Ventas() {
             ...(imagenUrl ? { imagenUrl } : {}),
           });
           setVarPickerPadre(null);
-          buscadorRef.current?.focus();
+          devolverFoco();
         }}
         onSelectOtro={(padre, nombre) => {
           const imagenUrl = padre.imagenUrl;
@@ -1517,14 +1548,14 @@ export function Ventas() {
             ...(imagenUrl ? { imagenUrl } : {}),
           });
           setVarPickerPadre(null);
-          buscadorRef.current?.focus();
+          devolverFoco();
         }}
       />
       <SenaPickerModal
         padre={senaPadre}
         onClose={() => {
           setSenaPadre(null);
-          buscadorRef.current?.focus();
+          devolverFoco();
         }}
         onConfirm={(padre, descripcion) => {
           const imagenUrl = padre.imagenUrl;
@@ -1533,7 +1564,7 @@ export function Ventas() {
             ...(imagenUrl ? { imagenUrl } : {}),
           });
           setSenaPadre(null);
-          buscadorRef.current?.focus();
+          devolverFoco();
         }}
       />
       <TicketModal

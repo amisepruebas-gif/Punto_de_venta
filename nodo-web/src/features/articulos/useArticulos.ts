@@ -8,7 +8,9 @@ import {
   COL_NEGOCIOS,
   COL_ARTICULOS,
   canonicalStoragePath,
+  normalizarTexto,
   type Articulo,
+  type Clasificable,
 } from "@shared";
 import { podarCacheImagenes, posDisponible } from "@/lib/pos-bridge";
 
@@ -23,15 +25,19 @@ export type SearchEntry = {
   idPadre: string;
   /** Texto a mostrar en la sugerencia. */
   titulo: string;
-  /** Lowercase de `titulo + sigla + referencia + etiquetas + nombres/codigos
-   *  de subvariaciones` para `String.includes`. Permite encontrar al padre
-   *  tipeando el nombre de una variación. */
+  /** `titulo + sigla + id + referencia + etiquetas + nombres/codigos de
+   *  subvariaciones`, normalizado (`normalizarTexto`: minúsculas y sin
+   *  acentos) para buscar por palabras. Permite encontrar al padre tipeando
+   *  el nombre de una variación. Los nombres de categoría y género los suma
+   *  el buscador (vienen de otro catálogo). */
   blob: string;
   /** True si el padre tiene subvariaciones (POS abre el picker al elegirlo). */
   tieneVariaciones: boolean;
   /** Artículo "solo mayoreo": el buscador lo muestra solo en sucursales con
    *  `modoMayoreo` (`articuloVisibleEnSucursal`). */
   soloMayoreo: boolean;
+  /** Categoría, subcategoría, género y etiquetas, para el panel de filtros. */
+  clasificacion: Clasificable;
 };
 
 type State = {
@@ -130,9 +136,15 @@ export function useArticulos(): State {
             kind: "articulo",
             idPadre: a.id,
             titulo: a.nombre,
-            blob: blobParts.join(" ").toLowerCase(),
+            blob: normalizarTexto(blobParts.join(" ")),
             tieneVariaciones: tieneVariaciones && usaSubvariacionesV2,
             soloMayoreo: !!a.soloMayoreo,
+            clasificacion: {
+              categoriaId: a.categoriaId,
+              subcategoriaId: a.subcategoriaId,
+              generoId: a.generoId,
+              etiquetas: a.etiquetas,
+            },
           });
         }
 

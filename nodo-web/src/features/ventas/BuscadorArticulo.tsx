@@ -6,21 +6,26 @@ import {
   useRef,
   useState,
 } from "react";
-import { Trash2, X, Layers, ScanBarcode } from "lucide-react";
+import { Trash2, X, Layers, ScanBarcode, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useArticulos, type SearchEntry } from "@/features/articulos/useArticulos";
+import { useCatalogoArticulos } from "@/features/articulos/useCatalogoArticulos";
 import { useCarrito } from "./carritoStore";
+import { useFiltrosCaja } from "./filtrosCajaStore";
+import { avisoNoVisible, resolverCodigoExacto, useElegirArticulo } from "./elegirArticulo";
 import { useTecladoFisico } from "@/hooks/useTecladoFisico";
 import { useUbicacionStock } from "@/features/sucursal/useUbicacionStock";
 import { useSucursal } from "@/features/sucursal/useSucursal";
 import {
   articuloVisibleEnSucursal,
+  coincidePalabras,
+  hayFiltros,
   leerStockTienda,
-  parseVariacionCodigo,
+  normalizarTexto,
+  palabrasDeConsulta,
   resolverEscalones,
   type Articulo,
-  type ArticuloSubvariacion,
 } from "@shared";
 
 /** Handle imperativo expuesto al padre para re-enfocar el input tras
@@ -45,12 +50,17 @@ type Props = {
    *  se limpia/cierra solo. Replica el flujo de `popVariacion_venta` del
    *  nodo_1 Android para artículos seña-only. */
   onPedirSena: (padre: Articulo) => void;
+  /** Abre el panel de búsqueda por filtros (categoría, género, etiqueta). */
+  onAbrirFiltros: () => void;
 };
 
 /**
  * Buscador con autocomplete que filtra contra el `searchIndex` derivado en
- * `useArticulos`. En el flujo Fase 6 el index sólo contiene padres; cuando
- * el padre elegido tiene subvariaciones, el contenedor abre un picker.
+ * `useArticulos`: por palabras en cualquier orden, sin acentos, y también por
+ * el nombre de la categoría, subcategoría y género. No usa los filtros del
+ * panel: un filtro olvidado nunca esconde un artículo aquí. En el flujo
+ * Fase 6 el index sólo contiene padres; cuando el padre elegido tiene
+ * subvariaciones, el contenedor abre un picker.
  *
  * El padre puede llamar `ref.current.focus()` para devolverle el foco al
  * input — útil tras cerrar un modal que tomó el foco. Patrón crítico para
@@ -59,9 +69,15 @@ type Props = {
  * cae en el `body` y nunca llega al buscador.
  */
 export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
-  function BuscadorArticulo({ onPedirVariacion, onPedirSena }, ref) {
+  function BuscadorArticulo({ onPedirVariacion, onPedirSena, onAbrirFiltros }, ref) {
   const { byId, bySigla, searchIndex, loading } = useArticulos();
-  const { agregar, items, limpiar } = useCarrito();
+  const catalogo = useCatalogoArticulos();
+  const { items, limpiar } = useCarrito();
+  const { elegir: elegirArticulo, elegirVariacion } = useElegirArticulo({
+    onPedirVariacion,
+    onPedirSena,
+  });
+  const filtrosActivos = useFiltrosCaja((s) => hayFiltros(s.filtros));
   // Stock de la sucursal del nodo (null mientras resuelve el default).
   const ubicacion = useUbicacionStock();
   // Modo mayoreo de la sucursal: decide qué artículos se pueden vender aquí.
@@ -111,17 +127,38 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
     [],
   );
 
+  // Texto de búsqueda de cada entrada: su blob más los nombres de categoría,
+  // subcategoría y género (que viven en otro catálogo), ya normalizados.
+  const textos = useMemo(
+    () =>
+      searchIndex.map((e) => {
+        const c = e.clasificacion;
+        const extra = [
+          c.categoriaId ? catalogo.nombreCategoria.get(c.categoriaId) : "",
+          c.subcategoriaId ? catalogo.nombreSubcategoria.get(c.subcategoriaId) : "",
+          c.generoId ? catalogo.nombreGenero.get(c.generoId) : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return extra ? `${e.blob} ${normalizarTexto(extra)}` : e.blob;
+      }),
+    [searchIndex, catalogo.nombreCategoria, catalogo.nombreSubcategoria, catalogo.nombreGenero],
+  );
+
   const sugerencias = useMemo<SearchEntry[]>(() => {
-    const s = q.trim().toLowerCase();
+    const palabras = palabrasDeConsulta(q);
     // Sin sucursal resuelta no sabemos qué se vende aquí: no sugerir nada
     // (dura lo que tarda la caché en entregar el doc de la sucursal).
-    if (!s || cargandoSucursal) return [];
-    return searchIndex
-      .filter(
-        (e) => e.blob.includes(s) && articuloVisibleEnSucursal(e, modoMayoreo),
-      )
-      .slice(0, MAX_SUGERENCIAS);
-  }, [q, searchIndex, cargandoSucursal, modoMayoreo]);
+    if (palabras.length === 0 || cargandoSucursal) return [];
+    const out: SearchEntry[] = [];
+    for (let i = 0; i < searchIndex.length && out.length < MAX_SUGERENCIAS; i++) {
+      const e = searchIndex[i];
+      if (articuloVisibleEnSucursal(e, modoMayoreo) && coincidePalabras(textos[i] ?? e.blob, palabras)) {
+        out.push(e);
+      }
+    }
+    return out;
+  }, [q, searchIndex, textos, cargandoSucursal, modoMayoreo]);
 
   const entryPorId = useMemo(
     () => new Map(searchIndex.map((e) => [e.idPadre, e])),
@@ -148,57 +185,28 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
     elegirPadre(padre, entry.tieneVariaciones);
   }
 
-  /**
-   * Coincidencia exacta del texto con un código: `v-NN-XXX` (solo con
-   * variaciones V2 activas), id de 8 dígitos o sigla. Es lo que manda el
-   * lector al escanear una etiqueta.
-   */
-  function resolverExacto(
-    texto: string,
-  ): { padre: Articulo; sub?: ArticuloSubvariacion } | null {
-    const limpio = texto.trim();
-    if (!limpio) return null;
-    if (limpio.startsWith("v-")) {
-      const partes = parseVariacionCodigo(limpio);
-      const padre = partes ? byId.get(partes.idPadre) : undefined;
-      const sub = padre?.subvariaciones?.find((s) => s.codigo === limpio);
-      if (!padre || !sub || !entryPorId.get(padre.id)?.tieneVariaciones) {
-        return null;
-      }
-      return { padre, sub };
-    }
-    const padre = byId.get(limpio) ?? bySigla.get(limpio.toLowerCase());
-    return padre ? { padre } : null;
-  }
-
   /** Enter del lector: agrega la coincidencia exacta (o avisa si ese
    *  artículo no se vende en esta sucursal). `false` si no hubo
    *  coincidencia y hay que caer a la sugerencia resaltada. */
   function intentarExacto(texto: string): boolean {
     if (cargandoSucursal) return false;
-    const r = resolverExacto(texto);
+    const r = resolverCodigoExacto(
+      texto,
+      byId,
+      bySigla,
+      (id) => !!entryPorId.get(id)?.tieneVariaciones,
+    );
     if (!r) return false;
     setQ("");
     setAbierto(false);
     if (!articuloVisibleEnSucursal(r.padre, modoMayoreo)) {
-      avisar(
-        modoMayoreo
-          ? `"${r.padre.nombre}" no es de mayoreo: esta sucursal solo vende artículos de mayoreo`
-          : `"${r.padre.nombre}" es solo mayoreo: no se vende en esta sucursal`,
-      );
+      avisar(avisoNoVisible(r.padre, modoMayoreo));
       reEnfocarInput();
       return true;
     }
-    // Variación escaneada: directo al carrito, salvo artículos con seña
-    // (su modal captura la descripción).
-    if (r.sub && r.padre.seña === undefined) {
-      const imagenUrl = r.sub.imagenUrl ?? r.padre.imagenUrl;
-      agregar(r.padre, {
-        subvariacionCodigo: r.sub.codigo,
-        subvariacionNombre: r.sub.nombre,
-        ...(imagenUrl ? { imagenUrl } : {}),
-      });
-      reEnfocarInput();
+    if (r.sub) {
+      // Variación escaneada: directo al carrito (o su modal, si tiene seña).
+      if (elegirVariacion(r.padre, r.sub) === "agregado") reEnfocarInput();
       return true;
     }
     elegirPadre(r.padre, entryPorId.get(r.padre.id)?.tieneVariaciones ?? false);
@@ -206,35 +214,16 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
   }
 
   function elegirPadre(padre: Articulo, tieneVariaciones: boolean) {
-    if (tieneVariaciones) {
-      onPedirVariacion(padre);
-      setQ("");
-      setAbierto(false);
-      // El padre se encarga de re-enfocar al cerrar el modal (vía
-      // imperative handle). Aquí NO re-enfocamos porque el modal abre
-      // inmediatamente y nos robaría el foco.
-      return;
-    }
-    // Artículo sin variaciones con flag `seña` → abrir modal para capturar
-    // la descripción antes de añadirlo. Replica el comportamiento del
-    // popVariacion_venta del nodo_1 Android.
-    if (padre.seña !== undefined) {
-      onPedirSena(padre);
-      setQ("");
-      setAbierto(false);
-      return;
-    }
-    const imagenUrl = padre.imagenUrl;
-    agregar(padre, {
-      ...(imagenUrl ? { imagenUrl } : {}),
-    });
+    const r = elegirArticulo(padre, tieneVariaciones);
     setQ("");
     setAbierto(false);
-    // Sin modal — re-enfocar inmediato para que el siguiente scan caiga
-    // en el input. Aunque en teoría React preserva el foco al cambiar
-    // `value` de un input controlado, navegadores móviles + IME pueden
-    // hacer blur en ciertas combinaciones; un focus() explícito blinda.
-    reEnfocarInput();
+    // Con modal (variación o seña), el padre re-enfoca al cerrarlo (vía
+    // imperative handle): aquí NO, porque el modal nos robaría el foco.
+    // Sin modal, re-enfocar inmediato para que el siguiente scan caiga en
+    // el input. Aunque en teoría React preserva el foco al cambiar `value`
+    // de un input controlado, navegadores móviles + IME pueden hacer blur
+    // en ciertas combinaciones; un focus() explícito blinda.
+    if (r === "agregado") reEnfocarInput();
   }
 
   const carritoVacio = items.length === 0;
@@ -384,6 +373,24 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
             </div>
           )}
         </div>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setAbierto(false);
+            onAbrirFiltros();
+          }}
+          aria-label={filtrosActivos ? "Filtros (hay filtros puestos)" : "Filtros"}
+          title="Buscar por categoría, género o etiqueta"
+          className="relative h-11 shrink-0 gap-1.5 rounded-[9px] bg-muted px-3 text-sm font-semibold hover:bg-border"
+        >
+          <SlidersHorizontal className="h-[18px] w-[18px]" aria-hidden /> Filtros
+          {filtrosActivos && (
+            <span
+              className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-marca ring-2 ring-card"
+              aria-hidden
+            />
+          )}
+        </Button>
         <Button
           variant="ghost"
           onClick={() => limpiar()}
