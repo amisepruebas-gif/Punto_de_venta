@@ -12,3 +12,5 @@ export * from "./passwordHash";
 export * from "./storageUrl";
 export * from "./puntos";
 export * from "./clip";
+export * from "./busqueda";
+export * from "./clasificacion";

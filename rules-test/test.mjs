@@ -6,10 +6,9 @@ import {
 import { doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 
-const RULES = readFileSync(
-  "C:/Users/jesus/Documents/dispositivo_1/firestore.rules.candidata",
-  "utf8",
-);
+// Las reglas del MISMO checkout (antes era una ruta fija al checkout
+// principal: en un worktree se probaban otras reglas).
+const RULES = readFileSync(new URL("../firestore.rules.candidata", import.meta.url), "utf8");
 const NID = "amise", S1 = "suc1", S2 = "suc2";
 
 const env = await initializeTestEnvironment({
@@ -42,6 +41,7 @@ const P = {
   nodoDoc: `${N}/nodos_web_new_version/NODO1`,
   categoria: `${N}/categorias_web_new_version/C1`,
   subcategoria: `${N}/subcategorias_web_new_version/SC1`,
+  genero: `${N}/generos_web_new_version/anime`,
   resurtido: `${N}/resurtidos_web_new_version/R1`,
   colaboradorDoc: `${N}/colaboradores_web_new_version/COL1`,
   chatDirecto: `${N}/chat_directos_web_new_version/PAIR1`,
@@ -73,6 +73,7 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(db, P.sucursal), { nombre: "Suc 1", direccion: "x" });
   await setDoc(doc(db, P.nodoDoc), { nombre: "Nodo 1" });
   await setDoc(doc(db, P.categoria), { nombre: "Ropa" });
+  await setDoc(doc(db, P.genero), { generoId: "anime", nombre: "Anime" });
   await setDoc(doc(db, P.colaboradorDoc), { nombre: "Ana" });
   await setDoc(doc(db, P.chatDirecto), { ultimo: "hola" });
   await setDoc(doc(db, P.chatGrupo), { ultimo: "hey" });
@@ -172,6 +173,22 @@ await check("G9 mercancia crea ingreso_mercancia", "ok", setDoc(doc(merc, P.ingr
 await check("G8 admin lee system", "ok", getDoc(doc(adminC, P.sysDoc)));
 await check("G8 anon lee system (kill-switch publico, pre-login)", "ok", getDoc(doc(anon, P.sysDoc)));
 await check("G8 anon NO escribe system", "fail", setDoc(doc(anon, P.sysDoc), { value: "hack" }));
+
+// ============ GÉNEROS (temáticas) y filtros de la caja ============
+await check("anon NO lee genero", "fail", getDoc(doc(anon, P.genero)));
+await check("anon NO escribe genero", "fail", setDoc(doc(anon, P.genero), { nombre: "hack" }));
+await check("nodo lee genero (filtros de la caja)", "ok", getDoc(doc(nodo1, P.genero)));
+await check("nodo lee categoria (filtros de la caja)", "ok", getDoc(doc(nodo1, P.categoria)));
+await check("nodo NO escribe genero", "fail", setDoc(doc(nodo1, P.genero), { nombre: "Otro" }));
+await check("nodo de OTRO negocio NO lee genero", "fail", getDoc(doc(otroNeg, P.genero)));
+await check("colaborador NO lee genero", "fail", getDoc(doc(colab, P.genero)));
+await check("mercancia escribe genero", "ok", setDoc(doc(merc, P.genero), { generoId: "anime", nombre: "Anime" }));
+await check("admin escribe genero", "ok", setDoc(doc(adminC, P.genero), { generoId: "anime", nombre: "Animé" }));
+await check("superadmin lee genero", "ok", getDoc(doc(supera, P.genero)));
+await check("nodo NO pone generoId al articulo", "fail", updateDoc(doc(nodo1, P.articulo), { generoId: "anime" }));
+await check("admin pone generoId al articulo", "ok", updateDoc(doc(adminC, P.articulo), { generoId: "anime" }));
+await check("mercancia quita generoId al articulo", "ok", updateDoc(doc(merc, P.articulo), { generoId: deleteField() }));
+await check("admin borra genero", "ok", deleteDoc(doc(adminC, P.genero)));
 
 // ============ FABRICACION: zonas, lotes, ajustes, folio ============
 await check("FAB admin escribe zona", "ok", setDoc(doc(adminC, P.zona), { nombre: "Llaveros", precioVenta: 36, escalones: [] }));

@@ -56,6 +56,18 @@ export type Subcategoria = {
   fechaCreacion: string;
 };
 
+/**
+ * Género = temática del artículo (Anime, K-pop, Películas…). Catálogo
+ * universal por negocio e independiente de la categoría: un peluche y un
+ * llavero pueden tener el mismo género. Slug determinístico como en
+ * `Categoria`.
+ */
+export type Genero = {
+  generoId: string;             // slug derivado de `nombre`
+  nombre: string;               // único por negocio (case-insensitive)
+  fechaCreacion: string;
+};
+
 // ---------- Sucursal ----------
 export type DatosTransferencia = {
   banco: string;
@@ -344,6 +356,10 @@ export type Articulo = {
   categoriaId?: string;
   /** FK a `Subcategoria.subcategoriaId`. Requiere `categoriaId`. */
   subcategoriaId?: string;
+  /** FK a `Genero.generoId` (temática). Independiente de la categoría.
+   *  NO se llama `genero`: ese campo legacy lo borra `limpiarLegacyArticulos`
+   *  y lo convierte en categoría `migrarArticulosLegacy`. */
+  generoId?: string;
   /** Tags libres por artículo (no universales). */
   etiquetas?: string[];
 

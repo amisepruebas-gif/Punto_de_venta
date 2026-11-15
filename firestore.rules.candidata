@@ -91,6 +91,12 @@ service cloud.firestore {
         allow read: if miembro(nid);
         allow write: if esAdmin(nid) || esMercancia(nid);
       }
+      // Géneros (temáticas: Anime, K-pop…): mismo trato que categorías. La
+      // caja los lee para sus filtros.
+      match /generos_web_new_version/{gid} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid) || esMercancia(nid);
+      }
 
       // datos: config (admin), huellas *_ac (nodo), tallas (mercancia).
       // El folio de Fabricacion (_contadorFabricacion) solo lo avanza admin.

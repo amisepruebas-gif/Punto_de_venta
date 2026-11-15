@@ -21,6 +21,10 @@ export const COL_MENSAJES = `mensajes_n${SUFFIX}`;
 export const COL_SUCURSALES_DATA = `sucursales_data${SUFFIX}`;
 export const COL_CATEGORIAS = `categorias${SUFFIX}`;
 export const COL_SUBCATEGORIAS = `subcategorias${SUFFIX}`;
+/** Géneros (temáticas: Anime, K-pop…). Universales por negocio, aparte de
+ *  las categorías. El campo del artículo es `generoId` (no `genero`: ese
+ *  nombre es del legacy y lo borran/convierten las functions de migración). */
+export const COL_GENEROS = `generos${SUFFIX}`;
 
 // Sub-colecciones bajo /sucursales_data_web_new_version/{sucursalId}/
 export const COL_VENTAS = `ventas_n${SUFFIX}`;
@@ -157,6 +161,9 @@ export const paths = {
     `${COL_NEGOCIOS}/${nid}/${COL_CATEGORIAS}/${cid}`,
   subcategoria: (nid: string, sid: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_SUBCATEGORIAS}/${sid}`,
+  genero: (nid: string, gid: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_GENEROS}/${gid}`,
+  generosCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_GENEROS}`,
 
   // ---------- Chat ----------
   /** Doc principal del grupo del nodo — contiene el `meta` (miembros,
