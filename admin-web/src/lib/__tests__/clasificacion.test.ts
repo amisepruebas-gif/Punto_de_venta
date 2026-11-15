@@ -109,6 +109,24 @@ describe("calcularCambioClasificacion", () => {
     ).toEqual({ poner: { generoId: "anime" }, borrar: [] });
   });
 
+  it("'igual' no toca una subcategoría sin categoría", () => {
+    expect(
+      calcularCambioClasificacion(
+        { subcategoriaId: "metal" },
+        cambios({ genero: { accion: "poner", id: "anime" } }),
+        padres,
+      ),
+    ).toEqual({ poner: { generoId: "anime" }, borrar: [] });
+    // Poner categoría: la subcategoría se queda si es de ella.
+    expect(
+      calcularCambioClasificacion(
+        { subcategoriaId: "metal" },
+        cambios({ categoria: { accion: "poner", id: "llavero" } }),
+        padres,
+      ),
+    ).toEqual({ poner: { categoriaId: "llavero" }, borrar: [] });
+  });
+
   it("agrega y quita etiquetas sin repetir y sin importar mayúsculas, # ni acentos", () => {
     expect(
       calcularCambioClasificacion(

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
 } from "react";
 import { Layers, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -74,17 +75,25 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
     const inputRef = useRef<HTMLInputElement>(null);
     const avisoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    useImperativeHandle(
-      ref,
-      () => ({ focus: () => requestAnimationFrame(() => inputRef.current?.focus()) }),
-      [],
-    );
-    useEffect(
-      () => () => {
+    /**
+     * El foco vive en el buscador del panel: ahí escribe el lector de códigos.
+     * `seleccionar` marca el texto para que el siguiente escaneo lo reemplace
+     * (en vez de pegarse a lo que ya había).
+     */
+    function enfocar(seleccionar = false) {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        if (seleccionar) inputRef.current?.select();
+      });
+    }
+    useImperativeHandle(ref, () => ({ focus: () => enfocar(true) }), []);
+    // Al abrir: si quedó texto de antes, marcado (un escaneo lo reemplaza).
+    useEffect(() => {
+      enfocar(true);
+      return () => {
         if (avisoTimer.current) clearTimeout(avisoTimer.current);
-      },
-      [],
-    );
+      };
+    }, []);
     // Al cambiar filtros o texto se vuelve a la primera página.
     useEffect(() => setLimite(POR_PAGINA), [filtros, texto]);
 
@@ -101,9 +110,10 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
 
     // Lo que se vende aquí, por nombre, con su clasificación vigente (ids
     // borrados = "sin …") y su texto de búsqueda (con nombres de catálogo).
-    const { base, etiquetaVisible } = useMemo(() => {
+    const { base, etiquetaVisible, hayClasificacion } = useMemo(() => {
       const etiquetaVisible = new Map<string, string>();
-      if (cargandoSucursal) return { base: [] as Item[], etiquetaVisible };
+      let hayClasificacion = false;
+      if (cargandoSucursal) return { base: [] as Item[], etiquetaVisible, hayClasificacion };
       const base: Item[] = [];
       for (const e of searchIndex) {
         if (!articuloVisibleEnSucursal(e, modoMayoreo)) continue;
@@ -119,14 +129,18 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
         ]
           .filter(Boolean)
           .join(" ");
+        const vigente = clasificacionVigente(c, catalogo.vigentes);
+        if (vigente.categoriaId || vigente.generoId || vigente.etiquetas.length) {
+          hayClasificacion = true;
+        }
         base.push({
           entry: e,
-          vigente: clasificacionVigente(c, catalogo.vigentes),
+          vigente,
           texto: extra ? `${e.blob} ${normalizarTexto(extra)}` : e.blob,
         });
       }
       base.sort((a, b) => a.entry.titulo.localeCompare(b.entry.titulo, "es"));
-      return { base, etiquetaVisible };
+      return { base, etiquetaVisible, hayClasificacion };
     }, [searchIndex, cargandoSucursal, modoMayoreo, catalogo]);
 
     const palabras = useMemo(() => palabrasDeConsulta(texto), [texto]);
@@ -143,15 +157,21 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
       [conTexto, filtros],
     );
 
-    /** Opciones con resultados (más la elegida aunque hoy dé 0). */
+    /** Opciones con resultados, más la elegida aunque hoy dé 0. Si la
+     *  elegida se borró del catálogo, sale como "(ya no existe)" para poder
+     *  quitarla con un toque. */
     function opciones(
       lista: Array<{ id: string; nombre: string }>,
       cuenta: Map<string, number>,
       elegida: string | undefined,
     ): Opcion[] {
-      return lista
+      const out = lista
         .map((o) => ({ ...o, n: cuenta.get(o.id) ?? 0 }))
         .filter((o) => o.n > 0 || o.id === elegida);
+      if (elegida && !lista.some((o) => o.id === elegida)) {
+        out.unshift({ id: elegida, nombre: "(ya no existe)", n: cuenta.get(elegida) ?? 0 });
+      }
+      return out;
     }
     const opcCategorias = opciones(
       catalogo.categorias.map((c) => ({ id: c.categoriaId, nombre: c.nombre })),
@@ -184,12 +204,10 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
         n: conteo.etiquetas.get(etiquetaElegida) ?? 0,
       });
     }
+    // Ningún artículo de esta sucursal tiene categoría, género ni etiquetas
+    // (no depende del texto escrito).
     const sinCatalogo =
-      !catalogo.loading &&
-      opcCategorias.length === 0 &&
-      opcGeneros.length === 0 &&
-      opcEtiquetas.length === 0 &&
-      !hayFiltros(filtros);
+      !catalogo.loading && !loading && !cargandoSucursal && !hayClasificacion && !hayFiltros(filtros);
 
     // Piezas de cada artículo que ya van en el carrito (insignia en la tarjeta).
     const enCarrito = useMemo(() => {
@@ -206,17 +224,28 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
       poner(grupo, id === elegida ? undefined : id);
     }
 
-    function tocar(entry: SearchEntry | undefined) {
+    /** Agrega (o abre su ventana). Con modal, Ventas devuelve el foco al
+     *  cerrarlo; sin modal, el foco sigue en el buscador del panel. */
+    function tocar(entry: SearchEntry | undefined): boolean {
       const padre = entry ? byId.get(entry.idPadre) : undefined;
-      if (!entry || !padre) return;
+      if (!entry || !padre) return false;
       if (elegir(padre, entry.tieneVariaciones) === "agregado") {
         avisar(`Agregado: ${padre.nombre}`);
+        enfocar();
       }
+      return true;
     }
 
     /** Enter (o el lector de códigos): el código exacto se agrega; si solo
-     *  queda un artículo, ese. */
+     *  queda un artículo, ese. Después el texto se limpia para el siguiente
+     *  escaneo; si no hubo coincidencia, se avisa y el texto queda marcado. */
     function alEnter() {
+      if (!texto.trim()) return;
+      // Sin artículos ni sucursal aún no se sabe qué se vende aquí.
+      if (loading || cargandoSucursal) {
+        avisar("Cargando artículos…");
+        return;
+      }
       const r = resolverCodigoExacto(
         texto,
         byId,
@@ -236,8 +265,20 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
         tocar(entryPorId.get(r.padre.id));
         return;
       }
-      if (resultados.length === 1) tocar(resultados[0].entry);
+      if (resultados.length === 1) {
+        setTexto("");
+        tocar(resultados[0].entry);
+        return;
+      }
+      if (resultados.length === 0) {
+        avisar(`No se encontró "${texto.trim()}"`);
+        enfocar(true);
+      }
     }
+
+    /** Botones del panel: no se quedan con el foco (el lector escribe en el
+     *  buscador; si un botón lo tuviera, su Enter lo "tocaría" otra vez). */
+    const sinFoco = (e: MouseEvent) => e.preventDefault();
 
     return (
       <div
@@ -251,7 +292,6 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
           <div className="relative min-w-0 flex-1">
             <Input
               ref={inputRef}
-              autoFocus
               aria-label="Buscar dentro de los filtros"
               placeholder="Busca por nombre, o escanea"
               value={texto}
@@ -268,7 +308,11 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
             {texto && (
               <button
                 type="button"
-                onClick={() => setTexto("")}
+                onMouseDown={sinFoco}
+                onClick={() => {
+                  setTexto("");
+                  enfocar();
+                }}
                 aria-label="Borrar texto"
                 className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
               >
@@ -277,7 +321,15 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
             )}
           </div>
           {(hayFiltros(filtros) || texto) && (
-            <Button variant="ghost" className="h-11 shrink-0 px-3" onClick={limpiar}>
+            <Button
+              variant="ghost"
+              className="h-11 shrink-0 px-3"
+              onMouseDown={sinFoco}
+              onClick={() => {
+                limpiar();
+                enfocar();
+              }}
+            >
               Limpiar
             </Button>
           )}
@@ -351,7 +403,15 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
             <div className="rounded-lg border border-dashed p-8 text-center">
               <p className="text-sm text-muted-foreground">Sin artículos con esos filtros.</p>
               {(hayFiltros(filtros) || texto) && (
-                <Button variant="outline" className="mt-3 h-11" onClick={limpiar}>
+                <Button
+                  variant="outline"
+                  className="mt-3 h-11"
+                  onMouseDown={sinFoco}
+                  onClick={() => {
+                    limpiar();
+                    enfocar();
+                  }}
+                >
                   Limpiar filtros
                 </Button>
               )}
@@ -371,6 +431,7 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
                   <li key={entry.idPadre}>
                     <button
                       type="button"
+                      onMouseDown={sinFoco}
                       onClick={() => tocar(entry)}
                       className="relative flex h-full w-full flex-col overflow-hidden rounded-lg border bg-card text-left transition hover:border-marca active:scale-[0.98]"
                     >
@@ -424,6 +485,7 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
             <Button
               variant="outline"
               className="mt-3 h-12 w-full"
+              onMouseDown={sinFoco}
               onClick={() => setLimite((l) => l + POR_PAGINA)}
             >
               Ver más ({(resultados.length - limite).toLocaleString("es-MX")} más)
@@ -460,6 +522,9 @@ function FilaFiltro({
             <button
               key={o.id}
               type="button"
+              // Sin quedarse con el foco: el lector sigue escribiendo en el
+              // buscador del panel (y su Enter no apaga este filtro).
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => onElegir(o.id)}
               aria-pressed={activa}
               className={cn(

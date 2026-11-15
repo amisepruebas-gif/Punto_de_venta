@@ -32,8 +32,58 @@ export type FormStateInput = {
   subvariaciones: ArticuloSubvariacion[];
 };
 
+/** Clasificación como estaba al abrir la ficha (para mandar solo lo que el
+ *  usuario cambió). La subcategoría va vacía si no hay categoría. */
+export type ClasificacionInicial = {
+  categoriaId: string;
+  subcategoriaId: string;
+  generoId: string;
+  etiquetas: string[];
+};
+
+export function clasificacionDeForm(f: {
+  categoriaId: string;
+  subcategoriaId: string;
+  generoId: string;
+  etiquetas: string[];
+}): ClasificacionInicial {
+  return {
+    categoriaId: f.categoriaId,
+    subcategoriaId: f.categoriaId ? f.subcategoriaId : "",
+    generoId: f.generoId,
+    etiquetas: [...f.etiquetas],
+  };
+}
+
+/**
+ * Campos de clasificación a escribir. Al CREAR (sin `inicial`) van todos;
+ * vacío = sin dato (`borrarLlavesVacias` los quita). Al EDITAR solo los que
+ * el usuario cambió: así una ficha abierta desde antes no pisa lo que se
+ * asignó en bloque mientras tanto. Cambiado a vacío = quitar.
+ */
+export function camposClasificacion(
+  form: { categoriaId: string; subcategoriaId: string; generoId: string; etiquetas: string[] },
+  inicial: ClasificacionInicial | null | undefined,
+): Partial<Pick<ArticuloInput, "categoriaId" | "subcategoriaId" | "generoId" | "etiquetas">> {
+  const actual = clasificacionDeForm(form);
+  const out: Partial<Pick<ArticuloInput, "categoriaId" | "subcategoriaId" | "generoId" | "etiquetas">> = {};
+  if (!inicial || actual.categoriaId !== inicial.categoriaId) out.categoriaId = actual.categoriaId;
+  if (!inicial || actual.subcategoriaId !== inicial.subcategoriaId) out.subcategoriaId = actual.subcategoriaId;
+  if (!inicial || actual.generoId !== inicial.generoId) out.generoId = actual.generoId;
+  if (
+    !inicial ||
+    actual.etiquetas.length !== inicial.etiquetas.length ||
+    actual.etiquetas.some((t, i) => t !== inicial.etiquetas[i])
+  ) {
+    out.etiquetas = actual.etiquetas;
+  }
+  return out;
+}
+
 export type ConstruirInputArgs = {
   form: FormStateInput;
+  /** Clasificación al abrir la ficha; `null` al crear un artículo. */
+  clasificacionInicial?: ClasificacionInicial | null;
   imagenFile: File | null;
   imagenViaNanobanana: boolean;
   imagenRemoved: boolean;
@@ -58,6 +108,7 @@ export type ConstruirInputArgs = {
 export function construirInputArticulo(args: ConstruirInputArgs): ArticuloInput {
   const {
     form,
+    clasificacionInicial,
     imagenFile,
     imagenViaNanobanana,
     imagenRemoved,
@@ -78,13 +129,10 @@ export function construirInputArticulo(args: ConstruirInputArgs): ArticuloInput 
     precioVenta: form.precioVenta,
     utilidad: String(utilidad),
     utilidadTotal: String(utilidadTotal),
-    // Clasificación: siempre explícita para poder QUITARLA (el service mezcla
-    // con el doc existente; `borrarLlavesVacias` borra los "" y el []). Antes,
-    // quitar la categoría o las etiquetas no se guardaba.
-    categoriaId: form.categoriaId,
-    subcategoriaId: form.categoriaId ? form.subcategoriaId : "",
-    generoId: form.generoId,
-    etiquetas: form.etiquetas,
+    // Clasificación: solo lo que cambió (al crear, todo). Vacío = QUITAR: el
+    // service mezcla con el doc existente y `borrarLlavesVacias` borra los ""
+    // y el []. Antes, quitar la categoría o las etiquetas no se guardaba.
+    ...camposClasificacion(form, clasificacionInicial),
     // FIX D3: si el user quitó la imagen, pasar imagenUrl: "" explícito
     // para que el service lo respete en vez de fallback al existente.
     ...(imagenRemoved

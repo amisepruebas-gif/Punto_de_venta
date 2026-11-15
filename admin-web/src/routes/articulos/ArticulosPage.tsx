@@ -43,7 +43,7 @@ export function ArticulosPage() {
   const navigate = useNavigate();
   const { articulos, loading } = useArticulos();
   const { categorias, subcategorias, loading: loadingCategorias } = useCategorias();
-  const { generos, loading: loadingGeneros } = useGeneros();
+  const { generos, loading: loadingGeneros, error: errorGeneros } = useGeneros();
   const { sucursales, loading: loadingSucursales } = useSucursales();
   const { negocio, negocioId, loading: loadingNegocio } = useNegocio();
   const [q, setQ] = useState("");
@@ -130,9 +130,10 @@ export function ArticulosPage() {
         : {
             categorias: new Set(categorias.map((c) => c.categoriaId)),
             subcategorias: new Set(subcategorias.map((sc) => sc.subcategoriaId)),
-            generos: new Set(generos.map((g) => g.generoId)),
+            // Si la lista no se pudo leer, no se valida (no todo es "sin género").
+            ...(errorGeneros ? {} : { generos: new Set(generos.map((g) => g.generoId)) }),
           },
-    [loadingCategorias, loadingGeneros, categorias, subcategorias, generos],
+    [loadingCategorias, loadingGeneros, errorGeneros, categorias, subcategorias, generos],
   );
   const nombres = useMemo(
     () => ({

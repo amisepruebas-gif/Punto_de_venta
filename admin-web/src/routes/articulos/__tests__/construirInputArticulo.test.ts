@@ -163,12 +163,49 @@ describe("construirInputArticulo — mayoreo, zona y solo mayoreo", () => {
 });
 
 describe("construirInputArticulo — clasificación", () => {
-  it("vacía va explícita (para poder QUITARLA al editar)", () => {
+  it("al crear va explícita aunque esté vacía (el service borra los vacíos)", () => {
     const input = construirInputArticulo(ARGS_BASE);
     expect(input.categoriaId).toBe("");
     expect(input.subcategoriaId).toBe("");
     expect(input.generoId).toBe("");
     expect(input.etiquetas).toEqual([]);
+  });
+
+  const INICIAL = { categoriaId: "llavero", subcategoriaId: "metal", generoId: "anime", etiquetas: ["naruto"] };
+  const FORM_CLASIF = { ...FORM_BASE, ...INICIAL };
+
+  it("al editar sin tocarla no manda nada (no pisa lo asignado en bloque)", () => {
+    const input = construirInputArticulo({
+      ...ARGS_BASE,
+      form: { ...FORM_CLASIF, precioVenta: "999" },
+      clasificacionInicial: INICIAL,
+    });
+    expect("categoriaId" in input).toBe(false);
+    expect("subcategoriaId" in input).toBe(false);
+    expect("generoId" in input).toBe(false);
+    expect("etiquetas" in input).toBe(false);
+  });
+
+  it("al editar manda solo lo que cambió, y quitar va vacío", () => {
+    const input = construirInputArticulo({
+      ...ARGS_BASE,
+      form: { ...FORM_CLASIF, generoId: "", etiquetas: ["naruto", "ninja"] },
+      clasificacionInicial: INICIAL,
+    });
+    expect(input.generoId).toBe("");
+    expect(input.etiquetas).toEqual(["naruto", "ninja"]);
+    expect("categoriaId" in input).toBe(false);
+    expect("subcategoriaId" in input).toBe(false);
+  });
+
+  it("al quitar la categoría también quita la subcategoría", () => {
+    const input = construirInputArticulo({
+      ...ARGS_BASE,
+      form: { ...FORM_CLASIF, categoriaId: "" },
+      clasificacionInicial: INICIAL,
+    });
+    expect(input.categoriaId).toBe("");
+    expect(input.subcategoriaId).toBe("");
   });
 
   it("con valores los manda tal cual", () => {

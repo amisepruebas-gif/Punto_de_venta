@@ -95,11 +95,13 @@ export function calcularCambioClasificacion(
     !!sub && !!cat && padreDeSubcategoria.get(sub) === cat;
 
   let subDespues: string | undefined;
-  if (catDespues === undefined || c.subcategoria.accion === "quitar") {
+  if (c.subcategoria.accion === "quitar" || c.categoria.accion === "quitar") {
     subDespues = undefined;
   } else if (c.subcategoria.accion === "poner" && esDe(c.subcategoria.id, catDespues)) {
     subDespues = c.subcategoria.id;
   } else if (catDespues === catAntes) {
+    // La categoría no cambia: "igual" no toca la subcategoría (aunque hoy
+    // esté inconsistente, p. ej. sin categoría).
     subDespues = subAntes;
   } else {
     subDespues = esDe(subAntes, catDespues) ? subAntes : undefined;

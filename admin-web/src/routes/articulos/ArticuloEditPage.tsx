@@ -22,7 +22,11 @@ import {
   actualizarArticulo,
   eliminarArticulo,
 } from "@/features/articulos/articuloService";
-import { construirInputArticulo } from "@/routes/articulos/construirInputArticulo";
+import {
+  clasificacionDeForm,
+  construirInputArticulo,
+  type ClasificacionInicial,
+} from "@/routes/articulos/construirInputArticulo";
 import {
   escalonesDeTexto,
   escalonesEditables,
@@ -132,10 +136,19 @@ export function ArticuloEditPage() {
   // FIX D2: inicializar el form solo UNA VEZ por artículo (por id). Evita
   // resets mientras el user edita si llega un snapshot update remoto.
   const initializedId = useRef<string | null>(null);
+  // Clasificación al abrir: al guardar solo se manda la que el usuario
+  // cambió (no pisa una asignación en bloque hecha mientras tanto).
+  const clasificacionInicial = useRef<ClasificacionInicial | null>(null);
   useEffect(() => {
     if (!articulo) return;
     if (initializedId.current === articulo.id) return;
     initializedId.current = articulo.id;
+    clasificacionInicial.current = clasificacionDeForm({
+      categoriaId: articulo.categoriaId ?? "",
+      subcategoriaId: articulo.subcategoriaId ?? "",
+      generoId: articulo.generoId ?? "",
+      etiquetas: articulo.etiquetas ?? [],
+    });
     setForm({
       nombre: articulo.nombre ?? "",
       sigla: articulo.sigla ?? "",
@@ -203,6 +216,7 @@ export function ArticuloEditPage() {
     try {
       const input = construirInputArticulo({
         form: { ...form, precioVenta: precioVigente, escalones: escalonesVigentes },
+        clasificacionInicial: editing ? clasificacionInicial.current : null,
         imagenFile,
         imagenViaNanobanana,
         imagenRemoved,

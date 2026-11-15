@@ -80,6 +80,47 @@ const FORM_EMPTY: FormState = {
   subvariaciones: [],
 };
 
+/** Clasificación del artículo (la subcategoría va vacía si no hay categoría). */
+type Clasificacion = {
+  categoriaId: string;
+  subcategoriaId: string;
+  generoId: string;
+  etiquetas: string[];
+};
+
+function clasificacionDeForm(f: Clasificacion): Clasificacion {
+  return {
+    categoriaId: f.categoriaId,
+    subcategoriaId: f.categoriaId ? f.subcategoriaId : "",
+    generoId: f.generoId,
+    etiquetas: [...f.etiquetas],
+  };
+}
+
+/**
+ * Campos de clasificación a escribir (igual que en admin-web). Al CREAR van
+ * todos; al EDITAR solo los que el usuario cambió, para que una ficha
+ * abierta desde antes no pise lo asignado en bloque. Vacío = quitar.
+ */
+function camposClasificacion(
+  form: Clasificacion,
+  inicial: Clasificacion | null,
+): Partial<Pick<ArticuloInput, "categoriaId" | "subcategoriaId" | "generoId" | "etiquetas">> {
+  const actual = clasificacionDeForm(form);
+  const out: Partial<Pick<ArticuloInput, "categoriaId" | "subcategoriaId" | "generoId" | "etiquetas">> = {};
+  if (!inicial || actual.categoriaId !== inicial.categoriaId) out.categoriaId = actual.categoriaId;
+  if (!inicial || actual.subcategoriaId !== inicial.subcategoriaId) out.subcategoriaId = actual.subcategoriaId;
+  if (!inicial || actual.generoId !== inicial.generoId) out.generoId = actual.generoId;
+  if (
+    !inicial ||
+    actual.etiquetas.length !== inicial.etiquetas.length ||
+    actual.etiquetas.some((t, i) => t !== inicial.etiquetas[i])
+  ) {
+    out.etiquetas = actual.etiquetas;
+  }
+  return out;
+}
+
 export function ArticuloEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -122,10 +163,19 @@ export function ArticuloEditPage() {
   // FIX D2: inicializar el form solo UNA VEZ por artículo (por id). Evita
   // resets mientras el user edita si llega un snapshot update remoto.
   const initializedId = useRef<string | null>(null);
+  // Clasificación al abrir: al guardar solo se manda la que el usuario
+  // cambió (no pisa una asignación en bloque hecha mientras tanto).
+  const clasificacionInicial = useRef<Clasificacion | null>(null);
   useEffect(() => {
     if (!articulo) return;
     if (initializedId.current === articulo.id) return;
     initializedId.current = articulo.id;
+    clasificacionInicial.current = clasificacionDeForm({
+      categoriaId: articulo.categoriaId ?? "",
+      subcategoriaId: articulo.subcategoriaId ?? "",
+      generoId: articulo.generoId ?? "",
+      etiquetas: articulo.etiquetas ?? [],
+    });
     setForm({
       nombre: articulo.nombre ?? "",
       sigla: articulo.sigla ?? "",
@@ -212,12 +262,9 @@ export function ArticuloEditPage() {
         soloMayoreo: form.soloMayoreo,
         utilidad: String(utilidad),
         utilidadTotal: String(utilidadTotal),
-        // Clasificación: siempre explícita para poder QUITARLA (el service
-        // mezcla con el doc existente y borra los "" y el []).
-        categoriaId: form.categoriaId,
-        subcategoriaId: form.categoriaId ? form.subcategoriaId : "",
-        generoId: form.generoId,
-        etiquetas: form.etiquetas,
+        // Clasificación: solo lo que cambió (al crear, todo). Vacío = QUITAR:
+        // el service mezcla con el doc existente y borra los "" y el [].
+        ...camposClasificacion(form, editing ? clasificacionInicial.current : null),
         // FIX D3: si el user quitó la imagen, pasar imagenUrl: "" explícito
         // para que el service lo respete en vez de fallback al existente.
         ...(imagenRemoved

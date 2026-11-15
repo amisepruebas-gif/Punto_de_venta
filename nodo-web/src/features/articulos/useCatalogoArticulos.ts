@@ -42,14 +42,24 @@ export function useCatalogoArticulos(): CatalogoArticulos {
   const [categorias, setCategorias] = useState<Categoria[] | null>(null);
   const [subcategorias, setSubcategorias] = useState<Subcategoria[] | null>(null);
   const [generos, setGeneros] = useState<Genero[] | null>(null);
+  // Catálogos que no se pudieron leer (p. ej. sin permiso): esos no se
+  // validan, para no tomar todos sus ids como borrados.
+  const [fallas, setFallas] = useState<Record<Catalogo, boolean>>({
+    categorias: false,
+    subcategorias: false,
+    generos: false,
+  });
 
   useEffect(() => {
     if (!negocioId) return;
     const escuchar = <T extends { nombre: string }>(
       col: string,
+      clave: Catalogo,
       guardar: (v: T[]) => void,
     ) => {
       const path = `${COL_NEGOCIOS}/${negocioId}/${col}`;
+      const marcar = (fallo: boolean) =>
+        setFallas((f) => (f[clave] === fallo ? f : { ...f, [clave]: fallo }));
       return onSnapshot(
         collection(db, path),
         { includeMetadataChanges: true },
@@ -59,17 +69,19 @@ export function useCatalogoArticulos(): CatalogoArticulos {
           snap.forEach((d) => arr.push(d.data() as T));
           arr.sort(porNombre);
           guardar(arr);
+          marcar(false);
         },
         (err) => {
           console.error(`useCatalogoArticulos (${col}) error:`, err);
           guardar([]);
+          marcar(true);
         },
       );
     };
     const off = [
-      escuchar<Categoria>(COL_CATEGORIAS, setCategorias),
-      escuchar<Subcategoria>(COL_SUBCATEGORIAS, setSubcategorias),
-      escuchar<Genero>(COL_GENEROS, setGeneros),
+      escuchar<Categoria>(COL_CATEGORIAS, "categorias", setCategorias),
+      escuchar<Subcategoria>(COL_SUBCATEGORIAS, "subcategorias", setSubcategorias),
+      escuchar<Genero>(COL_GENEROS, "generos", setGeneros),
     ];
     return () => off.forEach((u) => u());
   }, [negocioId]);
@@ -89,11 +101,15 @@ export function useCatalogoArticulos(): CatalogoArticulos {
       vigentes: loading
         ? {}
         : {
-            categorias: new Set(cats.map((c) => c.categoriaId)),
-            subcategorias: new Set(subs.map((s) => s.subcategoriaId)),
-            generos: new Set(gens.map((g) => g.generoId)),
+            ...(fallas.categorias ? {} : { categorias: new Set(cats.map((c) => c.categoriaId)) }),
+            ...(fallas.subcategorias
+              ? {}
+              : { subcategorias: new Set(subs.map((s) => s.subcategoriaId)) }),
+            ...(fallas.generos ? {} : { generos: new Set(gens.map((g) => g.generoId)) }),
           },
       loading,
     };
-  }, [categorias, subcategorias, generos]);
+  }, [categorias, subcategorias, generos, fallas]);
 }
+
+type Catalogo = "categorias" | "subcategorias" | "generos";
