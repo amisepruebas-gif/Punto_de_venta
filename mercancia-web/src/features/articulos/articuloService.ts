@@ -334,6 +334,7 @@ export async function crearArticulo(
     ...(subvariaciones ? { subvariaciones } : {}),
     ...(imagenProcesos ? { imagenProcesos } : {}),
   };
+  borrarClasificacionVacia(articulo);
 
   await setDoc(doc(db, paths.articulo(negocioId, id)), articulo);
   await marcarArticuloEnSync(negocioId);
@@ -422,11 +423,21 @@ export async function actualizarArticulo(
       ? { imagenProcesos }
       : {}),
   };
+  borrarClasificacionVacia(actualizado);
 
   await setDoc(refDoc, actualizado);
   await marcarArticuloEnSync(negocioId);
 
   return actualizado;
+}
+
+/** La ficha manda la clasificación siempre (vacía = "quitar"): aquí se
+ *  borran del doc los "" y el [] para que quitar sí se guarde. */
+function borrarClasificacionVacia(a: Articulo): void {
+  if (a.categoriaId === "") delete a.categoriaId;
+  if (a.subcategoriaId === "") delete a.subcategoriaId;
+  if (a.generoId === "") delete a.generoId;
+  if (Array.isArray(a.etiquetas) && a.etiquetas.length === 0) delete a.etiquetas;
 }
 
 export async function eliminarArticulo(

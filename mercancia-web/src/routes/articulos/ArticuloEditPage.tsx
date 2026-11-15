@@ -9,6 +9,7 @@ import { useArticulo } from "@/features/articulos/useArticulos";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useSession } from "@/hooks/useSession";
 import { useCategorias } from "@/features/categorias/useCategorias";
+import { useGeneros } from "@/features/categorias/useGeneros";
 import { ImageUpload } from "@/features/articulos/ImageUpload";
 import { SubvariacionesEditor } from "@/features/articulos/SubvariacionesEditor";
 import { EscalonesMayoreoEditor } from "@/features/articulos/EscalonesMayoreoEditor";
@@ -41,6 +42,8 @@ type FormState = {
   precioVenta: string;
   categoriaId: string;
   subcategoriaId: string;
+  /** Género (temática). "" = sin género. */
+  generoId: string;
   etiquetas: string[];
   imagenUrl: string;
   tallas: string;
@@ -64,6 +67,7 @@ const FORM_EMPTY: FormState = {
   precioVenta: "",
   categoriaId: "",
   subcategoriaId: "",
+  generoId: "",
   etiquetas: [],
   imagenUrl: "",
   tallas: "",
@@ -84,6 +88,7 @@ export function ArticuloEditPage() {
   const editing = !!id;
   const { articulo, loading } = useArticulo(id ?? null);
   const { categorias, subcategorias } = useCategorias();
+  const { generos } = useGeneros();
   // Sucursal a la que está ligado el teléfono: el stock de tienda que se
   // captura aquí es el de esa sucursal.
   const ubicacion = useUbicacionStock();
@@ -131,6 +136,7 @@ export function ArticuloEditPage() {
       precioVenta: articulo.precioVenta ?? "",
       categoriaId: articulo.categoriaId ?? "",
       subcategoriaId: articulo.subcategoriaId ?? "",
+      generoId: articulo.generoId ?? "",
       etiquetas: articulo.etiquetas ?? [],
       imagenUrl: articulo.imagenUrl ?? "",
       tallas: articulo.tallas ?? "",
@@ -206,9 +212,12 @@ export function ArticuloEditPage() {
         soloMayoreo: form.soloMayoreo,
         utilidad: String(utilidad),
         utilidadTotal: String(utilidadTotal),
-        ...(form.categoriaId && { categoriaId: form.categoriaId }),
-        ...(form.subcategoriaId && { subcategoriaId: form.subcategoriaId }),
-        ...(form.etiquetas.length > 0 && { etiquetas: form.etiquetas }),
+        // Clasificación: siempre explícita para poder QUITARLA (el service
+        // mezcla con el doc existente y borra los "" y el []).
+        categoriaId: form.categoriaId,
+        subcategoriaId: form.categoriaId ? form.subcategoriaId : "",
+        generoId: form.generoId,
+        etiquetas: form.etiquetas,
         // FIX D3: si el user quitó la imagen, pasar imagenUrl: "" explícito
         // para que el service lo respete en vez de fallback al existente.
         ...(imagenRemoved
@@ -444,6 +453,28 @@ export function ArticuloEditPage() {
                 Selecciona una categoría primero
               </p>
             )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="genero">Género</Label>
+            <select
+              id="genero"
+              value={form.generoId}
+              onChange={(e) => set("generoId", e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+            >
+              <option value="">— Sin género —</option>
+              {form.generoId && !generos.some((g) => g.generoId === form.generoId) && (
+                <option value={form.generoId}>(ya no existe)</option>
+              )}
+              {generos.map((g) => (
+                <option key={g.generoId} value={g.generoId}>
+                  {g.nombre}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              La temática: Anime, K-pop… Se crean en Categorías y géneros.
+            </p>
           </div>
           <div className="sm:col-span-2 space-y-1.5">
             <Label htmlFor="etiquetas">Etiquetas</Label>

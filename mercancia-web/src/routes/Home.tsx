@@ -22,7 +22,7 @@ const TILES: Tile[] = [
   { to: "/articulos", label: "Artículos", icon: Package, estado: "ok" },
   {
     to: "/categorias",
-    label: "Categorías",
+    label: "Categorías y géneros",
     icon: FolderTree,
     estado: "ok",
   },

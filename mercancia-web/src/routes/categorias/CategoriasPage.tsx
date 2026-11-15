@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCategorias } from "@/features/categorias/useCategorias";
+import { useGeneros } from "@/features/categorias/useGeneros";
 import { useNegocio } from "@/hooks/useNegocio";
 import {
   borrarCategoria,
@@ -22,19 +23,27 @@ import {
   renombrarCategoria,
   renombrarSubcategoria,
 } from "@/features/categorias/categoriaService";
-import type { Categoria, Subcategoria } from "@shared";
+import {
+  borrarGenero,
+  crearGenero,
+  renombrarGenero,
+} from "@/features/categorias/generoService";
+import type { Categoria, Genero, Subcategoria } from "@shared";
 
 type Modal =
   | { kind: "nuevaCat" }
   | { kind: "editCat"; cat: Categoria }
   | { kind: "nuevaSub"; categoriaId: string }
   | { kind: "editSub"; sub: Subcategoria }
+  | { kind: "nuevoGen" }
+  | { kind: "editGen"; gen: Genero }
   | null;
 
 export function CategoriasPage() {
   const navigate = useNavigate();
   const { negocioId } = useNegocio();
   const { categorias, subcategorias, loading } = useCategorias();
+  const { generos, loading: cargandoGeneros } = useGeneros();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<Modal>(null);
 
@@ -81,6 +90,16 @@ export function CategoriasPage() {
     }
   }
 
+  async function eliminarGen(g: Genero) {
+    if (!negocioId) return;
+    if (!confirm(`¿Eliminar el género "${g.nombre}"? Sus artículos quedan sin género.`)) return;
+    try {
+      await borrarGenero(negocioId, g.generoId);
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }
+
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b bg-card/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur supports-[backdrop-filter]:bg-card/85">
@@ -93,7 +112,7 @@ export function CategoriasPage() {
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <h1 className="flex-1 text-base font-semibold">Categorías</h1>
+        <h1 className="flex-1 text-base font-semibold">Categorías y géneros</h1>
         <Button size="sm" onClick={() => setModal({ kind: "nuevaCat" })}>
           <Plus className="mr-1 h-4 w-4" /> Nueva
         </Button>
@@ -218,6 +237,54 @@ export function CategoriasPage() {
             })}
           </ul>
         )}
+
+        {/* Géneros: la temática (Anime, K-pop…), aparte de la categoría. */}
+        <section className="mt-6 space-y-2">
+          <div className="flex items-center gap-2">
+            <h2 className="flex-1 text-sm font-semibold">Géneros</h2>
+            <Button size="sm" variant="outline" onClick={() => setModal({ kind: "nuevoGen" })}>
+              <Plus className="mr-1 h-4 w-4" /> Nuevo
+            </Button>
+          </div>
+          {cargandoGeneros && generos.length === 0 ? (
+            <p className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
+            </p>
+          ) : generos.length === 0 ? (
+            <p className="rounded-md border bg-muted py-4 text-center text-sm text-muted-foreground">
+              Sin géneros. Ej. Anime, K-pop, Películas.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {generos.map((g) => (
+                <li
+                  key={g.generoId}
+                  className="flex items-center gap-1 rounded-md border bg-card px-2 py-1.5"
+                >
+                  <span className="min-w-0 flex-1 truncate px-1 text-sm">{g.nombre}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setModal({ kind: "editGen", gen: g })}
+                    aria-label={`Renombrar ${g.nombre}`}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    onClick={() => eliminarGen(g)}
+                    aria-label={`Eliminar ${g.nombre}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </main>
 
       {modal && negocioId && (
@@ -245,19 +312,22 @@ function CategoriaModal({
       ? modal.cat.nombre
       : modal.kind === "editSub"
         ? modal.sub.nombre
-        : "";
+        : modal.kind === "editGen"
+          ? modal.gen.nombre
+          : "";
   const [nombre, setNombre] = useState(initialNombre);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const titulo =
-    modal.kind === "nuevaCat"
-      ? "Nueva categoría"
-      : modal.kind === "editCat"
-        ? "Renombrar categoría"
-        : modal.kind === "nuevaSub"
-          ? "Nueva subcategoría"
-          : "Renombrar subcategoría";
+  const titulo = {
+    nuevaCat: "Nueva categoría",
+    editCat: "Renombrar categoría",
+    nuevaSub: "Nueva subcategoría",
+    editSub: "Renombrar subcategoría",
+    nuevoGen: "Nuevo género",
+    editGen: "Renombrar género",
+  }[modal.kind];
+  const esGenero = modal.kind === "nuevoGen" || modal.kind === "editGen";
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -280,6 +350,10 @@ function CategoriaModal({
           modal.sub.subcategoriaId,
           nombre,
         );
+      } else if (modal.kind === "nuevoGen") {
+        await crearGenero(negocioId, nombre);
+      } else if (modal.kind === "editGen") {
+        await renombrarGenero(negocioId, modal.gen.generoId, nombre);
       }
       onClose();
     } catch (e) {
@@ -321,7 +395,7 @@ function CategoriaModal({
             id="cat-nombre"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
-            placeholder="Ej. Camisetas, Pantalones"
+            placeholder={esGenero ? "Ej. Anime, K-pop, Películas" : "Ej. Camisetas, Pantalones"}
             autoFocus
             required
           />
