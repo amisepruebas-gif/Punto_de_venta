@@ -26,6 +26,10 @@ export const ENLACE_RECIBIR_DURACION_MS = 30 * 60_000;
 /** Fotos por teléfono y por enlace (lo hace cumplir el nombre del archivo). */
 export const ENLACE_FOTOS_MAX = 30;
 
+/** Origen de mercancia-web, donde viven las pantallas del teléfono (`/enlace`).
+ *  Cada app lo puede cambiar con `VITE_URL_MERCANCIA` (pruebas locales). */
+export const URL_MERCANCIA_PRODUCCION = "https://amise-mercancia.web.app";
+
 const RE_SECRETO = /^[A-Za-z0-9_-]{43}$/;
 
 function base64url(bytes: Uint8Array): string {
