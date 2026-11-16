@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/firebase/config";
+import { SinConexion, guardadoEnLaTablet, hayRed } from "@/lib/sinInternet";
 import {
   paths,
   generarID,
@@ -55,6 +56,34 @@ export type EnviarMensajeArgs = {
 };
 
 /**
+ * Guarda el mensaje en el doc del día y actualiza el meta. Solo espera a que
+ * el mensaje quede en la tablet: sin internet el SDK lo sube solo al volver
+ * la red (la promesa de `setDoc` no se cumple hasta que el servidor
+ * confirma, y esperarla dejaba el chat trabado). El meta no se espera.
+ */
+async function guardarMensaje(
+  negocioId: string,
+  nodoId: string,
+  mensaje: ChatMensaje,
+): Promise<void> {
+  const ymd = ymdKeyHoy();
+  const diaRef = doc(db, paths.chatGrupoDia(negocioId, nodoId, ymd));
+  await guardadoEnLaTablet(
+    setDoc(diaRef, { ymd, mensajes: arrayUnion(mensaje) }, { merge: true }),
+    diaRef,
+    "Mensaje del chat",
+  );
+  void actualizarUltimoMensajeMeta(negocioId, nodoId, mensaje).catch((e) =>
+    console.error("Chat: no se pudo actualizar el último mensaje", e),
+  );
+}
+
+/** Tiempo máximo para subir una imagen antes de avisar que no se pudo. */
+const LIMITE_SUBIR_IMAGEN_MS = 45_000;
+export const SIN_INTERNET_IMAGEN =
+  "Sin internet no se pueden enviar imágenes. Los mensajes de texto sí se envían y suben solos al volver la conexión.";
+
+/**
  * Envía un mensaje de texto al chat grupal del nodo. Usa `arrayUnion` sobre
  * el doc del día (`dias/{ymd}`); si el doc no existe, se crea con merge.
  * Actualiza el meta del chat con el snapshot del último mensaje.
@@ -62,7 +91,6 @@ export type EnviarMensajeArgs = {
 export async function enviarMensajeTexto(
   args: EnviarMensajeArgs,
 ): Promise<ChatMensaje> {
-  const ymd = ymdKeyHoy();
   const mensaje: ChatMensaje = {
     huella: generarID(),
     remitenteId: args.remitenteId,
@@ -82,15 +110,7 @@ export async function enviarMensajeTexto(
       : {}),
   };
 
-  const diaRef = doc(db, paths.chatGrupoDia(args.negocioId, args.nodoId, ymd));
-  await setDoc(
-    diaRef,
-    { ymd, mensajes: arrayUnion(mensaje) },
-    { merge: true },
-  );
-
-  await actualizarUltimoMensajeMeta(args.negocioId, args.nodoId, mensaje);
-
+  await guardarMensaje(args.negocioId, args.nodoId, mensaje);
   return mensaje;
 }
 
@@ -101,14 +121,21 @@ export async function enviarMensajeTexto(
 export async function enviarMensajeImagen(args: EnviarMensajeArgs & {
   archivo: File;
 }): Promise<ChatMensaje> {
+  // La imagen va a Storage, que NO guarda en la tablet para subir después:
+  // sin red se avisa al instante, y si el servidor no contesta, al límite.
+  if (!hayRed()) throw new SinConexion(SIN_INTERNET_IMAGEN);
   const huella = generarID();
   const ext = inferirExtension(args.archivo.name, args.archivo.type);
   const path = `chat_media_web_new_version/${args.negocioId}/${args.nodoId}/${huella}.${ext}`;
   const r = storageRef(storage, path);
-  await uploadBytes(r, args.archivo, { contentType: args.archivo.type });
-  const url = await getDownloadURL(r);
+  let reloj: ReturnType<typeof setTimeout> | undefined;
+  const url = await Promise.race([
+    uploadBytes(r, args.archivo, { contentType: args.archivo.type }).then(() => getDownloadURL(r)),
+    new Promise<never>((_, rechazar) => {
+      reloj = setTimeout(() => rechazar(new SinConexion(SIN_INTERNET_IMAGEN)), LIMITE_SUBIR_IMAGEN_MS);
+    }),
+  ]).finally(() => clearTimeout(reloj));
 
-  const ymd = ymdKeyHoy();
   const mensaje: ChatMensaje = {
     huella,
     remitenteId: args.remitenteId,
@@ -130,13 +157,7 @@ export async function enviarMensajeImagen(args: EnviarMensajeArgs & {
         }
       : {}),
   };
-  const diaRef = doc(db, paths.chatGrupoDia(args.negocioId, args.nodoId, ymd));
-  await setDoc(
-    diaRef,
-    { ymd, mensajes: arrayUnion(mensaje) },
-    { merge: true },
-  );
-  await actualizarUltimoMensajeMeta(args.negocioId, args.nodoId, mensaje);
+  await guardarMensaje(args.negocioId, args.nodoId, mensaje);
   return mensaje;
 }
 

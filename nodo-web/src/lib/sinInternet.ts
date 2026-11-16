@@ -115,6 +115,25 @@ export function conLimite<T>(
 }
 
 /**
+ * Para lo que SOLO se puede hacer en línea (mueve stock o necesita datos del
+ * servidor): sin red avisa al instante con `mensaje`; con red lo intenta con
+ * `conLimite` y, si el servidor no contesta, avisa con el mismo mensaje en
+ * vez de un error técnico ("Connection failed.").
+ */
+export async function enLineaOAvisar<T>(
+  mensaje: string,
+  trabajo: (ctl: ControlLimite) => Promise<T>,
+): Promise<T> {
+  if (!hayRed()) throw new SinConexion(mensaje);
+  try {
+    return await conLimite(trabajo);
+  } catch (e) {
+    if (esFallaDeRed(e)) throw new SinConexion(mensaje);
+    throw e;
+  }
+}
+
+/**
  * Espera solo a que la escritura quede guardada en la tablet; el SDK la sube
  * sola al volver la red, aunque la app se cierre antes. La lectura del caché
  * entra en la misma fila de trabajo del SDK, detrás de la escritura, así que

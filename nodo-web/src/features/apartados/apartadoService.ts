@@ -31,14 +31,7 @@ import {
   type ItemStock,
 } from "@/features/articulos/stockService";
 import { cargarUbicacionStock } from "@/features/sucursal/ubicacionStock";
-import {
-  SinConexion,
-  conLimite,
-  esFallaDeRed,
-  guardadoEnLaTablet,
-  hayRed,
-  type ControlLimite,
-} from "@/lib/sinInternet";
+import { enLineaOAvisar, guardadoEnLaTablet } from "@/lib/sinInternet";
 
 /**
  * Crear y cancelar un apartado mueven stock en una transacción: sin servidor
@@ -49,20 +42,6 @@ const SIN_INTERNET_APARTAR =
   "Sin internet no se puede apartar: el stock se aparta en el servidor. Inténtalo cuando vuelva la conexión.";
 const SIN_INTERNET_CANCELAR =
   "Sin internet no se puede cancelar el apartado: el stock se devuelve en el servidor. Inténtalo cuando vuelva la conexión.";
-
-/** Corre `trabajo` en línea; si falla por falta de conexión, avisa con `mensaje`. */
-async function enLineaOAvisar<T>(
-  mensaje: string,
-  trabajo: (ctl: ControlLimite) => Promise<T>,
-): Promise<T> {
-  if (!hayRed()) throw new SinConexion(mensaje);
-  try {
-    return await conLimite(trabajo);
-  } catch (e) {
-    if (esFallaDeRed(e)) throw new SinConexion(mensaje);
-    throw e;
-  }
-}
 
 export type CrearApartadoInput = {
   negocioId: string;

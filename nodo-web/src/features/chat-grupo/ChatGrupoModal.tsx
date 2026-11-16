@@ -11,6 +11,7 @@ import { useNodoSession } from "@/hooks/useNodoSession";
 import { useCarrito } from "@/features/ventas/carritoStore";
 import { compressToWebP } from "@/lib/image";
 import { useBackHandler } from "@/lib/back-handler";
+import { SinConexion } from "@/lib/sinInternet";
 import { ImageLightbox } from "./ImageLightbox";
 import { type ChatGrupoNodoData, type MensajeRender } from "./useChatGrupoNodo";
 import {
@@ -201,7 +202,7 @@ export function ChatGrupoModal({ open, onClose, data }: Props) {
       setReplyTo(null);
     } catch (err) {
       console.error("enviarMensajeImagen:", err);
-      setError("No se pudo enviar la imagen.");
+      setError(err instanceof SinConexion ? err.message : "No se pudo enviar la imagen.");
     } finally {
       setSending(false);
       // Re-foco al input para seguir escribiendo (típico flujo: imagen

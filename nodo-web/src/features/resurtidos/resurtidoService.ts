@@ -1,6 +1,7 @@
 import { doc, runTransaction, setDoc } from "firebase/firestore";
 import { db } from "@/firebase/config";
 import { cargarSucursalesIds } from "@/features/sucursal/ubicacionStock";
+import { enLineaOAvisar, type ControlLimite } from "@/lib/sinInternet";
 import {
   COL_DATOS,
   DOC_ARTICULOS_AC,
@@ -218,6 +219,16 @@ export async function marcarEnTransito(
   }
 }
 
+/**
+ * Recibir y cerrar un resurtido van en transacción (validan el estado en el
+ * servidor y cerrar suma stock): sin servidor no se pueden hacer, así que se
+ * avisa claro y rápido en vez de "Connection failed." a los 10 s.
+ */
+const SIN_INTERNET_RECIBIR =
+  "Sin internet no se puede recibir el resurtido. Inténtalo cuando vuelva la conexión.";
+const SIN_INTERNET_CERRAR =
+  "Sin internet no se puede cerrar el resurtido: el stock se suma en el servidor. Inténtalo cuando vuelva la conexión.";
+
 /** Pasa de `en_transito` → `recibido`. NO toca stock. */
 export async function marcarRecibido(
   negocioId: string,
@@ -228,19 +239,23 @@ export async function marcarRecibido(
     throw new Error("Falta el responsable que recibió");
   }
   const ref = doc(db, paths.resurtido(negocioId, resurtidoId));
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) throw new Error("Resurtido no encontrado");
-    const r = snap.data() as Resurtido;
-    if (r.estado !== "en_transito") {
-      throw new Error(`No se puede recibir desde "${r.estado}"`);
-    }
-    tx.update(ref, {
-      estado: "recibido",
-      fechaRecibido: fechaISO_MX(),
-      responsableRecibe: responsableRecibe.trim(),
-    });
-  });
+  await enLineaOAvisar(SIN_INTERNET_RECIBIR, (ctl) =>
+    runTransaction(db, async (tx) => {
+      ctl.siAbandonada();
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error("Resurtido no encontrado");
+      const r = snap.data() as Resurtido;
+      if (r.estado !== "en_transito") {
+        throw new Error(`No se puede recibir desde "${r.estado}"`);
+      }
+      ctl.vaAEscribir();
+      tx.update(ref, {
+        estado: "recibido",
+        fechaRecibido: fechaISO_MX(),
+        responsableRecibe: responsableRecibe.trim(),
+      });
+    }),
+  );
 }
 
 export type CerrarResurtidoInput = {
@@ -269,14 +284,37 @@ export async function cerrarResurtido(
   if (!input.responsableConfirma.trim()) {
     throw new Error("Falta el responsable que confirmó");
   }
+  await enLineaOAvisar(SIN_INTERNET_CERRAR, (ctl) =>
+    cerrarEnLinea(negocioId, resurtidoId, input, ctl),
+  );
+
+  // Huella best-effort y sin esperar (si la red se cae justo aquí, sube sola
+  // al volver; no hay que dejar la pantalla cargando).
+  void setDoc(
+    doc(db, `${paths.negocio(negocioId)}/${COL_DATOS}/${DOC_ARTICULOS_AC}`),
+    { huella: generarID() },
+    { merge: true },
+  ).catch((e) => console.warn("No se pudo marcar huella:", e));
+}
+
+/** El cierre en sí (lecturas y transacción), dentro de `enLineaOAvisar`:
+ *  revisa `ctl` antes de leer y antes de escribir. */
+async function cerrarEnLinea(
+  negocioId: string,
+  resurtidoId: string,
+  input: CerrarResurtidoInput,
+  ctl: ControlLimite,
+): Promise<void> {
+  const refResurtido = doc(db, paths.resurtido(negocioId, resurtidoId));
   // Pre-cargar IDs de sucursales para resolver el fallback alfabético del
   // default (cuando `Negocio.sucursalDefaultId` no está seteado). Hace
   // falta hacerlo FUERA de la transacción porque las tx no pueden leer
   // colecciones, sólo docs.
   const sucursalesIdsAlfabetico = await cargarSucursalesIds(negocioId);
   const fallbackPrimerSucursalId = sucursalesIdsAlfabetico[0];
-  const refResurtido = doc(db, paths.resurtido(negocioId, resurtidoId));
+  ctl.siAbandonada();
   await runTransaction(db, async (tx) => {
+    ctl.siAbandonada();
     const snap = await tx.get(refResurtido);
     if (!snap.exists()) throw new Error("Resurtido no encontrado");
     const r = snap.data() as Resurtido;
@@ -414,6 +452,7 @@ export async function cerrarResurtido(
       patches.set(linea.articuloId, patch);
     }
 
+    ctl.vaAEscribir();
     for (const [aid, patch] of patches) {
       const ref = doc(db, paths.articulo(negocioId, aid));
       tx.update(ref, patch as Record<string, unknown>);
@@ -431,17 +470,6 @@ export async function cerrarResurtido(
       lineas: lineasCerradas,
     });
   });
-
-  // Huella best-effort.
-  try {
-    await setDoc(
-      doc(db, `${paths.negocio(negocioId)}/${COL_DATOS}/${DOC_ARTICULOS_AC}`),
-      { huella: generarID() },
-      { merge: true },
-    );
-  } catch (e) {
-    console.warn("No se pudo marcar huella:", e);
-  }
 }
 
 /**
