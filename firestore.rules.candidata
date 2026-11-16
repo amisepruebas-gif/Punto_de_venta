@@ -13,8 +13,11 @@ rules_version = '2';
 // SIN autenticación (v1 literalmente no usa Firebase Auth). Cerrar la raíz exige migrar
 // esas apps primero — proyecto aparte. El objetivo de AHORA: proteger lo vivo (moderno)
 // sin romper el legacy.
-// Claims: role (nodo|admin|superadmin|mercancia|colaborador), negocioId, sucursalId, nodoId,
+// Claims: role (nodo|admin|superadmin|mercancia|colaborador|enlace), negocioId, sucursalId, nodoId,
 //   colaboradorId. OJO: superadmin NO trae negocioId (por eso esAdmin lo incluye aparte).
+//   Rol `enlace` (teléfono que entra por una URL, ver functions canjearEnlaceLote): trae
+//   enlaceId, tipo (armar|recibir), gen, vence (ms) y, según el tipo, letra o resurtidoId.
+//   NO es `miembro`: solo puede lo que diga una regla con `esEnlace`.
 // ============================================================
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -28,6 +31,22 @@ service cloud.firestore {
     function esNodoSuc(nid, sid) { return esNodo(nid) && request.auth.token.sucursalId == sid; }
     function esMercancia(nid) { return enNegocio(nid) && rol() == 'mercancia'; }
     function miembro(nid) { return esAdmin(nid) || esNodo(nid) || esMercancia(nid) || esSuperAdmin(); }
+
+    // Sesión de un enlace de lote. El vencimiento viene en el token (lo pone la
+    // function con la hora del servidor). El apagador y la renovación se leen EN
+    // VIVO del doc del enlace: apagarlo corta al instante aunque el token siga vivo.
+    function enlaceVivo(nid) {
+      let e = get(/databases/$(database)/documents/negocios_web_new_version/$(nid)/enlaces_lote_web_new_version/$(request.auth.token.enlaceId)).data;
+      return e.activo == true && e.gen == request.auth.token.gen;
+    }
+    function esEnlace(nid, tipo) {
+      return enNegocio(nid) && rol() == 'enlace' && request.auth.token.tipo == tipo
+        && request.time.toMillis() < request.auth.token.vence
+        && enlaceVivo(nid);
+    }
+    function resurtidoDe(nid, rid) {
+      return get(/databases/$(database)/documents/negocios_web_new_version/$(nid)/resurtidos_web_new_version/$(rid)).data;
+    }
 
     // Kill-switch global de relogin (raíz). admin-web lo suscribe en el ARRANQUE, ANTES
     // de autenticar (main.tsx:64, enforceAuthEpoch().finally → onSnapshot). Un kill-switch
@@ -75,6 +94,10 @@ service cloud.firestore {
       // Artículos: el nodo SOLO ajusta stock; mercancia CRUD; admin full.
       match /articulos_n_web_new_version/{artId} {
         allow read: if miembro(nid);
+        // Enlace de armar: un artículo por su código, o la lista de los
+        // fabricados (`where fabricado == true`). Nunca el catálogo entero.
+        allow get: if esEnlace(nid, 'armar');
+        allow list: if esEnlace(nid, 'armar') && resource.data.fabricado == true;
         allow create, delete: if esAdmin(nid) || esMercancia(nid);
         allow update: if esAdmin(nid) || esMercancia(nid)
           || (esNodo(nid)
@@ -99,17 +122,156 @@ service cloud.firestore {
       }
 
       // datos: config (admin), huellas *_ac (nodo), tallas (mercancia).
-      // El folio de Fabricacion (_contadorFabricacion) solo lo avanza admin.
+      // El folio de Fabricacion (_contadorFabricacion) y el contador de etiquetas
+      // de lote (_contadorEtiquetasLote) solo los avanza admin.
       match /datos_web_new_version/{k} {
         allow read: if miembro(nid);
         allow write: if esAdmin(nid)
-          || ((esNodo(nid) || esMercancia(nid)) && k != '_contadorFabricacion');
+          || ((esNodo(nid) || esMercancia(nid))
+              && k != '_contadorFabricacion' && k != '_contadorEtiquetasLote');
       }
 
-      // G3: resurtidos — mercancia también crea/despacha.
+      // Resurtidos y LOTES de envío (un lote es un resurtido con `cajas`).
+      //  - Resurtido simple: admin y mercancia lo crean y despachan (G3); la caja
+      //    solo recibe y cierra los de SU sucursal (los campos que hoy toca).
+      //  - Lote: lo arma un enlace (solo el suyo y solo mientras se arma), admin
+      //    confirma el envío y declara "no llegó", y la caja de su sucursal solo
+      //    agrega sesiones de recepción.
       match /resurtidos_web_new_version/{rid} {
+        function esLote(d) { return 'cajas' in d; }
+        function cambia() { return request.resource.data.diff(resource.data).affectedKeys(); }
+        function sesiones(d) { return d.get('recepcion', {}).get('sesiones', {}); }
+        function soloAgregaSesiones() {
+          let d = sesiones(request.resource.data).diff(sesiones(resource.data));
+          return d.removedKeys().size() == 0 && d.changedKeys().size() == 0;
+        }
+        function mio() { return resource.data.enlaceId == request.auth.token.enlaceId; }
+        function armandose(d) { return d.estado == 'creando' && d.get('listo', false) == false; }
+        // Lo que un enlace puede dejar escrito en un lote suyo. Las cantidades de
+        // adentro NO se pueden revisar aquí: admin las vuelve a validar al enviar.
+        function loteDeEnlace(d) {
+          return d.estado == 'creando' && d.enlaceId == request.auth.token.enlaceId
+            && d.cajas is map && d.cajas.size() <= 50
+            && d.get('paquetes', {}) is map && d.get('paquetes', {}).size() <= 999
+            && d.get('sueltas', {}) is map && d.get('sueltas', {}).size() <= 999
+            && d.lineas is list && d.lineas.size() == 0
+            && !('recepcion' in d);
+        }
+
         allow read: if miembro(nid);
-        allow write: if esAdmin(nid) || esNodo(nid) || esMercancia(nid);
+        // El enlace solo ve sus lotes. `resource == null`: puede preguntar si un
+        // código de lote está libre antes de crearlo.
+        allow get: if esEnlace(nid, 'armar') && (resource == null || mio());
+        allow list: if esEnlace(nid, 'armar') && mio();
+
+        allow create: if esAdmin(nid)
+          || (esMercancia(nid) && !esLote(request.resource.data))
+          || (esEnlace(nid, 'armar') && loteDeEnlace(request.resource.data)
+              && request.resource.data.creadoPorUid == request.auth.uid
+              && request.resource.data.folio == rid
+              && rid.matches('^L[0-9]{6}-' + request.auth.token.letra + '[0-9]{1,3}$'));
+
+        // Un lote ya enviado no se borra.
+        allow delete: if (esAdmin(nid) && (!esLote(resource.data) || resource.data.estado == 'creando'))
+          || (esMercancia(nid) && !esLote(resource.data))
+          || (esEnlace(nid, 'armar') && mio() && armandose(resource.data));
+
+        allow update: if
+          // Candado para TODOS: un lote sigue siendo lote, no cambia de identidad,
+          // nunca usa los estados del flujo viejo, sus sesiones solo se agregan y,
+          // una vez enviado, su lista ya no cambia.
+          (!esLote(resource.data)
+            || (esLote(request.resource.data)
+                && !cambia().hasAny(['id', 'folio', 'enlaceId', 'creadoPorUid', 'fechaCreacion'])
+                && !(request.resource.data.estado in ['en_transito', 'recibido'])
+                && soloAgregaSesiones()
+                && (resource.data.estado == 'creando'
+                    || !cambia().hasAny(['cajas', 'paquetes', 'sueltas', 'lineas',
+                                         'sucursalDestinoId', 'sucursalDestinoNombre']))))
+          && (
+            esAdmin(nid)
+            || (esMercancia(nid) && !esLote(resource.data) && !esLote(request.resource.data))
+            // La caja: solo lo de su sucursal, y solo recibir.
+            || (esNodoSuc(nid, resource.data.sucursalDestinoId)
+                && (esLote(resource.data)
+                    ? (resource.data.estado in ['enviado', 'parcial']
+                       && request.resource.data.estado in ['parcial', 'cerrado']
+                       && cambia().hasOnly(['estado', 'recepcion', 'fechaRecibido', 'fechaCerrado',
+                                            'responsableRecibe']))
+                    : (resource.data.estado in ['en_transito', 'recibido']
+                       && request.resource.data.estado in ['recibido', 'cerrado']
+                       && !esLote(request.resource.data)
+                       && cambia().hasOnly(['estado', 'lineas', 'fechaRecibido', 'fechaCerrado',
+                                            'responsableRecibe', 'responsableConfirma']))))
+            // El enlace: solo su lote y solo mientras se arma.
+            || (esEnlace(nid, 'armar') && mio() && armandose(resource.data)
+                && loteDeEnlace(request.resource.data)
+                && cambia().hasOnly(['cajas', 'paquetes', 'sueltas', 'sucursalDestinoId',
+                                     'sucursalDestinoNombre', 'responsableEmpaco', 'notas',
+                                     'paqueteria', 'guias', 'listo', 'fechaListo']))
+          );
+
+        // Fotos del lote: las sube un enlace de fotos, solo las de SU lote y
+        // hasta 30 por teléfono (el id es `{uid}_{00..29}`). No se editan.
+        match /fotos_web_new_version/{fid} {
+          allow read: if miembro(nid);
+          allow delete: if esAdmin(nid);
+          allow create: if esEnlace(nid, 'recibir') && rid == request.auth.token.resurtidoId
+            && fid.matches('^' + request.auth.uid + '_[0-2][0-9]$')
+            && request.resource.data.keys().hasOnly(['ruta', 'subidoPor', 'creadoEn', 'nota'])
+            && request.resource.data.ruta in [
+                 'lotes_media_web_new_version/' + nid + '/' + rid + '/' + fid + '.webp',
+                 'lotes_media_web_new_version/' + nid + '/' + rid + '/' + fid + '.jpg']
+            && request.resource.data.subidoPor == request.auth.uid
+            && request.resource.data.creadoEn == request.time
+            && (!('nota' in request.resource.data)
+                || (request.resource.data.nota is string && request.resource.data.nota.size() <= 300));
+        }
+      }
+
+      // Accesos por URL (enlaces de lote). Los crea admin; la caja solo crea de
+      // fotos, para un lote enviado de su sucursal, y solo puede apagarlos. El
+      // vencimiento NO se escribe aquí: lo pone la function al canjear, contando
+      // desde `creadoEn`, que debe ser la hora del servidor.
+      match /enlaces_lote_web_new_version/{eid} {
+        function cambiaSolo(campos) {
+          return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
+        }
+        allow read, delete: if esAdmin(nid);
+        allow create: if (esAdmin(nid) || esNodo(nid))
+          && request.resource.data.keys().hasOnly(['tipo', 'activo', 'nombre', 'letra', 'secretoHash',
+                                                   'gen', 'creadoPor', 'creadoEn', 'sucursalId', 'resurtidoId'])
+          && request.resource.data.tipo in ['armar', 'recibir']
+          && request.resource.data.activo == true
+          && request.resource.data.gen == 0
+          && request.resource.data.secretoHash is string
+          && request.resource.data.secretoHash.matches('^[0-9a-f]{64}$')
+          && request.resource.data.creadoPor == request.auth.uid
+          && request.resource.data.creadoEn == request.time
+          && (esAdmin(nid)
+              || (request.resource.data.tipo == 'recibir'
+                  && request.resource.data.sucursalId == request.auth.token.sucursalId
+                  && resurtidoDe(nid, request.resource.data.resurtidoId).sucursalDestinoId == request.auth.token.sucursalId
+                  && resurtidoDe(nid, request.resource.data.resurtidoId).estado in ['enviado', 'parcial']));
+        allow update: if
+          // Admin: apagar/prender, renombrar y renovar (secreto nuevo, gen + 1).
+          (esAdmin(nid) && cambiaSolo(['activo', 'nombre', 'secretoHash', 'gen', 'canjes']))
+          || (esNodo(nid) && resource.data.creadoPor == request.auth.uid
+              && cambiaSolo(['activo']) && request.resource.data.activo == false);
+      }
+
+      // Etiquetas numeradas ya usadas (id = código): una etiqueta, un lote. No se
+      // editan; solo admin las libera.
+      match /etiquetas_lote_web_new_version/{codigo} {
+        allow get: if miembro(nid) || esEnlace(nid, 'armar');
+        allow list, delete: if esAdmin(nid);
+        allow create: if codigo.matches('^88[0-9]{10}$')
+          && request.resource.data.keys().hasOnly(['resurtidoId', 'enlaceId', 'creadoEn'])
+          && request.resource.data.creadoEn == request.time
+          && (esAdmin(nid)
+              || (esEnlace(nid, 'armar')
+                  && request.resource.data.enlaceId == request.auth.token.enlaceId
+                  && resurtidoDe(nid, request.resource.data.resurtidoId).enlaceId == request.auth.token.enlaceId));
       }
 
       // Fabricacion: zonas de precios (las leen los editores; solo admin escribe).

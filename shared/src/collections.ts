@@ -36,6 +36,12 @@ export const COL_USUARIOS_MERCANCIA = `usuariosMercancia${SUFFIX}`;
 
 /** Resurtidos (transferencias bodega → sucursal). Scope por negocio. */
 export const COL_RESURTIDOS = `resurtidos${SUFFIX}`;
+/** Accesos por URL para armar lotes o subir sus fotos. Scope por negocio. */
+export const COL_ENLACES_LOTE = `enlaces_lote${SUFFIX}`;
+/** Etiquetas numeradas ya usadas (id = código): una etiqueta, un lote. */
+export const COL_ETIQUETAS_LOTE = `etiquetas_lote${SUFFIX}`;
+/** Sub-colección de un lote con sus fotos. */
+export const COL_LOTE_FOTOS = `fotos${SUFFIX}`;
 
 // Fabricación — scope por negocio.
 /** Zonas de precios (precio normal + escalones de mayoreo compartidos). */
@@ -75,9 +81,14 @@ export const DOC_REFRESCO_RENDER = "refrescoRender";
 /** Contador del folio de lotes de producción (`FAB-000001`). Shape:
  *  `{ ultimo: number }`. Solo admin lo escribe (regla dedicada). */
 export const DOC_CONTADOR_FABRICACION = "_contadorFabricacion";
+/** Contador de las etiquetas numeradas de lote. Shape: `{ ultimo: number }`.
+ *  Solo admin lo escribe (regla dedicada). */
+export const DOC_CONTADOR_ETIQUETAS_LOTE = "_contadorEtiquetasLote";
 
 // Storage paths
 export const STORAGE_MEDIA_ARTICULOS = `media${SUFFIX}/articulos`;
+/** Fotos de lotes: `{raíz}/{negocioId}/{resurtidoId}/{archivo}`. */
+export const STORAGE_MEDIA_LOTES = `lotes_media${SUFFIX}`;
 
 // ============================================================
 // Builders de paths completos
@@ -124,6 +135,18 @@ export const paths = {
   resurtido: (nid: string, rid: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}/${rid}`,
   resurtidosCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}`,
+  enlaceLote: (nid: string, enlaceId: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_ENLACES_LOTE}/${enlaceId}`,
+  enlacesLoteCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_ENLACES_LOTE}`,
+  etiquetaLote: (nid: string, codigo: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_ETIQUETAS_LOTE}/${codigo}`,
+  loteFoto: (nid: string, rid: string, fotoId: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}/${rid}/${COL_LOTE_FOTOS}/${fotoId}`,
+  loteFotosCol: (nid: string, rid: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}/${rid}/${COL_LOTE_FOTOS}`,
+  /** Archivo de una foto de lote en Storage. `fotoId` = `{uid}_{00..29}`. */
+  storageLoteFoto: (nid: string, rid: string, fotoId: string, ext = "webp") =>
+    `${STORAGE_MEDIA_LOTES}/${nid}/${rid}/${fotoId}.${ext}`,
 
   zonaPrecio: (nid: string, zid: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_ZONAS_PRECIO}/${zid}`,

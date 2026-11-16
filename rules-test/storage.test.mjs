@@ -55,6 +55,19 @@ const CLAIMS = {
   admin: { role: "admin", negocioId: NID },
   adminOtro: { role: "admin", negocioId: OTRO },
   superadmin: { role: "superadmin" }, // sin negocioId
+  // Teléfonos que entraron por un enlace de lote (function canjearEnlaceLote).
+  enlaceFotos: {
+    role: "enlace", negocioId: NID, enlaceId: "F1", tipo: "recibir", gen: 0,
+    resurtidoId: "LOTE1", sucursalId: "suc1", vence: Date.now() + 30 * 60_000,
+  },
+  enlaceFotosVencido: {
+    role: "enlace", negocioId: NID, enlaceId: "F2", tipo: "recibir", gen: 0,
+    resurtidoId: "LOTE1", sucursalId: "suc1", vence: Date.now() - 1000,
+  },
+  enlaceArmar: {
+    role: "enlace", negocioId: NID, enlaceId: "E1", tipo: "armar", gen: 0,
+    letra: "A", vence: 4102444800000,
+  },
 };
 const ROLES = Object.keys(CLAIMS);
 
@@ -80,6 +93,13 @@ const CHAT_AMISE = ["nodo", "colaborador", "admin", "superadmin"];
 const ADMIN_AMISE = ["admin", "superadmin"];
 const CHAT_OTRO = ["nodoOtro", "adminOtro", "superadmin"];
 const ADMIN_OTRO = ["adminOtro", "superadmin"];
+// Fotos de lotes: las ven admin, la caja y mercancía del negocio. Subirlas
+// (con el nombre obligado) se prueba aparte, en la sección 5.
+const LOTES_AMISE = ["nodo", "mercancia", "admin", "superadmin"];
+const LOTES_OTRO = ["nodoOtro", "adminOtro", "superadmin"];
+const deLotes = (ven, admins) => ({
+  get: ven, list: ven, create: NADIE, encima: NADIE, update: NADIE, delete: admins,
+});
 
 const BYTES = new Uint8Array([82, 73, 70, 70, 0, 0, 0, 0, 87, 69, 66, 80]);
 const WEBP = { contentType: "image/webp" };
@@ -106,6 +126,10 @@ const ZONAS = [
   { nombre: "chat nuevo con subcarpeta de más", base: `chat_media_web_new_version/${NID}/n1/sub`, ...cerrado },
   { nombre: "chat_media (escritorio GOMU v1.6.2, cerrado)", base: "chat_media/chat1", ...cerrado },
   { nombre: "mensajes_media (chat viejo)", base: `mensajes_media/${NID}`, ...cerrado },
+  { nombre: "fotos de lotes de amise", base: `lotes_media_web_new_version/${NID}/LOTE1`, ...deLotes(LOTES_AMISE, ADMIN_AMISE) },
+  { nombre: "fotos de lotes de otro negocio", base: `lotes_media_web_new_version/${OTRO}/LOTE9`, ...deLotes(LOTES_OTRO, ADMIN_OTRO) },
+  { nombre: "fotos de lotes con subcarpeta de más", base: `lotes_media_web_new_version/${NID}/LOTE1/sub`, ...cerrado },
+  { nombre: "fotos de lotes sin lote", base: `lotes_media_web_new_version/${NID}`, ...cerrado },
   { nombre: "carpeta vieja con ID", base: "4Zv-EZe", ...soloLeer },
   { nombre: "fotos_articulos (vieja)", base: "fotos_articulos", ...soloLeer },
   { nombre: "media/mensajes (Android viejo)", base: "media/mensajes/2026", ...soloLeer },
@@ -274,6 +298,77 @@ for (const r of ["anon", "sinRol", "nodo", "colaborador", "revocado"]) {
     await assertFails(deleteObject(en(r, p)));
   });
 }
+
+// --- 5. Fotos de lotes: solo el enlace de fotos, de su lote y con nombre fijo ---
+avance("fotos de lotes");
+const LOTE = `lotes_media_web_new_version/${NID}/LOTE1`;
+const JPG = { contentType: "image/jpeg" };
+const mia = (n, ext = "webp") => `${LOTE}/uid-enlaceFotos_${n}.${ext}`;
+await caso("enlace de fotos SÍ sube la foto 00 de su lote (WebP)", () =>
+  assertSucceeds(uploadBytes(en("enlaceFotos", mia("00")), BYTES, WEBP)),
+);
+await caso("enlace de fotos SÍ sube la foto 29 de su lote (JPG)", () =>
+  assertSucceeds(uploadBytes(en("enlaceFotos", mia("29", "jpg")), BYTES, JPG)),
+);
+await caso("enlace de fotos SÍ sube una foto de casi 2 MB", () =>
+  assertSucceeds(uploadBytes(en("enlaceFotos", mia("01")), new Uint8Array(2 * MB - 1), WEBP)),
+);
+await caso("enlace de fotos NO pasa de 30 (foto 30)", () =>
+  assertFails(uploadBytes(en("enlaceFotos", mia("30")), BYTES, WEBP)),
+);
+await caso("enlace de fotos NO sube una foto de 2 MB o más", () =>
+  assertFails(uploadBytes(en("enlaceFotos", mia("02")), new Uint8Array(2 * MB), WEBP)),
+);
+await caso("enlace de fotos NO sube PNG ni algo que no es imagen", async () => {
+  await assertFails(uploadBytes(en("enlaceFotos", mia("03")), BYTES, { contentType: "image/png" }));
+  await assertFails(uploadBytes(en("enlaceFotos", mia("03")), BYTES, { contentType: "application/pdf" }));
+});
+await caso("enlace de fotos NO reemplaza una foto ya subida", () =>
+  assertFails(uploadBytes(en("enlaceFotos", mia("00")), BYTES, WEBP)),
+);
+await caso("enlace de fotos NO usa el nombre de otro teléfono", () =>
+  assertFails(uploadBytes(en("enlaceFotos", `${LOTE}/uid-otro_00.webp`), BYTES, WEBP)),
+);
+await caso("enlace de fotos NO sube con un nombre libre", () =>
+  assertFails(uploadBytes(en("enlaceFotos", `${LOTE}/foto.webp`), BYTES, WEBP)),
+);
+await caso("enlace de fotos NO sube a otro lote", () =>
+  assertFails(uploadBytes(en("enlaceFotos", `lotes_media_web_new_version/${NID}/LOTE2/uid-enlaceFotos_00.webp`), BYTES, WEBP)),
+);
+await caso("enlace de fotos NO sube a otro negocio", () =>
+  assertFails(uploadBytes(en("enlaceFotos", `lotes_media_web_new_version/${OTRO}/LOTE1/uid-enlaceFotos_00.webp`), BYTES, WEBP)),
+);
+await caso("enlace de fotos NO lee, lista ni borra lo que subió", async () => {
+  await assertFails(getMetadata(en("enlaceFotos", mia("00"))));
+  await assertFails(getDownloadURL(en("enlaceFotos", mia("00"))));
+  await assertFails(list(en("enlaceFotos", LOTE), { maxResults: 5 }));
+  await assertFails(deleteObject(en("enlaceFotos", mia("00"))));
+});
+await caso("enlace de fotos vencido NO sube", () =>
+  assertFails(uploadBytes(en("enlaceFotosVencido", `${LOTE}/uid-enlaceFotosVencido_00.webp`), BYTES, WEBP)),
+);
+await caso("enlace de armar NO sube fotos", () =>
+  assertFails(uploadBytes(en("enlaceArmar", `${LOTE}/uid-enlaceArmar_00.webp`), BYTES, WEBP)),
+);
+for (const r of ["anon", "sinRol", "nodo", "mercancia", "admin", "superadmin"]) {
+  await caso(`${r} NO sube fotos de lotes ni con el nombre correcto`, () =>
+    assertFails(uploadBytes(en(r, `${LOTE}/uid-${r}_00.webp`), BYTES, WEBP)),
+  );
+}
+for (const r of ["enlaceFotos", "enlaceArmar"]) {
+  await caso(`${r} NO sube imágenes de artículos ni al chat`, async () => {
+    await assertFails(uploadBytes(en(r, nuevo(ART)), BYTES, WEBP));
+    await assertFails(uploadBytes(en(r, nuevo(CHAT)), BYTES, WEBP));
+  });
+}
+await caso("SÍ: la foto que sube el teléfono la ven admin y la caja (URL)", async () => {
+  await assertSucceeds(getDownloadURL(en("admin", mia("00"))));
+  await assertSucceeds(getDownloadURL(en("nodo", mia("00"))));
+});
+await caso("admin SÍ borra una foto de lote; la caja NO", async () => {
+  await assertFails(deleteObject(en("nodo", mia("29", "jpg"))));
+  await assertSucceeds(deleteObject(en("admin", mia("29", "jpg"))));
+});
 
 await env.cleanup();
 avance("fin");

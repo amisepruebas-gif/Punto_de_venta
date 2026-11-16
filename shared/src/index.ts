@@ -14,3 +14,5 @@ export * from "./puntos";
 export * from "./clip";
 export * from "./busqueda";
 export * from "./clasificacion";
+export * from "./lotes";
+export * from "./enlaceLote";

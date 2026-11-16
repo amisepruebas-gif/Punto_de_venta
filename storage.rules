@@ -15,6 +15,8 @@ rules_version = '2';
 // Quién escribe hoy (detalle en docs/13-rules-pendientes-produccion.md):
 //   - admin-web y mercancia-web: imágenes de artículos.
 //   - admin-web y nodo-web: imágenes del chat nuevo.
+//   - mercancia-web (/enlace): fotos de lotes, desde un teléfono que entró
+//     con un enlace de fotos (rol `enlace`).
 //   - GOMU web (amisetienda-c7eab.web.app): imágenes en media/articulos.
 //   - functions y tools/ usan el Admin SDK: no pasan por estas reglas.
 // Cerrado el 4-nov-2026: chat_media, donde el chat de escritorio GOMU
@@ -62,10 +64,13 @@ service firebase.storage {
         && request.resource.size < mb * 1024 * 1024;
     }
 
+    // Rutas que NO se leen por nombre desde el bloque general de abajo: los
+    // chats y las fotos de lotes.
     function esDeUnChatPrivado(nombre) {
       return nombre.matches('chat_media_web_new_version/.*')
         || nombre.matches('chat_media/.*')
-        || nombre.matches('mensajes_media/.*');
+        || nombre.matches('mensajes_media/.*')
+        || nombre.matches('lotes_media_web_new_version/.*');
     }
 
     // ---------- Imágenes de artículos ----------
@@ -96,11 +101,38 @@ service firebase.storage {
       allow delete: if esAdminDelNegocio(negocioId);
     }
 
+    // ---------- Fotos de lotes de envío ----------
+    // lotes_media_web_new_version/{negocio}/{lote}/{uid}_{00..29}.webp
+    // Las sube un teléfono que entró con un enlace de fotos (rol `enlace`,
+    // tipo `recibir`): solo las de SU lote, mientras no venza su sesión (el
+    // vencimiento viene en el token), sin reemplazar y con nombre fijo: ese
+    // es el tope de 30 por teléfono. Las ven admin y las apps del negocio.
+    // OJO: aquí NO se consulta el apagador del enlace (eso lo revisa
+    // Firestore al registrar la foto en el lote): un enlace apagado aún
+    // podría subir archivos sueltos hasta que venza, pero ya no los puede
+    // registrar, así que nadie los ve.
+    function esEnlaceDeFotos(negocioId, loteId) {
+      return tieneRol(['enlace']) && esDelNegocio(negocioId)
+        && request.auth.token.get('tipo', '') == 'recibir'
+        && request.auth.token.get('resurtidoId', '') == loteId
+        && request.time.toMillis() < request.auth.token.get('vence', 0);
+    }
+    match /lotes_media_web_new_version/{negocioId}/{loteId}/{archivo} {
+      allow get, list: if esAdminDelNegocio(negocioId)
+        || (tieneRol(['nodo', 'mercancia']) && esDelNegocio(negocioId));
+      allow create: if esEnlaceDeFotos(negocioId, loteId)
+        && resource == null
+        && archivo.matches('^' + request.auth.uid + '_[0-2][0-9][.](webp|jpg)$')
+        && request.resource.contentType in ['image/webp', 'image/jpeg']
+        && request.resource.size < 2 * 1024 * 1024;
+      allow delete: if esAdminDelNegocio(negocioId);
+    }
+
     // ---------- Todo lo demás ----------
     // Carpetas viejas (2020-2025), chat_media, mensajes_media y rutas que
     // nadie usa: nadie sube, reemplaza, borra ni lista. Leer por nombre
     // exacto sigue como hoy, menos en los chats (el nuevo, chat_media y
-    // mensajes_media): esos solo se ven con su URL con token.
+    // mensajes_media) y en las fotos de lotes: esos tienen su propio bloque.
     // OJO: Storage deja pasar si CUALQUIER bloque lo permite. Este bloque
     // también cubre las rutas de arriba: por eso no da más que leer y deja
     // fuera los chats privados.

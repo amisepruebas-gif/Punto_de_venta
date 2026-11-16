@@ -2335,6 +2335,90 @@ exports.loginMercanciaConPin = onCall(
 );
 
 // ============================================================
+// canjearEnlaceLote — sesión de un teléfono que entra por una URL
+// ============================================================
+// Lotes de envío: armar un lote desde un teléfono (enlace `armar`, con
+// apagador) o subir fotos de un lote (enlace `recibir`, QR de la caja, 30
+// minutos). No pide sesión: la llave es el secreto de la URL. Reglas de
+// quién entra en lib/enlaceLote.js; lo que la sesión puede hacer, en
+// firestore.rules (`esEnlace`) y storage.rules (`esEnlaceDeFotos`).
+const enlaceLote = require("./lib/enlaceLote");
+
+exports.canjearEnlaceLote = onCall(
+    {timeoutSeconds: 20, memory: "256MiB", maxInstances: 5},
+    async (request) => {
+      const data = request.data || {};
+      if (!enlaceLote.entradaValida(data)) {
+        throw new HttpsError("permission-denied", enlaceLote.mensajeDeMotivo("no_sirve"));
+      }
+      const {negocioId, enlaceId, secreto} = data;
+      const negocioRef = db.collection(COL_NEGOCIOS).doc(negocioId);
+      const ref = negocioRef.collection(`enlaces_lote${SUFFIX}`).doc(enlaceId);
+      const ahoraMs = Date.now();
+      // Un uid por teléfono: admin ve quién entró y las fotos llevan su dueño.
+      const uid = `enl_${enlaceId}_${cryptoNode.randomBytes(6).toString("hex")}`;
+      const headers = (request.rawRequest && request.rawRequest.headers) || {};
+      const userAgent = String(headers["user-agent"] || "").slice(0, 200);
+
+      const r = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const d = snap.exists ? snap.data() : null;
+        // El secreto va primero: sin él no se revela nada del enlace.
+        if (!d || !acceso.llaveCoincide(secreto, d.secretoHash)) {
+          return {ok: false, motivo: "no_sirve"};
+        }
+        const creadoEnMs = d.creadoEn && typeof d.creadoEn.toMillis === "function" ?
+          d.creadoEn.toMillis() : 0;
+        const decision = enlaceLote.decidirCanje({...d, creadoEnMs}, ahoraMs);
+        if (!decision.ok) return decision;
+        let lote = null;
+        if (d.tipo === "recibir") {
+          const loteSnap = await tx.get(
+              negocioRef.collection(`resurtidos${SUFFIX}`).doc(d.resurtidoId));
+          if (!loteSnap.exists) return {ok: false, motivo: "sin_lote"};
+          const l = loteSnap.data() || {};
+          lote = {
+            folio: l.folio || loteSnap.id,
+            sucursalDestinoNombre: l.sucursalDestinoNombre || "",
+          };
+        }
+        tx.update(ref, {
+          canjes: (Number(d.canjes) || 0) + 1,
+          ultimoUsoMs: ahoraMs,
+          [`sesiones.${uid}`]: {
+            fechaMs: ahoraMs,
+            gen: Number(d.gen) || 0,
+            ...(userAgent ? {userAgent} : {}),
+          },
+        });
+        return {ok: true, venceMs: decision.venceMs, enlace: d, lote};
+      });
+      if (!r.ok) {
+        throw new HttpsError("permission-denied", enlaceLote.mensajeDeMotivo(r.motivo));
+      }
+
+      const claims = enlaceLote.claimsDeEnlace(negocioId, enlaceId, r.enlace, r.venceMs);
+      const token = await admin.auth().createCustomToken(uid, claims);
+      return {
+        token,
+        uid,
+        tipo: r.enlace.tipo,
+        nombre: r.enlace.nombre || "",
+        // El teléfono cuenta el tiempo con estos dos, no con su reloj.
+        ahoraMs,
+        venceMs: r.venceMs,
+        ...(r.enlace.tipo === "armar" ?
+          {letra: r.enlace.letra} :
+          {
+            resurtidoId: r.enlace.resurtidoId,
+            folio: r.lote.folio,
+            sucursalDestinoNombre: r.lote.sucursalDestinoNombre,
+          }),
+      };
+    },
+);
+
+// ============================================================
 // PUNTOS / MONEDERO — CF intermediarias hacia amise.mx
 // El cliente (nodo-web) NUNCA ve LOYALTY_POS_SECRET; solo lo usa la CF.
 // ============================================================

@@ -18,6 +18,8 @@ const ESTADO_LABEL: Record<ResurtidoEstado, string> = {
   en_transito: "En tránsito",
   recibido: "Recibido",
   cerrado: "Cerrado",
+  enviado: "Enviado",
+  parcial: "Recibido en parte",
 };
 
 const ESTADO_COLOR: Record<ResurtidoEstado, string> = {
@@ -25,6 +27,8 @@ const ESTADO_COLOR: Record<ResurtidoEstado, string> = {
   en_transito: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   recibido: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
   cerrado: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  enviado: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  parcial: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
 };
 
 export function ResurtidosPage() {

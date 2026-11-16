@@ -655,8 +655,26 @@ export type AuthClaims = {
  *                    de la sucursal destino. `dañado` y `perdido`
  *                    quedan documentados pero no entran a ningún stock
  *                    (efecto neto: salida desde bodega sin contraparte).
+ *
+ * Los LOTES de envío (resurtidos con `cajas`, ver `shared/src/lotes.ts`)
+ * usan sus propios estados intermedios, para que el flujo viejo —y las
+ * versiones viejas de las apps— nunca los pueda avanzar:
+ *
+ *  - `creando` — se está armando desde un enlace. Con `listo: true` espera
+ *                a que admin confirme el envío.
+ *  - `enviado` — admin confirmó: bajó `cantidadBodega` (igual que
+ *                `en_transito`).
+ *  - `parcial` — ya se recibió algo (ese stock ya entró a la sucursal) y
+ *                todavía hay piezas pendientes.
+ *  - `cerrado` — no queda nada pendiente.
  */
-export type ResurtidoEstado = "creando" | "en_transito" | "recibido" | "cerrado";
+export type ResurtidoEstado =
+  | "creando"
+  | "en_transito"
+  | "recibido"
+  | "cerrado"
+  | "enviado"
+  | "parcial";
 
 /**
  * Cómo se distribuyó cada línea al cerrar el resurtido. La suma debe
@@ -718,6 +736,146 @@ export type Resurtido = {
   lineas: ResurtidoLinea[];
   /** Notas globales del resurtido. */
   notas?: string;
+
+  // ----- Lote de envío: solo cuando existe `cajas` (ver `lotes.ts`) -----
+  /** Código legible y único del lote (`L261116-A1`). Es también el id del
+   *  documento. */
+  folio?: string;
+  /** Enlace (acceso por URL) con el que se armó. */
+  enlaceId?: string;
+  /** uid de la sesión del enlace que lo creó. */
+  creadoPorUid?: string;
+  /** Dentro de `creando`: quien arma ya terminó y espera a admin. */
+  listo?: boolean;
+  fechaListo?: string;
+  /** Cajas del lote. Llave = `c` + código de su etiqueta. Su presencia
+   *  (aunque esté vacío) es lo que distingue un lote de un resurtido simple. */
+  cajas?: Record<string, LoteCaja>;
+  /** Paquetes. Llave = `p` + código de su etiqueta. */
+  paquetes?: Record<string, LotePaquete>;
+  /** Piezas sueltas (sin etiqueta propia). Llave = `s` + id corto. */
+  sueltas?: Record<string, LoteSuelta>;
+  /** Paquetería que lo transporta. */
+  paqueteria?: string;
+  /** Guía de cada caja, por llave de caja. Admin la puede corregir después. */
+  guias?: Record<string, string>;
+  /** Quien confirmó el envío en admin. */
+  enviadoPor?: string;
+  /** Lo recibido. Cada "Terminar" de la caja (y cada "no llegó" de admin)
+   *  agrega una sesión; nunca se editan ni se borran. */
+  recepcion?: { sesiones: Record<string, LoteSesion> };
+};
+
+// ---------- Lotes de envío (cajas → paquetes / piezas sueltas) ----------
+/** Renglón de contenido: N piezas de un artículo o de una variación. */
+export type LoteContenido = {
+  articuloId: string;
+  subvariacionCodigo?: string;
+  /** Entero ≥ 1. */
+  piezas: number;
+};
+
+export type LoteCaja = {
+  /** Código de su etiqueta numerada (12 dígitos). */
+  codigo: string;
+  /** 1, 2, 3… para mostrar "Caja 1 de 3". */
+  orden: number;
+};
+
+export type LotePaquete = {
+  /** Código de su etiqueta numerada (12 dígitos). */
+  codigo: string;
+  /** Llave de la caja en la que va. */
+  caja: string;
+  /** Casi siempre un renglón; varios = paquete surtido. */
+  contenido: LoteContenido[];
+  orden: number;
+};
+
+export type LoteSuelta = LoteContenido & {
+  /** Llave de la caja en la que van. */
+  caja: string;
+  orden: number;
+};
+
+/**
+ * Una sesión de recepción (la caja, al "Terminar") o la declaración de
+ * "no llegó" (admin). Las cuentas van por artículo, con la llave de
+ * `claveArticulo` (`id` o `id|v-NN-XXX`).
+ */
+export type LoteSesion = {
+  tipo: "recepcion" | "no_llego";
+  fecha: string;
+  /** Nombre de quien recibe (campo libre) o de quien declara "no llegó". */
+  quien: string;
+  nodoId?: string;
+  /** Vendedor en turno en la caja al terminar. */
+  vendedor?: string;
+  /** Llaves de las cajas cuya llegada se anotó en esta sesión. */
+  cajas?: string[];
+  /** Llaves de los paquetes escaneados cerrados: vale su contenido declarado. */
+  paquetes?: string[];
+  /** Llaves de los paquetes anotados como dañados completos. */
+  paquetesDanados?: string[];
+  /** Piezas contadas una por una (o cantidad + código), por artículo. */
+  piezas?: Record<string, number>;
+  /** Piezas dañadas contadas una por una, por artículo. */
+  danadas?: Record<string, number>;
+  /** Lo que sí entró al inventario de la sucursal en esta sesión. */
+  entro?: Record<string, number>;
+  /** Contado de más, o de un artículo que no venía en la lista. */
+  sobrantes?: Record<string, number>;
+  /** Códigos escaneados que no se reconocieron. */
+  desconocidos?: string[];
+  /** Recibido que no pudo entrar al inventario (artículo borrado…). */
+  sinStock?: Array<{ clave: string; piezas: number; motivo: string }>;
+  /** Solo `no_llego`: piezas declaradas como no llegadas, por artículo. */
+  noLlego?: Record<string, number>;
+  /** Hora (HH:mm:ss) del escaneo de cada caja y paquete, por llave. */
+  horas?: Record<string, string>;
+  nota?: string;
+};
+
+export type EnlaceLoteTipo = "armar" | "recibir";
+
+/**
+ * Acceso por URL para un teléfono sin cuenta. `armar`: lo crea admin, sin
+ * vencimiento, con apagador. `recibir`: lo crea la caja para subir fotos
+ * de UN lote; hay 5 minutos para entrar y la sesión dura 30.
+ * Del secreto de la URL solo se guarda su sha256.
+ */
+export type EnlaceLote = {
+  tipo: EnlaceLoteTipo;
+  /** El apagador. Las reglas lo revisan en cada lectura y escritura. */
+  activo: boolean;
+  nombre?: string;
+  /** Solo `armar`: letra(s) del acceso dentro del código de sus lotes. */
+  letra?: string;
+  secretoHash: string;
+  /** Sube al renovar el enlace: las sesiones de la generación anterior
+   *  dejan de servir. */
+  gen: number;
+  creadoPor: string;
+  /** Timestamp del servidor. */
+  creadoEn: unknown;
+  /** Solo `recibir`. */
+  sucursalId?: string;
+  resurtidoId?: string;
+  /** Lo escribe la function al canjear. */
+  canjes?: number;
+  ultimoUsoMs?: number;
+  /** Sesiones abiertas con este enlace, por uid. */
+  sesiones?: Record<string, { fechaMs: number; userAgent?: string; gen: number }>;
+};
+
+/** Foto de un lote subida desde un enlace `recibir`. */
+export type LoteFoto = {
+  /** Ruta en Storage (`lotes_media_web_new_version/...`). */
+  ruta: string;
+  subidoPor: string;
+  /** Timestamp del servidor. */
+  creadoEn: unknown;
+  nota?: string;
 };
 
 // ---------- Mayoreo y zonas de precios ----------
