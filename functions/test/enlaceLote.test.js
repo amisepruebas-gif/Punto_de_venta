@@ -67,6 +67,50 @@ test("fotos: sin hora de creación, del futuro, o sin lote: no entra", () => {
   assert.equal(enlace.decidirCanje(fotos({sucursalId: undefined}), AHORA).motivo, "no_sirve");
 });
 
+test("entradaValida: el número del dispositivo es opcional, pero con formato", () => {
+  const ok = {negocioId: "amise", enlaceId: "AbC123xyz", secreto: SECRETO};
+  assert.equal(enlace.entradaValida({...ok, dispositivo: "B".repeat(43)}), true);
+  assert.equal(enlace.entradaValida({...ok, dispositivo: null}), true);
+  assert.equal(enlace.entradaValida({...ok, dispositivo: "corto"}), false);
+  assert.equal(enlace.entradaValida({...ok, dispositivo: 5}), false);
+});
+
+const DISP = acceso.hashSecreto("D".repeat(43));
+const OTRO = acceso.hashSecreto("E".repeat(43));
+const conSesion = (base, extra = {}) => ({
+  ...base,
+  canjes: 1,
+  sesiones: {enl_E1_aaaa: {fechaMs: AHORA - 1000, gen: base.gen || 0, dispositivo: DISP, ...extra}},
+});
+
+test("armar: el MISMO teléfono vuelve a entrar sin gastar otra entrada", () => {
+  // Se perdió la respuesta o falló el inicio de sesión: reintenta.
+  assert.deepEqual(enlace.decidirCanje(conSesion(armar()), AHORA, DISP), {
+    ok: true, venceMs: enlace.SIN_VENCIMIENTO_MS, uid: "enl_E1_aaaa",
+  });
+  // Otro teléfono con el mismo enlace sigue sin entrar.
+  assert.deepEqual(enlace.decidirCanje(conSesion(armar()), AHORA, OTRO), {ok: false, motivo: "agotado"});
+  // Sin número de dispositivo (versión vieja del teléfono): como antes.
+  assert.deepEqual(enlace.decidirCanje(conSesion(armar()), AHORA, ""), {ok: false, motivo: "agotado"});
+});
+
+test("armar: renovado (gen nueva) el mismo teléfono entra como nuevo; apagado no entra", () => {
+  const renovado = {...conSesion(armar()), gen: 1, canjes: 0};
+  assert.deepEqual(enlace.decidirCanje(renovado, AHORA, DISP), {ok: true, venceMs: enlace.SIN_VENCIMIENTO_MS});
+  assert.deepEqual(enlace.decidirCanje({...conSesion(armar()), activo: false}, AHORA, DISP), {
+    ok: false, motivo: "apagado",
+  });
+});
+
+test("fotos: el mismo teléfono recupera su sesión de 30 minutos, no una nueva", () => {
+  const vence = AHORA + 10 * 60_000;
+  // Ya pasaron los 5 minutos para entrar, pero este teléfono ya había entrado.
+  const viejo = conSesion(fotos({creadoEnMs: AHORA - 20 * 60_000}), {venceMs: vence});
+  assert.deepEqual(enlace.decidirCanje(viejo, AHORA, DISP), {ok: true, venceMs: vence, uid: "enl_E1_aaaa"});
+  assert.deepEqual(enlace.decidirCanje(viejo, vence, DISP), {ok: false, motivo: "tarde"});
+  assert.deepEqual(enlace.decidirCanje(viejo, AHORA, OTRO), {ok: false, motivo: "tarde"});
+});
+
 test("claims: solo lo que las reglas leen, según el tipo", () => {
   assert.deepEqual(enlace.claimsDeEnlace("amise", "E1", armar({gen: 2}), 99), {
     role: "enlace", negocioId: "amise", enlaceId: "E1", tipo: "armar", gen: 2, vence: 99, letra: "A",

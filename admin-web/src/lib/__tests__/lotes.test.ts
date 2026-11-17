@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   LoteConProblemas,
   aplicarEscaneoLote,
+  cajasOrdenadas,
   claveArticulo,
   codigoEtiquetaLote,
   conteoLoteVacio,
@@ -18,6 +19,9 @@ import {
   lineasDeLote,
   llaveCajaLote,
   llavePaqueteLote,
+  loteRecibible,
+  normalizarCodigoEscaneado,
+  paquetesDeCaja,
   partirClaveArticulo,
   pendientePorArticuloId,
   planearEnvioLote,
@@ -28,6 +32,8 @@ import {
   resumenLoteConConteo,
   secretoDeFragmento,
   siguienteLetraEnlace,
+  siguienteOrden,
+  sueltasDeCaja,
   textoAvisoRecepcion,
   totalesLote,
   urlEnlaceLote,
@@ -233,6 +239,40 @@ describe("forma y validación", () => {
     expect(resumenLote(l).totales.declarado).toBe(13);
   });
 
+  it("datos dañados desde un enlace (null, texto): no truenan y no se puede enviar", () => {
+    const l = lote() as unknown as {
+      cajas: Record<string, unknown>;
+      paquetes: Record<string, unknown>;
+      sueltas: Record<string, unknown>;
+      recepcion: unknown;
+    };
+    l.cajas["c880000000077"] = null;
+    l.paquetes["p880000000078"] = "x";
+    l.paquetes["p880000000079"] = { codigo: 5, caja: null };
+    l.sueltas["s9"] = null;
+    l.recepcion = { sesiones: { a: null, b: { tipo: "recepcion" }, c: { tipo: "recepcion", fecha: "2026-11-18 10:00:00", quien: "x", cajas: "no", paquetes: 7 } } };
+    const roto = l as unknown as Resurtido;
+    expect(cajasOrdenadas(roto).map((c) => c.llave)).toEqual([kC1, kC2]);
+    expect(paquetesDeCaja(roto, kC1).map((p) => p.llave)).toEqual([kP1, kP2]);
+    expect(sueltasDeCaja(roto, kC1).map((s) => s.llave)).toEqual(["s1"]);
+    expect(totalesLote(roto)).toEqual({ cajas: 2, paquetes: 3, piezas: 37, articulos: 3 });
+    expect(siguienteOrden(roto.paquetes)).toBe(4);
+    expect(resumenLote(roto).totales.pendiente).toBe(37);
+    const problemas = validarLote(roto).join("|");
+    expect(problemas).toMatch(/caja tiene datos dañados/);
+    expect(problemas).toMatch(/paquete tiene datos dañados/);
+    expect(problemas).toMatch(/sueltas con datos dañados/);
+    expect(() => planearEnvioLote(roto, catalogo())).toThrow(LoteConProblemas);
+    const escaneo = aplicarEscaneoLote({
+      lote: roto,
+      conteo: conteo(),
+      codigo: "880000000077",
+      hora: "12:00:00",
+      resolverArticulo: resolver,
+    });
+    expect(escaneo.tono).toBe("desconocido");
+  });
+
   it("la misma etiqueta no puede ser caja y paquete, y la llave debe ser su código", () => {
     const l = lote();
     l.paquetes![llavePaqueteLote(C1)] = {
@@ -319,6 +359,32 @@ describe("escaneo al recibir", () => {
     const otra = aplicarEscaneoLote({ ...base, conteo: r.conteo, codigo: C1 });
     expect(otra.tono).toBe("repetido");
     expect(otra.conteo).toBe(r.conteo);
+  });
+
+  it("una etiqueta tecleada como viene impresa (con espacios o guiones) sí se reconoce", () => {
+    expect(normalizarCodigoEscaneado(" 8800 0000 0001 ")).toBe(C1);
+    expect(normalizarCodigoEscaneado("8800-0000-0011")).toBe(P1);
+    // Lo que no es etiqueta solo se recorta: un folio conserva su guion.
+    expect(normalizarCodigoEscaneado(" L261116-A1 ")).toBe("L261116-A1");
+    expect(normalizarCodigoEscaneado(" 123 00001 ")).toBe("123 00001");
+    const r = aplicarEscaneoLote({ ...base, conteo: conteo(), codigo: etiquetaLoteLegible(C1) });
+    expect(r.tono).toBe("bien");
+    expect(r.texto).toBe("Caja 1 de 2");
+  });
+
+  it("después de 'no llegó': el avance dice lo contado, no lo declarado perdido", () => {
+    const cerrado = lote({
+      estado: "cerrado",
+      recepcion: {
+        sesiones: {
+          s1: { tipo: "recepcion", fecha: "2026-11-17 09:00:00", quien: "Ana", paquetes: [kP1, kP2, kP3] },
+          s2: { tipo: "no_llego", fecha: "2026-11-20 10:00:00", quien: "admin", noLlego: { [GOKU]: 5 } },
+        },
+      },
+    });
+    const r = aplicarEscaneoLote({ ...base, lote: cerrado, conteo: conteo(), codigo: GOKU, cantidad: 2 });
+    expect(r.tono).toBe("bien");
+    expect(r.texto).toBe("Llavero Goku: 26 de 29");
   });
 
   it("etiqueta de paquete: cuenta su contenido y anota su caja", () => {
@@ -634,13 +700,111 @@ describe("guardar una recepción", () => {
     expect(despues.sinStock).toHaveLength(2);
   });
 
-  it("no acepta un lote sin enviar, uno cerrado ni un nombre vacío", () => {
+  it("no acepta un lote sin enviar ni un nombre vacío", () => {
     const args = { conteo: conteo(), articulos: catalogo(), ubicacion: S2, meta: META };
     expect(() => planearRecepcionLote({ ...args, lote: lote({ estado: "creando" }) })).toThrow(/no se ha enviado/);
-    expect(() => planearRecepcionLote({ ...args, lote: lote({ estado: "cerrado" }) })).toThrow(/ya está cerrado/);
     expect(() =>
       planearRecepcionLote({ ...args, lote: lote(), meta: { ...META, quien: "  " } }),
     ).toThrow(/nombre de quien recibe/);
+  });
+
+  /** Recibido todo menos los 5 Goku sueltos; admin los marcó "no llegó". */
+  function cerradoConNoLlego(): Resurtido {
+    return lote({
+      estado: "cerrado",
+      recepcion: {
+        sesiones: {
+          s1: {
+            tipo: "recepcion",
+            fecha: "2026-11-17 09:00:00",
+            quien: "Ana",
+            paquetes: [kP1, kP2, kP3],
+            entro: { [GOKU]: 24, [claveArticulo(PLAYERA, VAR_CH)]: 4, [claveArticulo(PLAYERA, VAR_M)]: 4 },
+          },
+          s2: { tipo: "no_llego", fecha: "2026-11-20 10:00:00", quien: "admin", noLlego: { [GOKU]: 5 } },
+        },
+      },
+    });
+  }
+
+  it("un conteo que sube después de 'no llegó' sí entra y el lote sigue cerrado", () => {
+    const l = cerradoConNoLlego();
+    expect(loteRecibible(l)).toBe(true);
+    // Contado sin internet ANTES de que admin cerrara (fecha anterior).
+    const plan = planearRecepcionLote({
+      lote: l,
+      conteo: conteo({ piezas: { [GOKU]: 5 } }),
+      articulos: catalogo(),
+      ubicacion: S2,
+      meta: { ...META, fecha: "2026-11-19 18:00:00" },
+    });
+    expect(plan.estado).toBe("cerrado");
+    expect(plan.sesion.entro).toEqual({ [GOKU]: 5 });
+    expect(plan.sesion.sobrantes).toBeUndefined();
+    expect(plan.parches.get(GOKU)).toEqual({ cantidadPorSucursal: { S2: "5" } });
+    const antes = resumenLote(l);
+    const despues = resumenLote({ ...l, recepcion: { sesiones: { ...l.recepcion!.sesiones, s3: plan.sesion } } });
+    expect(despues.porArticulo.get(GOKU)).toMatchObject({ bien: 29, noLlego: 0, pendiente: 0, sobrante: 0 });
+    expect(despues.totales.noLlego).toBe(0);
+    expect(loteRecibible({ ...l, recepcion: { sesiones: { ...l.recepcion!.sesiones, s3: plan.sesion } } })).toBe(false);
+    expect(textoAvisoRecepcion(l, plan.sesion, despues, antes)).toMatch(
+      /Llegaron 5 pzas que se habían marcado como no llegadas\..*Lote completo\.$/,
+    );
+  });
+
+  it("aparece solo una parte de lo que no llegó: entra eso y lo demás sigue como no llegó", () => {
+    const l = cerradoConNoLlego();
+    const plan = planearRecepcionLote({
+      lote: l,
+      conteo: conteo({ piezas: { [GOKU]: 7 } }),
+      articulos: catalogo(),
+      ubicacion: S2,
+      meta: META,
+    });
+    expect(plan.sesion.entro).toEqual({ [GOKU]: 5 });
+    expect(plan.sesion.sobrantes).toEqual({ [GOKU]: 2 });
+    const r = resumenLote({ ...l, recepcion: { sesiones: { ...l.recepcion!.sesiones, s3: plan.sesion } } });
+    expect(r.porArticulo.get(GOKU)).toMatchObject({ noLlego: 0, sobrante: 2, pendiente: 0 });
+    const parcial = planearRecepcionLote({
+      lote: l,
+      conteo: conteo({ piezas: { [GOKU]: 2 } }),
+      articulos: catalogo(),
+      ubicacion: S2,
+      meta: META,
+    });
+    const r2 = resumenLote({ ...l, recepcion: { sesiones: { ...l.recepcion!.sesiones, s3: parcial.sesion } } });
+    expect(r2.porArticulo.get(GOKU)).toMatchObject({ bien: 26, noLlego: 3, pendiente: 0 });
+    expect(parcial.estado).toBe("cerrado");
+  });
+
+  it("un lote cerrado completo: lo que llegue tarde sobra y no entra", () => {
+    const completo = lote({
+      estado: "cerrado",
+      recepcion: {
+        sesiones: {
+          s1: { tipo: "recepcion", fecha: "2026-11-17 09:00:00", quien: "Ana", paquetes: [kP1, kP2, kP3], piezas: { [GOKU]: 5 } },
+        },
+      },
+    });
+    expect(loteRecibible(completo)).toBe(false);
+    const plan = planearRecepcionLote({
+      lote: completo,
+      conteo: conteo({ piezas: { [GOKU]: 3 } }),
+      articulos: catalogo(),
+      ubicacion: S2,
+      meta: META,
+    });
+    expect(plan.estado).toBe("cerrado");
+    expect(plan.sesion.entro).toBeUndefined();
+    expect(plan.sesion.sobrantes).toEqual({ [GOKU]: 3 });
+    expect(plan.parches.size).toBe(0);
+  });
+
+  it("recibible: abierto sí, cerrado con 'no llegó' sí, armándose o completo no", () => {
+    expect(loteRecibible(lote())).toBe(true);
+    expect(loteRecibible(lote({ estado: "parcial" }))).toBe(true);
+    expect(loteRecibible(lote({ estado: "creando" }))).toBe(false);
+    expect(loteRecibible(lote({ estado: "cerrado" }))).toBe(false);
   });
 
   it("la sesión no lleva campos vacíos ni undefined (Firestore los rechaza)", () => {

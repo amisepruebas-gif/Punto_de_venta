@@ -48,6 +48,17 @@ export function esCodigoEtiquetaLote(codigo: string): boolean {
   return RE_ETIQUETA_LOTE.test(codigo.trim());
 }
 
+/**
+ * Lo escaneado o tecleado, listo para buscarlo. Una etiqueta numerada se
+ * puede teclear como viene impresa (`8800 0000 0123`): sin espacios ni
+ * guiones queda su código. Cualquier otra cosa solo se recorta.
+ */
+export function normalizarCodigoEscaneado(texto: string): string {
+  const t = texto.trim();
+  const junto = t.replace(/[\s-]+/g, "");
+  return RE_ETIQUETA_LOTE.test(junto) ? junto : t;
+}
+
 /** `880000000123` → `8800 0000 0123` (para leerlo o dictarlo). */
 export function etiquetaLoteLegible(codigo: string): string {
   return codigo.replace(/(\d{4})(?=\d)/g, "$1 ");
@@ -106,6 +117,17 @@ export function loteAbierto(r: Pick<Resurtido, "estado">): boolean {
   return r.estado === "enviado" || r.estado === "parcial";
 }
 
+/**
+ * La caja todavía puede recibir en este lote: está abierto o se cerró con
+ * piezas declaradas "no llegó" que aún pueden aparecer (una caja que llegó
+ * tarde, o un conteo que se hizo sin internet antes de que admin lo
+ * cerrara). Lo que aparece entra al inventario.
+ */
+export function loteRecibible(r: LoteConSesiones & Pick<Resurtido, "estado">): boolean {
+  if (loteAbierto(r)) return true;
+  return r.estado === "cerrado" && resumenLote(r).totales.noLlego > 0;
+}
+
 /** Llave de un artículo en las cuentas del lote: `id` o `id|v-NN-XXX`. */
 export function claveArticulo(
   articuloId: string,
@@ -152,10 +174,42 @@ function renglonValido(c: unknown): c is { articuloId: string; subvariacionCodig
   );
 }
 
+function esObjeto(x: unknown): x is Record<string, unknown> {
+  return !!x && typeof x === "object" && !Array.isArray(x);
+}
+
+/** Lo que llega de Firestore puede no ser una lista (dato dañado). */
+function lista<T>(x: T[] | undefined | null): T[] {
+  return Array.isArray(x) ? x : [];
+}
+
+// Un lote armado desde un enlace no es de confianza: lo que no tenga la forma
+// esperada se salta al mostrarlo o contarlo (en vez de tronar la pantalla) y
+// `validarLote` lo reporta para que no se pueda enviar.
+function cajaValida(c: unknown): c is LoteCaja {
+  return esObjeto(c) && typeof c.codigo === "string";
+}
+function paqueteValido(p: unknown): p is LotePaquete {
+  return esObjeto(p) && typeof p.codigo === "string" && typeof p.caja === "string";
+}
+function sueltaValida(s: unknown): s is LoteSuelta {
+  return esObjeto(s) && typeof s.caja === "string";
+}
+function ordenDe(x: { orden?: unknown }): number {
+  return typeof x.orden === "number" && Number.isFinite(x.orden) ? x.orden : 0;
+}
+/** Las entradas de un mapa del lote que tienen la forma esperada. */
+function entradas<T>(
+  mapa: Record<string, unknown> | undefined | null,
+  valida: (x: unknown) => x is T,
+): Array<[string, T]> {
+  if (!esObjeto(mapa)) return [];
+  return Object.entries(mapa).filter((e): e is [string, T] => valida(e[1]));
+}
+
 /**
- * Piezas por artículo de un paquete (suma renglones repetidos). Un lote
- * armado desde un enlace no es de confianza: los renglones mal formados se
- * ignoran aquí (y `validarLote` los reporta) en vez de tronar la pantalla.
+ * Piezas por artículo de un paquete (suma renglones repetidos). Los
+ * renglones mal formados se ignoran aquí (y `validarLote` los reporta).
  */
 export function contenidoDePaquete(p: LotePaquete): Map<string, number> {
   const m = new Map<string, number>();
@@ -171,10 +225,10 @@ export function contenidoDePaquete(p: LotePaquete): Map<string, number> {
 /** Total declarado por artículo: paquetes + sueltas. */
 export function declaradoPorArticulo(lote: LoteForma): Map<string, number> {
   const m = new Map<string, number>();
-  for (const p of Object.values(lote.paquetes ?? {})) {
+  for (const [, p] of entradas(lote.paquetes, paqueteValido)) {
     for (const [clave, n] of contenidoDePaquete(p)) sumar(m, clave, n);
   }
-  for (const s of Object.values(lote.sueltas ?? {})) {
+  for (const [, s] of entradas(lote.sueltas, sueltaValida)) {
     if (!renglonValido(s)) continue;
     sumar(m, claveArticulo(s.articuloId, s.subvariacionCodigo), s.piezas);
   }
@@ -184,29 +238,29 @@ export function declaradoPorArticulo(lote: LoteForma): Map<string, number> {
 export function cajasOrdenadas(
   lote: LoteForma,
 ): Array<{ llave: string; caja: LoteCaja }> {
-  return Object.entries(lote.cajas ?? {})
+  return entradas(lote.cajas, cajaValida)
     .map(([llave, caja]) => ({ llave, caja }))
-    .sort((a, b) => a.caja.orden - b.caja.orden || a.llave.localeCompare(b.llave));
+    .sort((a, b) => ordenDe(a.caja) - ordenDe(b.caja) || a.llave.localeCompare(b.llave));
 }
 
 export function paquetesDeCaja(
   lote: LoteForma,
   llaveCaja: string,
 ): Array<{ llave: string; paquete: LotePaquete }> {
-  return Object.entries(lote.paquetes ?? {})
+  return entradas(lote.paquetes, paqueteValido)
     .filter(([, p]) => p.caja === llaveCaja)
     .map(([llave, paquete]) => ({ llave, paquete }))
-    .sort((a, b) => a.paquete.orden - b.paquete.orden || a.llave.localeCompare(b.llave));
+    .sort((a, b) => ordenDe(a.paquete) - ordenDe(b.paquete) || a.llave.localeCompare(b.llave));
 }
 
 export function sueltasDeCaja(
   lote: LoteForma,
   llaveCaja: string,
 ): Array<{ llave: string; suelta: LoteSuelta }> {
-  return Object.entries(lote.sueltas ?? {})
+  return entradas(lote.sueltas, sueltaValida)
     .filter(([, s]) => s.caja === llaveCaja)
     .map(([llave, suelta]) => ({ llave, suelta }))
-    .sort((a, b) => a.suelta.orden - b.suelta.orden || a.llave.localeCompare(b.llave));
+    .sort((a, b) => ordenDe(a.suelta) - ordenDe(b.suelta) || a.llave.localeCompare(b.llave));
 }
 
 /** Siguiente `orden` libre dentro de un mapa del lote. */
@@ -214,7 +268,9 @@ export function siguienteOrden(
   mapa: Record<string, { orden: number }> | undefined,
 ): number {
   let max = 0;
-  for (const x of Object.values(mapa ?? {})) max = Math.max(max, x.orden || 0);
+  for (const x of Object.values(esObjeto(mapa) ? mapa : {})) {
+    if (esObjeto(x)) max = Math.max(max, ordenDe(x));
+  }
   return max + 1;
 }
 
@@ -232,8 +288,8 @@ export function totalesLote(lote: LoteForma): TotalesLote {
   let piezas = 0;
   for (const n of declarado.values()) piezas += n;
   return {
-    cajas: Object.keys(lote.cajas ?? {}).length,
-    paquetes: Object.keys(lote.paquetes ?? {}).length,
+    cajas: entradas(lote.cajas, cajaValida).length,
+    paquetes: entradas(lote.paquetes, paqueteValido).length,
     piezas,
     articulos: declarado.size,
   };
@@ -250,9 +306,9 @@ export function totalesLote(lote: LoteForma): TotalesLote {
  */
 export function validarLote(lote: LoteForma): string[] {
   const problemas: string[] = [];
-  const cajas = lote.cajas ?? {};
-  const paquetes = lote.paquetes ?? {};
-  const sueltas = lote.sueltas ?? {};
+  const cajas: Record<string, unknown> = esObjeto(lote.cajas) ? lote.cajas : {};
+  const paquetes: Record<string, unknown> = esObjeto(lote.paquetes) ? lote.paquetes : {};
+  const sueltas: Record<string, unknown> = esObjeto(lote.sueltas) ? lote.sueltas : {};
   const nCajas = Object.keys(cajas).length;
   if (nCajas === 0) problemas.push("El lote no tiene cajas");
   if (nCajas > LOTE_MAX_CAJAS) {
@@ -265,21 +321,29 @@ export function validarLote(lote: LoteForma): string[] {
   const codigos = new Set<string>();
   const conContenido = new Set<string>();
   for (const [llave, caja] of Object.entries(cajas)) {
-    if (!esCodigoEtiquetaLote(String(caja?.codigo ?? "")) || llave !== llaveCajaLote(caja.codigo)) {
-      problemas.push(`La caja ${caja.orden} tiene una etiqueta inválida`);
+    if (!cajaValida(caja)) {
+      problemas.push("Una caja tiene datos dañados: quítala y vuelve a agregarla");
+      continue;
+    }
+    if (!esCodigoEtiquetaLote(caja.codigo) || llave !== llaveCajaLote(caja.codigo)) {
+      problemas.push(`La caja ${ordenDe(caja)} tiene una etiqueta inválida`);
     } else if (codigos.has(caja.codigo)) {
       problemas.push(`La etiqueta ${caja.codigo} está repetida`);
     }
     codigos.add(caja.codigo);
   }
   for (const [llave, p] of Object.entries(paquetes)) {
-    if (!esCodigoEtiquetaLote(String(p?.codigo ?? "")) || llave !== llavePaqueteLote(p.codigo)) {
+    if (!paqueteValido(p)) {
+      problemas.push("Un paquete tiene datos dañados: quítalo y vuelve a capturarlo");
+      continue;
+    }
+    if (!esCodigoEtiquetaLote(p.codigo) || llave !== llavePaqueteLote(p.codigo)) {
       problemas.push(`Un paquete tiene una etiqueta inválida (${p.codigo})`);
     } else if (codigos.has(p.codigo)) {
       problemas.push(`La etiqueta ${p.codigo} está repetida`);
     }
     codigos.add(p.codigo);
-    if (!cajas[p.caja]) {
+    if (!cajaValida(cajas[p.caja])) {
       problemas.push(`El paquete ${p.codigo} no está en ninguna caja`);
     } else {
       conContenido.add(p.caja);
@@ -291,7 +355,11 @@ export function validarLote(lote: LoteForma): string[] {
     }
   }
   for (const s of Object.values(sueltas)) {
-    if (!cajas[s.caja]) {
+    if (!sueltaValida(s)) {
+      problemas.push("Hay piezas sueltas con datos dañados: quítalas y vuelve a capturarlas");
+      continue;
+    }
+    if (!cajaValida(cajas[s.caja])) {
       problemas.push("Hay piezas sueltas que no están en ninguna caja");
     } else {
       conContenido.add(s.caja);
@@ -299,7 +367,7 @@ export function validarLote(lote: LoteForma): string[] {
     if (!renglonValido(s)) problemas.push("Hay piezas sueltas con una cantidad inválida");
   }
   for (const { llave, caja } of cajasOrdenadas(lote)) {
-    if (!conContenido.has(llave)) problemas.push(`La caja ${caja.orden} está vacía`);
+    if (!conContenido.has(llave)) problemas.push(`La caja ${ordenDe(caja)} está vacía`);
   }
   if (problemas.length === 0 && declaradoPorArticulo(lote).size > LOTE_MAX_ARTICULOS) {
     problemas.push(
@@ -443,7 +511,10 @@ export type ResumenLote = {
 export function sesionesOrdenadas(
   lote: Pick<Resurtido, "recepcion">,
 ): Array<{ id: string; sesion: LoteSesion }> {
-  return Object.entries(lote.recepcion?.sesiones ?? {})
+  const sesiones: unknown = lote.recepcion?.sesiones;
+  if (!esObjeto(sesiones)) return [];
+  return Object.entries(sesiones)
+    .filter((e): e is [string, LoteSesion] => esObjeto(e[1]) && typeof e[1].fecha === "string")
     .map(([id, sesion]) => ({ id, sesion }))
     .sort((a, b) => a.sesion.fecha.localeCompare(b.sesion.fecha) || a.id.localeCompare(b.id));
 }
@@ -468,6 +539,11 @@ function sumarMapa(
 /**
  * Lo declarado contra todo lo registrado en las sesiones. Un paquete cuenta
  * una sola vez (la primera sesión que lo trae).
+ *
+ * Lo contado manda sobre lo declarado "no llegó": si después aparece (una
+ * caja que llegó tarde, o un conteo hecho sin internet que subió después de
+ * que admin cerró el lote), deja de contar como no llegado. Por eso el
+ * resultado no depende del orden de las sesiones.
  */
 export function resumenLote(lote: LoteConSesiones): ResumenLote {
   const porArticulo = new Map<string, CuentaArticuloLote>();
@@ -475,7 +551,7 @@ export function resumenLote(lote: LoteConSesiones): ResumenLote {
     porArticulo.set(clave, { ...cuentaVacia(), declarado: n });
   }
   const paquetes: ResumenLote["paquetes"] = new Map();
-  for (const llave of Object.keys(lote.paquetes ?? {})) {
+  for (const [llave] of entradas(lote.paquetes, paqueteValido)) {
     paquetes.set(llave, { estado: "pendiente" });
   }
   const cajasLlegadas: ResumenLote["cajasLlegadas"] = new Map();
@@ -488,10 +564,10 @@ export function resumenLote(lote: LoteConSesiones): ResumenLote {
     id: string,
     sesion: LoteSesion,
   ) => {
-    for (const llave of llaves ?? []) {
+    for (const llave of lista(llaves)) {
       const p = lote.paquetes?.[llave];
       const actual = paquetes.get(llave);
-      if (!p || !actual || actual.estado !== "pendiente") continue;
+      if (!paqueteValido(p) || !actual || actual.estado !== "pendiente") continue;
       const hora = sesion.horas?.[llave];
       paquetes.set(llave, { estado, sesion: id, ...(hora ? { hora } : {}) });
       const campo = estado === "recibido" ? "bien" : "danado";
@@ -508,8 +584,8 @@ export function resumenLote(lote: LoteConSesiones): ResumenLote {
       sumarMapa(porArticulo, "noLlego", sesion.noLlego);
       continue;
     }
-    for (const llave of sesion.cajas ?? []) {
-      if (!lote.cajas?.[llave] || cajasLlegadas.has(llave)) continue;
+    for (const llave of lista(sesion.cajas)) {
+      if (!cajaValida(lote.cajas?.[llave]) || cajasLlegadas.has(llave)) continue;
       const hora = sesion.horas?.[llave];
       cajasLlegadas.set(llave, { sesion: id, ...(hora ? { hora } : {}) });
     }
@@ -518,15 +594,17 @@ export function resumenLote(lote: LoteConSesiones): ResumenLote {
     sumarMapa(porArticulo, "bien", sesion.piezas);
     sumarMapa(porArticulo, "danado", sesion.danadas);
     sumarMapa(porArticulo, "entro", sesion.entro);
-    for (const s of sesion.sinStock ?? []) sinStock.push({ ...s, sesion: id });
-    for (const d of sesion.desconocidos ?? []) desconocidos.add(d);
+    for (const s of lista(sesion.sinStock)) sinStock.push({ ...s, sesion: id });
+    for (const d of lista(sesion.desconocidos)) desconocidos.add(d);
   }
 
   const totales = cuentaVacia();
   for (const c of porArticulo.values()) {
-    const contado = c.bien + c.danado + c.noLlego;
-    c.pendiente = Math.max(0, c.declarado - contado);
-    c.sobrante = Math.max(0, contado - c.declarado);
+    const recibido = c.bien + c.danado;
+    const falta = Math.max(0, c.declarado - recibido);
+    c.noLlego = Math.min(c.noLlego, falta);
+    c.pendiente = falta - c.noLlego;
+    c.sobrante = Math.max(0, recibido - c.declarado);
     totales.declarado += c.declarado;
     totales.bien += c.bien;
     totales.danado += c.danado;
@@ -549,7 +627,7 @@ export function resumenLote(lote: LoteConSesiones): ResumenLote {
     paquetesTotal: paquetes.size,
     paquetesRecibidos,
     paquetesDanados,
-    cajasTotal: Object.keys(lote.cajas ?? {}).length,
+    cajasTotal: entradas(lote.cajas, cajaValida).length,
     sinStock,
     desconocidos: [...desconocidos],
   };
@@ -668,7 +746,7 @@ export function aplicarEscaneoLote(args: {
   nombreArticulo?: (clave: string) => string;
 }): ResultadoEscaneoLote {
   const { lote, conteo, hora } = args;
-  const codigo = args.codigo.trim();
+  const codigo = normalizarCodigoEscaneado(args.codigo);
   const danado = !!args.danado;
   const nombre = args.nombreArticulo ?? ((clave: string) => clave);
   if (!codigo) return { conteo, tono: "desconocido", texto: "Escanea o escribe un código" };
@@ -677,22 +755,22 @@ export function aplicarEscaneoLote(args: {
   // 1. Etiqueta de caja.
   const llaveC = llaveCajaLote(codigo);
   const caja = lote.cajas?.[llaveC];
-  if (caja) {
+  if (cajaValida(caja)) {
     const total = previo.cajasTotal;
     if (previo.cajasLlegadas.has(llaveC) || conteo.cajas[llaveC]) {
-      return { conteo, tono: "repetido", texto: `La caja ${caja.orden} ya estaba anotada` };
+      return { conteo, tono: "repetido", texto: `La caja ${ordenDe(caja)} ya estaba anotada` };
     }
     return {
       conteo: { ...conteo, cajas: { ...conteo.cajas, [llaveC]: hora } },
       tono: "bien",
-      texto: `Caja ${caja.orden} de ${total}`,
+      texto: `Caja ${ordenDe(caja)} de ${total}`,
     };
   }
 
   // 2. Etiqueta de paquete.
   const llaveP = llavePaqueteLote(codigo);
   const paquete = lote.paquetes?.[llaveP];
-  if (paquete) {
+  if (paqueteValido(paquete)) {
     if (previo.paquetes.get(llaveP)?.estado !== "pendiente") {
       return { conteo, tono: "repetido", texto: "Ese paquete ya se había recibido" };
     }
@@ -706,7 +784,7 @@ export function aplicarEscaneoLote(args: {
         ...conteo,
         [campo]: { ...conteo[campo], [llaveP]: hora },
         // Un paquete anota la llegada de su caja.
-        ...(cajaLlego || !lote.cajas?.[paquete.caja]
+        ...(cajaLlego || !cajaValida(lote.cajas?.[paquete.caja])
           ? {}
           : { cajas: { ...conteo.cajas, [paquete.caja]: hora } }),
       },
@@ -760,7 +838,7 @@ export function aplicarEscaneoLote(args: {
       texto: `${art.nombre}: ${cuenta!.sobrante} de más`,
     };
   }
-  const contado = (cuenta?.bien ?? 0) + (cuenta?.danado ?? 0) + (cuenta?.noLlego ?? 0);
+  const contado = (cuenta?.bien ?? 0) + (cuenta?.danado ?? 0);
   return {
     conteo: nuevo,
     tono: "bien",
@@ -816,9 +894,10 @@ function soloPositivos(mapa: Map<string, number>): Record<string, number> | unde
 /**
  * Planea guardar un conteo como sesión de recepción. Se calcula contra el
  * lote LEÍDO EN LA TRANSACCIÓN, así que dos tablets o un reintento no suman
- * dos veces: cada artículo entra al inventario hasta lo que tenga pendiente
- * y lo demás queda como sobrante. Un artículo borrado no bloquea: lo suyo
- * queda en `sinStock`.
+ * dos veces: cada artículo entra al inventario hasta lo que le falte por
+ * recibir y lo demás queda como sobrante. Lo que admin declaró "no llegó"
+ * también cuenta como por recibir: si aparece, entra (el lote cerrado sigue
+ * cerrado). Un artículo borrado no bloquea: lo suyo queda en `sinStock`.
  *
  * `ubicacion` es la sucursal destino con su default ya resuelto.
  */
@@ -830,8 +909,12 @@ export function planearRecepcionLote(args: {
   meta: { fecha: string; quien: string; nodoId?: string; vendedor?: string; nota?: string };
 }): PlanRecepcionLote {
   const { lote, conteo, articulos, ubicacion, meta } = args;
-  if (lote.estado === "cerrado") throw new Error("Este lote ya está cerrado");
-  if (!loteAbierto(lote)) throw new Error("Este lote todavía no se ha enviado");
+  // Un lote cerrado todavía acepta sesiones: una que se contó sin internet
+  // antes de que admin marcara "no llegó" no se pierde. Si ya no le falta
+  // nada, todo queda como sobrante y no entra nada.
+  if (!loteAbierto(lote) && lote.estado !== "cerrado") {
+    throw new Error("Este lote todavía no se ha enviado");
+  }
   if (!meta.quien.trim()) throw new Error("Falta el nombre de quien recibe");
 
   const previo = resumenLote(lote);
@@ -839,14 +922,14 @@ export function planearRecepcionLote(args: {
   const nuevos = (mapa: Record<string, string>, otros?: Record<string, string>) =>
     Object.keys(mapa).filter(
       (llave) =>
-        !!lote.paquetes?.[llave] &&
+        paqueteValido(lote.paquetes?.[llave]) &&
         previo.paquetes.get(llave)?.estado === "pendiente" &&
         !otros?.[llave],
     );
   const paquetes = nuevos(conteo.paquetes);
   const paquetesDanados = nuevos(conteo.paquetesDanados, conteo.paquetes);
   const cajas = Object.keys(conteo.cajas).filter(
-    (llave) => !!lote.cajas?.[llave] && !previo.cajasLlegadas.has(llave),
+    (llave) => cajaValida(lote.cajas?.[llave]) && !previo.cajasLlegadas.has(llave),
   );
   for (const llave of paquetes) horas[llave] = conteo.paquetes[llave]!;
   for (const llave of paquetesDanados) horas[llave] = conteo.paquetesDanados[llave]!;
@@ -876,18 +959,20 @@ export function planearRecepcionLote(args: {
     }
   }
 
-  // Cuánto entra al inventario: lo bueno, hasta lo pendiente.
+  // Cuánto entra al inventario: lo bueno, hasta lo que falta por recibir
+  // (lo pendiente más lo declarado "no llegó").
   const entro = new Map<string, number>();
   const sobrantes = new Map<string, number>();
   const sinStock: NonNullable<LoteSesion["sinStock"]> = [];
   const trabajo = new Map<string, Articulo>();
   const parches = new Map<string, Partial<Articulo>>();
   for (const clave of new Set([...bien.keys(), ...dan.keys()])) {
-    const pendiente = previo.porArticulo.get(clave)?.pendiente ?? 0;
+    const c = previo.porArticulo.get(clave);
+    const porRecibir = c ? c.pendiente + c.noLlego : 0;
     const b = bien.get(clave) ?? 0;
     const d = dan.get(clave) ?? 0;
-    const entra = Math.min(b, pendiente);
-    const danAplicado = Math.min(d, pendiente - entra);
+    const entra = Math.min(b, porRecibir);
+    const danAplicado = Math.min(d, porRecibir - entra);
     sumar(sobrantes, clave, b - entra + (d - danAplicado));
     if (entra === 0) continue;
     const { articuloId, subvariacionCodigo } = partirClaveArticulo(clave);
@@ -984,26 +1069,31 @@ export function planearNoLlegoLote(
 
 function sumaDe(mapa: Record<string, number> | undefined): number {
   let t = 0;
-  for (const n of Object.values(mapa ?? {})) t += n;
+  for (const n of Object.values(esObjeto(mapa) ? mapa : {})) if (enteroPositivo(n)) t += n;
   return t;
 }
 
 /** Mensaje para el chat de admin al guardar una recepción. `despues` es el
- *  resumen del lote ya con esa sesión. */
+ *  resumen del lote ya con esa sesión y `antes`, sin ella. */
 export function textoAvisoRecepcion(
   lote: LoteForma & Pick<Resurtido, "folio" | "sucursalDestinoNombre">,
   sesion: LoteSesion,
   despues: ResumenLote,
+  antes?: ResumenLote,
 ): string {
   const partes = [
     `📦 Lote ${lote.folio ?? ""} en ${lote.sucursalDestinoNombre}. Recibió: ${sesion.quien}.`,
     `Paquetes: ${despues.paquetesRecibidos + despues.paquetesDanados} de ${despues.paquetesTotal}.`,
     `Entraron ${sumaDe(sesion.entro)} pzas.`,
   ];
+  const aparecieron = antes ? antes.totales.noLlego - despues.totales.noLlego : 0;
+  if (aparecieron > 0) {
+    partes.push(`Llegaron ${aparecieron} pzas que se habían marcado como no llegadas.`);
+  }
   let danadas = sumaDe(sesion.danadas);
-  for (const llave of sesion.paquetesDanados ?? []) {
+  for (const llave of lista(sesion.paquetesDanados)) {
     const p = lote.paquetes?.[llave];
-    if (p) for (const n of contenidoDePaquete(p).values()) danadas += n;
+    if (paqueteValido(p)) for (const n of contenidoDePaquete(p).values()) danadas += n;
   }
   if (danadas > 0) partes.push(`Dañadas: ${danadas}.`);
   if (sumaDe(sesion.sobrantes) > 0) partes.push(`Sobrantes: ${sumaDe(sesion.sobrantes)}.`);

@@ -30,6 +30,7 @@ import {
   LOTE_MAX_CAJAS,
   LOTE_MAX_PAQUETES,
   LoteConProblemas,
+  cajasOrdenadas,
   contenidoDePaquete,
   esCodigoEtiquetaLote,
   etiquetaLoteLegible,
@@ -76,15 +77,17 @@ function refEtiqueta(s: SesionEnlace, codigo: string) {
   return doc(s.db, paths.etiquetaLote(s.negocioId, codigo));
 }
 
-/** Lee el lote dentro de la transacción y comprueba que se pueda editar. */
-async function leerLoteEditable(
-  tx: Transaction,
-  s: SesionEnlace,
-  loteId: string,
-): Promise<Lote> {
+/** Lee el lote dentro de la transacción (`null` si no existe). */
+async function leerLoteTx(tx: Transaction, s: SesionEnlace, loteId: string): Promise<Lote | null> {
   const snap = await tx.get(refLote(s, loteId));
-  if (!snap.exists()) throw new ErrorEnlace("Este lote ya no existe.");
+  if (!snap.exists()) return null;
   const l = snap.data() as Lote;
+  return { ...l, cajas: l.cajas ?? {} };
+}
+
+/** Comprueba que el lote leído todavía se pueda editar. */
+function exigirEditable(l: Lote | null): Lote {
+  if (!l) throw new ErrorEnlace("Este lote ya no existe.");
   if (!seArma(l)) {
     throw new ErrorEnlace(
       l.estado === "creando"
@@ -92,16 +95,31 @@ async function leerLoteEditable(
         : "Este lote ya se envió: ya no se puede cambiar.",
     );
   }
-  return { ...l, cajas: l.cajas ?? {} };
+  return l;
 }
 
-/** Corre una escritura con la sesión del enlace. */
+async function leerLoteEditable(
+  tx: Transaction,
+  s: SesionEnlace,
+  loteId: string,
+): Promise<Lote> {
+  return exigirEditable(await leerLoteTx(tx, s, loteId));
+}
+
+/**
+ * Corre una escritura con la sesión del enlace. `reintento` dice si el SDK
+ * está volviendo a correr la transacción: lo hace si el guardado falló por
+ * la red, AUNQUE el servidor ya lo hubiera aplicado (se perdió la respuesta).
+ * En un reintento, encontrar el cambio ya hecho cuenta como guardado: así
+ * nada se duplica ni sale un error de algo que sí se guardó.
+ */
 async function escribir<T>(
   s: SesionEnlace,
-  fn: (tx: Transaction) => Promise<T>,
+  fn: (tx: Transaction, reintento: boolean) => Promise<T>,
 ): Promise<T> {
   exigirInternet();
-  return runTransaction(s.db, fn);
+  let intentos = 0;
+  return runTransaction(s.db, (tx) => fn(tx, ++intentos > 1));
 }
 
 // ---------- Leer ----------
@@ -171,14 +189,27 @@ export async function crearLote(
     if (k !== null && k >= n) n = k + 1;
   }
 
+  const fechaCreacion = fechaISO_MX(hoy);
   let ultimoError: unknown = null;
   for (let intento = 0; intento < 20 && n <= 999; intento++, n++) {
     const id = folioLote(ymd, s.letra, n);
     const ref = refLote(s, id);
     try {
+      let corridas = 0;
       const creado = await runTransaction(s.db, async (tx) => {
         const snap = await tx.get(ref);
-        if (snap.exists()) return null;
+        if (snap.exists()) {
+          // Reintento del SDK tras perder la respuesta: si es el que se acaba
+          // de crear (mismo teléfono, misma hora y destino), ya quedó.
+          const ya = snap.data() as Lote;
+          const esElMio =
+            corridas++ > 0 &&
+            ya.creadoPorUid === s.uid &&
+            ya.fechaCreacion === fechaCreacion &&
+            ya.sucursalDestinoId === destino.sucursalDestinoId;
+          return esElMio ? { ...ya, id: ya.id || id, cajas: ya.cajas ?? {} } : null;
+        }
+        corridas++;
         const lote: Lote = {
           id,
           folio: id,
@@ -187,7 +218,7 @@ export async function crearLote(
           creadoPorUid: s.uid,
           sucursalDestinoId: destino.sucursalDestinoId,
           sucursalDestinoNombre: destino.sucursalDestinoNombre,
-          fechaCreacion: fechaISO_MX(hoy),
+          fechaCreacion,
           responsableEmpaco: s.nombre || "Enlace",
           lineas: [],
           cajas: {},
@@ -210,8 +241,10 @@ export async function crearLote(
 /** Borra un lote que se está armando. Sus etiquetas quedan apartadas para
  *  ese código (solo admin las libera). */
 export async function borrarLote(s: SesionEnlace, loteId: string): Promise<void> {
-  await escribir(s, async (tx) => {
-    await leerLoteEditable(tx, s, loteId);
+  await escribir(s, async (tx, reintento) => {
+    const l = await leerLoteTx(tx, s, loteId);
+    if (reintento && !l) return; // ya se había borrado
+    exigirEditable(l);
     tx.delete(refLote(s, loteId));
   });
 }
@@ -317,15 +350,17 @@ export async function agregarCaja(
   codigoCrudo: string,
 ): Promise<Lote> {
   const codigo = exigirCodigo(codigoCrudo);
-  return escribir(s, async (tx) => {
+  return escribir(s, async (tx, reintento) => {
     const escribirEtiqueta = await apartarEtiqueta(tx, s, loteId, codigo);
     const lote = await leerLoteEditable(tx, s, loteId);
+    const llave = llaveCajaLote(codigo);
+    // Reintento tras perder la respuesta: la caja ya quedó guardada.
+    if (reintento && lote.cajas[llave]?.codigo === codigo) return lote;
     const repetida = usoDeEtiquetaEnLote(lote, codigo);
     if (repetida) throw new ErrorEnlace(repetida);
     if (Object.keys(lote.cajas).length >= LOTE_MAX_CAJAS) {
       throw new ErrorEnlace(`Máximo ${LOTE_MAX_CAJAS} cajas por lote: empieza otro lote.`);
     }
-    const llave = llaveCajaLote(codigo);
     const caja: LoteCaja = { codigo, orden: siguienteOrden(lote.cajas) };
     escribirEtiqueta();
     tx.update(refLote(s, loteId), { [`cajas.${llave}`]: caja });
@@ -346,11 +381,11 @@ export async function quitarCaja(
   return escribir(s, async (tx) => {
     const lote = await leerLoteEditable(tx, s, loteId);
     if (!lote.cajas[llaveCaja]) return lote;
-    const restantes = Object.entries(lote.cajas)
-      .filter(([k]) => k !== llaveCaja)
-      .sort(([ka, a], [kb, b]) => a.orden - b.orden || ka.localeCompare(kb));
+    // `cajasOrdenadas` se salta una caja con datos dañados: al volver a
+    // numerar, esa se va.
+    const restantes = cajasOrdenadas(lote).filter(({ llave }) => llave !== llaveCaja);
     const cajas: Record<string, LoteCaja> = {};
-    restantes.forEach(([k, c], i) => {
+    restantes.forEach(({ llave: k, caja: c }, i) => {
       cajas[k] = { codigo: c.codigo, orden: i + 1 };
     });
     const cambios: Record<string, unknown> = { cajas };
@@ -405,16 +440,18 @@ export async function guardarPaquete(
 ): Promise<Lote> {
   const codigo = exigirCodigo(datos.codigo);
   const contenido = limpiarContenido(datos.contenido);
-  return escribir(s, async (tx) => {
+  return escribir(s, async (tx, reintento) => {
     const escribirEtiqueta = await apartarEtiqueta(tx, s, loteId, codigo);
     const lote = await leerLoteEditable(tx, s, loteId);
+    const llave = llavePaqueteLote(codigo);
+    // Reintento tras perder la respuesta: el paquete ya quedó guardado.
+    if (reintento && lote.paquetes?.[llave]?.codigo === codigo) return lote;
     if (!lote.cajas[datos.caja]) throw new ErrorEnlace("Esa caja ya no está en el lote.");
     const repetida = usoDeEtiquetaEnLote(lote, codigo);
     if (repetida) throw new ErrorEnlace(repetida);
     if (Object.keys(lote.paquetes ?? {}).length >= LOTE_MAX_PAQUETES) {
       throw new ErrorEnlace(`Máximo ${LOTE_MAX_PAQUETES} paquetes por lote: empieza otro lote.`);
     }
-    const llave = llavePaqueteLote(codigo);
     const paquete: LotePaquete = {
       codigo,
       caja: datos.caja,
@@ -472,10 +509,14 @@ export async function guardarSuelta(
   datos: { caja: string; articuloId: string; subvariacionCodigo?: string; piezas: number },
 ): Promise<Lote> {
   const [renglon] = limpiarContenido([datos]);
+  // La llave de unas piezas nuevas se saca UNA vez, fuera de la transacción:
+  // si el SDK la vuelve a correr (se perdió la respuesta), encuentra esas
+  // piezas ya guardadas en vez de agregarlas otra vez.
+  const k = llave ?? `s${generarID()}`;
   return escribir(s, async (tx) => {
     const lote = await leerLoteEditable(tx, s, loteId);
+    if (!llave && lote.sueltas?.[k]) return lote;
     if (!lote.cajas[datos.caja]) throw new ErrorEnlace("Esa caja ya no está en el lote.");
-    const k = llave ?? `s${generarID()}`;
     const actual = llave ? lote.sueltas?.[llave] : undefined;
     if (llave && !actual) throw new ErrorEnlace("Esas piezas ya no están en el lote.");
     if (!llave && Object.keys(lote.sueltas ?? {}).length >= 999) {
@@ -520,8 +561,11 @@ export async function marcarLoteListo(
 ): Promise<Lote> {
   const responsable = datos.responsableEmpaco.trim();
   if (!responsable) throw new ErrorEnlace("Escribe el nombre de quien armó el lote.");
-  return escribir(s, async (tx) => {
-    const lote = await leerLoteEditable(tx, s, loteId);
+  return escribir(s, async (tx, reintento) => {
+    const leido = await leerLoteTx(tx, s, loteId);
+    // Reintento tras perder la respuesta: ya quedó como listo.
+    if (reintento && leido?.estado === "creando" && leido.listo === true) return leido;
+    const lote = exigirEditable(leido);
     const problemas = validarLote(lote);
     if (problemas.length > 0) throw new LoteConProblemas(problemas);
     const guias: Record<string, string> = {};

@@ -21,7 +21,8 @@ import {
   esLote,
   llaveCajaLote,
   llavePaqueteLote,
-  loteAbierto,
+  loteRecibible,
+  normalizarCodigoEscaneado,
   resumenLote,
   type Resurtido,
   type ResurtidoEstado,
@@ -108,19 +109,19 @@ export function ResurtidosNodoPage() {
   /** Etiqueta escaneada → el lote que la trae (los abiertos primero). Con el
    *  código del lote también lo abre. */
   function alEscanear(valor: string) {
-    const c = valor.trim();
+    const c = normalizarCodigoEscaneado(valor);
     setCodigo("");
     if (!c) return;
     const lotes = visibles.filter((r) => esLote(r));
     const conEtiqueta = (r: Resurtido) =>
       !!r.cajas?.[llaveCajaLote(c)] || !!r.paquetes?.[llavePaqueteLote(c)];
     const hallado =
-      lotes.find((r) => loteAbierto(r) && conEtiqueta(r)) ?? lotes.find(conEtiqueta);
+      lotes.find((r) => loteRecibible(r) && conEtiqueta(r)) ?? lotes.find(conEtiqueta);
     if (hallado) {
       setAviso(null);
       // Si está abierto, la etiqueta también cuenta al entrar.
       navigate(`/resurtidos/${hallado.id}`, {
-        state: loteAbierto(hallado) ? { escaneo: c } : null,
+        state: loteRecibible(hallado) ? { escaneo: c } : null,
       });
       return;
     }

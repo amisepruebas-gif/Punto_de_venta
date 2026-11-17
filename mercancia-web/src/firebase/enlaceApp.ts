@@ -30,7 +30,12 @@ import {
 } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { getFunctions, httpsCallable, type Functions } from "firebase/functions";
-import { secretoDeFragmento, type EnlaceLoteTipo } from "@shared";
+import {
+  esSecretoEnlace,
+  generarSecretoEnlace,
+  secretoDeFragmento,
+  type EnlaceLoteTipo,
+} from "@shared";
 import { firebaseConfig } from "./config";
 
 // ---------- Servicios ----------
@@ -223,6 +228,37 @@ export function urlCompletaEnMemoria(enlaceId: string): string | null {
 
 // ---------- Entrar / recuperar / salir ----------
 
+const CLAVE_DISPOSITIVO = "enlace.dispositivo.v1";
+let dispositivoEnMemoria: string | null = null;
+
+/**
+ * Número al azar de ESTE teléfono (se guarda en el teléfono). Con él la
+ * function reconoce que es el mismo teléfono que ya entró: si se perdió la
+ * respuesta o falló el inicio de sesión, volver a tocar "Entrar" no gasta la
+ * única entrada del enlace. Sin almacenamiento vive mientras la página esté
+ * abierta.
+ */
+function dispositivoDelTelefono(): string {
+  if (dispositivoEnMemoria) return dispositivoEnMemoria;
+  try {
+    const guardado = window.localStorage.getItem(CLAVE_DISPOSITIVO);
+    if (guardado && esSecretoEnlace(guardado)) {
+      dispositivoEnMemoria = guardado;
+      return guardado;
+    }
+  } catch {
+    /* almacenamiento bloqueado: se usa uno en memoria */
+  }
+  const nuevo = generarSecretoEnlace();
+  dispositivoEnMemoria = nuevo;
+  try {
+    window.localStorage.setItem(CLAVE_DISPOSITIVO, nuevo);
+  } catch {
+    /* sin espacio o bloqueado: sigue en memoria */
+  }
+  return nuevo;
+}
+
 type RespuestaCanje = {
   token: string;
   uid: string;
@@ -258,9 +294,14 @@ export async function entrarConEnlace(
   const sv = serviciosEnlace(enlaceId);
   const antes = Date.now();
   const r = await httpsCallable<
-    { negocioId: string; enlaceId: string; secreto: string },
+    { negocioId: string; enlaceId: string; secreto: string; dispositivo: string },
     RespuestaCanje
-  >(sv.functions, "canjearEnlaceLote")({ negocioId, enlaceId, secreto });
+  >(sv.functions, "canjearEnlaceLote")({
+    negocioId,
+    enlaceId,
+    secreto,
+    dispositivo: dispositivoDelTelefono(),
+  });
   const d = r.data;
   // El desfase se mide contra la mitad del viaje: la hora del servidor es
   // de cuando procesó la llamada, no de cuando llegó la respuesta.

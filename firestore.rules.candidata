@@ -94,9 +94,15 @@ service cloud.firestore {
       // Artículos: el nodo SOLO ajusta stock; mercancia CRUD; admin full.
       match /articulos_n_web_new_version/{artId} {
         allow read: if miembro(nid);
-        // Enlace de armar: un artículo por su código, o la lista de los
-        // fabricados (`where fabricado == true`). Nunca el catálogo entero.
-        allow get: if esEnlace(nid, 'armar');
+        // Enlace de armar: la lista de los fabricados (`where fabricado == true`)
+        // y, por su código, otro artículo solo si tiene piezas en el taller (lo
+        // único que se puede enviar en un lote). Así no se puede recorrer el
+        // catálogo por id (los ids son consecutivos). `resource == null`: puede
+        // preguntar por un código que no existe.
+        allow get: if esEnlace(nid, 'armar')
+          && (resource == null
+              || resource.data.get('fabricado', false) == true
+              || int(resource.data.get('cantidadBodega', '0')) > 0);
         allow list: if esEnlace(nid, 'armar') && resource.data.fabricado == true;
         allow create, delete: if esAdmin(nid) || esMercancia(nid);
         allow update: if esAdmin(nid) || esMercancia(nid)
@@ -177,25 +183,31 @@ service cloud.firestore {
           || (esEnlace(nid, 'armar') && mio() && armandose(resource.data));
 
         allow update: if
-          // Candado para TODOS: un lote sigue siendo lote, no cambia de identidad,
-          // nunca usa los estados del flujo viejo, sus sesiones solo se agregan y,
-          // una vez enviado, su lista ya no cambia.
+          // Candado para TODOS (admin incluido): un lote sigue siendo lote, no
+          // cambia de identidad, nunca usa los estados del flujo viejo, sus
+          // sesiones solo se agregan y, una vez enviado, nunca vuelve a armarse
+          // y su lista ya no cambia. Mientras se arma solo puede pasar a enviado.
           (!esLote(resource.data)
             || (esLote(request.resource.data)
                 && !cambia().hasAny(['id', 'folio', 'enlaceId', 'creadoPorUid', 'fechaCreacion'])
-                && !(request.resource.data.estado in ['en_transito', 'recibido'])
                 && soloAgregaSesiones()
                 && (resource.data.estado == 'creando'
-                    || !cambia().hasAny(['cajas', 'paquetes', 'sueltas', 'lineas',
-                                         'sucursalDestinoId', 'sucursalDestinoNombre']))))
+                    ? request.resource.data.estado in ['creando', 'enviado']
+                    : (request.resource.data.estado in ['enviado', 'parcial', 'cerrado']
+                       && !cambia().hasAny(['cajas', 'paquetes', 'sueltas', 'lineas',
+                                            'sucursalDestinoId', 'sucursalDestinoNombre'])))))
           && (
             esAdmin(nid)
             || (esMercancia(nid) && !esLote(resource.data) && !esLote(request.resource.data))
-            // La caja: solo lo de su sucursal, y solo recibir.
+            // La caja: solo lo de su sucursal, y solo recibir. En un lote, UNA
+            // sesión nueva por escritura. Uno cerrado sigue cerrado: todavía
+            // recibe lo que aparezca después de "no llegó".
             || (esNodoSuc(nid, resource.data.sucursalDestinoId)
                 && (esLote(resource.data)
-                    ? (resource.data.estado in ['enviado', 'parcial']
-                       && request.resource.data.estado in ['parcial', 'cerrado']
+                    ? (resource.data.estado in ['enviado', 'parcial', 'cerrado']
+                       && request.resource.data.estado
+                            in (resource.data.estado == 'cerrado' ? ['cerrado'] : ['parcial', 'cerrado'])
+                       && sesiones(request.resource.data).size() == sesiones(resource.data).size() + 1
                        && cambia().hasOnly(['estado', 'recepcion', 'fechaRecibido', 'fechaCerrado',
                                             'responsableRecibe']))
                     : (resource.data.estado in ['en_transito', 'recibido']
@@ -230,7 +242,7 @@ service cloud.firestore {
       }
 
       // Accesos por URL (enlaces de lote). Los crea admin; la caja solo crea de
-      // fotos, para un lote enviado de su sucursal, y solo puede apagarlos. El
+      // fotos, para un lote ya enviado de su sucursal, y solo puede apagarlos. El
       // vencimiento NO se escribe aquí: lo pone la function al canjear, contando
       // desde `creadoEn`, que debe ser la hora del servidor.
       match /enlaces_lote_web_new_version/{eid} {
@@ -252,7 +264,7 @@ service cloud.firestore {
               || (request.resource.data.tipo == 'recibir'
                   && request.resource.data.sucursalId == request.auth.token.sucursalId
                   && resurtidoDe(nid, request.resource.data.resurtidoId).sucursalDestinoId == request.auth.token.sucursalId
-                  && resurtidoDe(nid, request.resource.data.resurtidoId).estado in ['enviado', 'parcial']));
+                  && resurtidoDe(nid, request.resource.data.resurtidoId).estado in ['enviado', 'parcial', 'cerrado']));
         allow update: if
           // Admin: apagar/prender, renombrar y renovar (secreto nuevo, gen + 1).
           (esAdmin(nid) && cambiaSolo(['activo', 'nombre', 'secretoHash', 'gen', 'canjes']))
@@ -263,6 +275,18 @@ service cloud.firestore {
       // Etiquetas numeradas ya usadas (id = código): una etiqueta, un lote. No se
       // editan; solo admin las libera.
       match /etiquetas_lote_web_new_version/{codigo} {
+        // El enlace solo aparta una etiqueta ya impresa (hasta el contador que
+        // avanza admin al generar el PDF), para un lote suyo que se está armando
+        // y que la usa como caja o paquete en esta misma escritura.
+        function etiquetaParaSuLote(rid) {
+          let antes = resurtidoDe(nid, rid);
+          let despues = getAfter(/databases/$(database)/documents/negocios_web_new_version/$(nid)/resurtidos_web_new_version/$(rid)).data;
+          let contador = get(/databases/$(database)/documents/negocios_web_new_version/$(nid)/datos_web_new_version/_contadorEtiquetasLote).data;
+          return antes.enlaceId == request.auth.token.enlaceId
+            && antes.estado == 'creando' && antes.get('listo', false) == false
+            && int(codigo) <= 880000000000 + contador.ultimo
+            && (('c' + codigo) in despues.cajas || ('p' + codigo) in despues.get('paquetes', {}));
+        }
         allow get: if miembro(nid) || esEnlace(nid, 'armar');
         allow list, delete: if esAdmin(nid);
         allow create: if codigo.matches('^88[0-9]{10}$')
@@ -271,7 +295,7 @@ service cloud.firestore {
           && (esAdmin(nid)
               || (esEnlace(nid, 'armar')
                   && request.resource.data.enlaceId == request.auth.token.enlaceId
-                  && resurtidoDe(nid, request.resource.data.resurtidoId).enlaceId == request.auth.token.enlaceId));
+                  && etiquetaParaSuLote(request.resource.data.resurtidoId)));
       }
 
       // Fabricacion: zonas de precios (las leen los editores; solo admin escribe).

@@ -37,6 +37,7 @@ import {
   type Articulo,
   type EnlaceLote,
   type Resurtido,
+  type Sucursal,
 } from "@shared";
 
 // ============================================================
@@ -95,6 +96,23 @@ export async function confirmarEnvioLote(
     const invalido = validarLote(lote);
     if (invalido.length > 0) throw new LoteConProblemas(invalido);
 
+    // El destino lo escribió el teléfono: el id manda (es donde se suma al
+    // recibir) y el nombre se toma de la sucursal real, no del teléfono.
+    const destinoId = lote.sucursalDestinoId;
+    if (typeof destinoId !== "string" || !destinoId || destinoId.includes("/")) {
+      throw new LoteConProblemas(["El lote no tiene una sucursal destino válida"]);
+    }
+    const sucSnap = await tx.get(doc(db, paths.sucursal(negocioId, destinoId)));
+    const sucursal = sucSnap.exists() ? (sucSnap.data() as Sucursal) : null;
+    if (!sucursal) {
+      throw new LoteConProblemas([
+        "La sucursal destino ya no existe: que la cambien en el teléfono (regresa el lote a armado)",
+      ]);
+    }
+    if (sucursal.activa === false) {
+      throw new LoteConProblemas([`La sucursal ${sucursal.nombre} está desactivada`]);
+    }
+
     const ids = [
       ...new Set([...declaradoPorArticulo(lote).keys()].map((c) => partirClaveArticulo(c).articuloId)),
     ];
@@ -118,6 +136,7 @@ export async function confirmarEnvioLote(
     tx.update(loteRef, {
       estado: "enviado",
       lineas: plan.lineas,
+      sucursalDestinoNombre: sucursal.nombre || lote.sucursalDestinoNombre,
       fechaEnTransito: fechaISO_MX(),
       enviadoPor: enviadoPor.trim(),
     });
@@ -141,7 +160,9 @@ export async function regresarLoteAArmado(negocioId: string, loteId: string): Pr
 
 /**
  * Declara como no llegado todo lo pendiente y cierra el lote. Es una sesión
- * más (no se borra nada de lo recibido), así queda en el historial.
+ * más (no se borra nada de lo recibido), así queda en el historial. Si algo
+ * de eso aparece después (una caja que llegó tarde, o un conteo que la caja
+ * hizo sin internet), la caja lo puede recibir y entra a su inventario.
  */
 export async function declararNoLlegoLote(
   negocioId: string,

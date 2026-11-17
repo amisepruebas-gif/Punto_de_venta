@@ -41,6 +41,7 @@ import {
   useConteoLote,
   useRecepcionLotes,
   useSelladasLote,
+  useSubidaLotes,
   useSubirSesiones,
   type SesionSellada,
 } from "@/features/resurtidos/recepcionStore";
@@ -76,7 +77,8 @@ import {
   etiquetaLoteLegible,
   fechaISO_MX,
   fijarPiezasConteo,
-  loteAbierto,
+  loteRecibible,
+  normalizarCodigoEscaneado,
   planearRecepcionLote,
   quitarPaqueteConteo,
   resumenLote,
@@ -186,7 +188,8 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
     enfocar();
   }, [dialogo]);
 
-  const abierto = loteAbierto(lote);
+  // También uno cerrado con piezas "no llegó": si aparecen, se reciben.
+  const abierto = useMemo(() => loteRecibible(lote), [lote]);
 
   /** Lo contado más reciente (no el del último render: el lector manda los
    *  códigos más rápido de lo que se pinta la pantalla). */
@@ -265,7 +268,7 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
   }
 
   function alEnter(valor: string) {
-    const codigo = valor.trim();
+    const codigo = normalizarCodigoEscaneado(valor);
     setTexto("");
     if (!codigo) return;
     // Un escaneo cierra lo que esté a la vista (salvo el cierre).
@@ -315,7 +318,7 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
     const st = useRecepcionLotes.getState();
     const sigue = st.lotes[k]?.selladas.find((s) => s.sesionId === sellada.sesionId);
     if (!sigue) {
-      const u = st.ultimaSubida[k];
+      const u = useSubidaLotes.getState().ultimaSubida[k];
       const r = u?.sesionId === sellada.sesionId ? u.resultado : null;
       if (r?.vacia) {
         responder("repetido", "No había nada nuevo: todo ya estaba recibido", false);
@@ -379,6 +382,7 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
             {resumen.totales.pendiente > 0
               ? `Faltan ${pzas(resumen.totales.pendiente)}`
               : "Nada pendiente"}
+            {resumen.totales.noLlego > 0 && ` · Marcado "no llegó": ${pzas(resumen.totales.noLlego)}`}
           </p>
         </div>
         {abierto && (
@@ -913,7 +917,7 @@ function AvisoPendientes({
   loteId: string;
   selladas: SesionSellada[];
 }) {
-  const subiendo = useRecepcionLotes((s) => s.subiendo);
+  const subiendo = useSubidaLotes((s) => s.subiendo);
   const limpiarError = useRecepcionLotes((s) => s.limpiarError);
   const descartar = useRecepcionLotes((s) => s.descartarSellada);
   const [borrando, setBorrando] = useState<string | null>(null);
@@ -1009,10 +1013,12 @@ function LoQueFaltaDialogo({
   nombre: (clave: string) => string;
   onCerrar: () => void;
 }) {
+  // Lo marcado "no llegó" también falta: si aparece, se recibe.
   const articulos = [...resumen.porArticulo.entries()]
-    .filter(([, c]) => c.pendiente > 0)
+    .filter(([, c]) => c.pendiente > 0 || c.noLlego > 0)
     .map(([clave, c]) => ({ clave, c }))
     .sort((a, b) => nombre(a.clave).localeCompare(nombre(b.clave), "es"));
+  const piezasFaltan = resumen.totales.pendiente + resumen.totales.noLlego;
   const paquetes = [...resumen.paquetes.entries()]
     .filter(([, p]) => p.estado === "pendiente")
     .map(([llave]) => ({ llave, p: lote.paquetes?.[llave] }))
@@ -1034,15 +1040,17 @@ function LoQueFaltaDialogo({
             </p>
           )}
           <div>
-            <h3 className="mb-1 text-sm font-semibold">Por artículo ({resumen.totales.pendiente} pzas)</h3>
+            <h3 className="mb-1 text-sm font-semibold">Por artículo ({piezasFaltan} pzas)</h3>
             <ul className="divide-y rounded-md border">
               {articulos.map(({ clave, c }) => (
                 <li key={clave} className="flex items-center gap-2 px-3 py-1.5 text-sm">
                   <span className="min-w-0 flex-1 truncate">{nombre(clave)}</span>
                   <span className="shrink-0 text-muted-foreground">
-                    {c.declarado - c.pendiente} de {c.declarado}
+                    {Math.min(c.declarado, c.bien + c.danado)} de {c.declarado}
                   </span>
-                  <b className="w-16 shrink-0 text-right tabular-nums">faltan {c.pendiente}</b>
+                  <b className="w-24 shrink-0 text-right tabular-nums">
+                    {c.pendiente > 0 ? `faltan ${c.pendiente}` : `no llegó ${c.noLlego}`}
+                  </b>
                 </li>
               ))}
             </ul>

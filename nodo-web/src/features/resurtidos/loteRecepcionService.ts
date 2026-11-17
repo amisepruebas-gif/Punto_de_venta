@@ -101,8 +101,9 @@ function articulosDelConteo(
  * Sube una sesión sellada en la tablet. Es idempotente por `sesionId`: si
  * ya está en el servidor no escribe nada y contesta `yaEstaba`. Lanza
  * `SinConexion` si no hay red o el servidor no contesta (la sesión sigue en
- * la tablet y se reintenta); cualquier otro error (lote cerrado, permisos…)
- * es definitivo.
+ * la tablet y se reintenta); cualquier otro error (permisos, lote borrado…)
+ * es definitivo. Un lote que admin cerró mientras tanto ("no llegó") sí la
+ * acepta: lo contado que se había marcado como no llegado entra.
  */
 export async function subirSesionLote(args: {
   negocioId: string;
@@ -189,7 +190,10 @@ export async function subirSesionLote(args: {
           ["recepcion.sesiones." + sesionId]: plan.sesion,
           responsableRecibe: meta.quien.trim(),
           ...(lote.fechaRecibido ? {} : { fechaRecibido: meta.fecha }),
-          ...(plan.estado === "cerrado" ? { fechaCerrado: meta.fecha } : {}),
+          // Lo que aparece en un lote ya cerrado no le cambia la fecha de cierre.
+          ...(plan.estado === "cerrado" && lote.estado !== "cerrado"
+            ? { fechaCerrado: meta.fecha }
+            : {}),
         });
         const despues = resumenLote({
           ...lote,
@@ -236,7 +240,8 @@ function avisarRecepcion(
 ) {
   let texto: string;
   try {
-    texto = textoAvisoRecepcion(lote, sesion, despues);
+    // `lote` es como estaba antes de esta sesión.
+    texto = textoAvisoRecepcion(lote, sesion, despues, resumenLote(lote));
   } catch (e) {
     console.warn("Aviso de recepción:", e);
     return;

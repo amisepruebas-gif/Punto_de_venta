@@ -20,6 +20,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 
@@ -112,6 +113,11 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(db, lote("L261116-A7")), borrador("L261116-A7", "E1", UID_A));
   await setDoc(doc(db, lote("L261116-A8")), enviado("L261116-A8", S1));
   await setDoc(doc(db, lote("L261116-B1")), borrador("L261116-B1", "E2", "enl_E2_bbbb"));
+  // Cerrado con "no llegó": todavía puede recibir lo que aparezca.
+  await setDoc(doc(db, lote("L261116-A30")), enviado("L261116-A30", S1, {
+    estado: "cerrado", fechaCerrado: "2026-11-20 10:00:00",
+    recepcion: { sesiones: { n1: { tipo: "no_llego", fecha: "2026-11-20 10:00:00", quien: "a@x.com", noLlego: { ARTF: 12 } } } },
+  }));
   const simple = (estado, sucursalId) => ({
     id: "x", estado, sucursalDestinoId: sucursalId, sucursalDestinoNombre: "Suc",
     fechaCreacion: "2026-11-16 10:00:00", responsableEmpaco: "Bodega",
@@ -124,6 +130,9 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(db, lote("R_CRE")), simple("creando", S1));
   await setDoc(doc(db, art("ART1")), { nombre: "X", cantidad: "10" });
   await setDoc(doc(db, art("ARTF")), { nombre: "Llavero", cantidad: "0", fabricado: true });
+  await setDoc(doc(db, art("ARTB")), { nombre: "Viejo del taller", cantidad: "0", cantidadBodega: "5" });
+  await setDoc(doc(db, art("ARTB0")), { nombre: "Sin piezas en el taller", cantidad: "3", cantidadBodega: "0" });
+  await setDoc(doc(db, art("ARTBX")), { nombre: "Bodega rara", cantidad: "3", cantidadBodega: "abc" });
   await setDoc(doc(db, etiqueta("880000000001")), { resurtidoId: "L261116-A2", enlaceId: "E1" });
   await setDoc(doc(db, foto("L261116-A2", "enl_F1_otro_00")), { ruta: "x", subidoPor: "enl_F1_otro" });
   await setDoc(doc(db, dato("_contadorEtiquetasLote")), { ultimo: 100 });
@@ -185,14 +194,36 @@ await check("ARMAR NO borra un lote enviado", "fail", deleteDoc(doc(armar, lote(
 await check("ARMAR NO borra el lote de otro enlace", "fail", deleteDoc(doc(armar, lote("L261116-B1"))));
 
 // ============ ENLACE DE ARMAR: artículos y etiquetas ============
-await check("ARMAR lee un artículo por su código", "ok", getDoc(doc(armar, art("ART1"))));
+await check("ARMAR lee un fabricado por su código", "ok", getDoc(doc(armar, art("ARTF"))));
+await check("ARMAR lee por su código uno con piezas en el taller", "ok", getDoc(doc(armar, art("ARTB"))));
+await check("ARMAR pregunta por un código que no existe", "ok", getDoc(doc(armar, art("NOEXISTE"))));
+await check("ARMAR NO lee por id uno que no es de fabricación ni está en el taller", "fail", getDoc(doc(armar, art("ART1"))));
+await check("ARMAR NO lee por id uno sin piezas en el taller", "fail", getDoc(doc(armar, art("ARTB0"))));
+await check("ARMAR NO lee por id uno con el taller mal escrito", "fail", getDoc(doc(armar, art("ARTBX"))));
 await check("ARMAR lista los artículos fabricados", "ok", getDocs(query(collection(armar, `${N}/articulos_n_web_new_version`), where("fabricado", "==", true))));
 await check("ARMAR NO lista el catálogo entero", "fail", getDocs(collection(armar, `${N}/articulos_n_web_new_version`)));
 await check("ARMAR NO mueve inventario", "fail", updateDoc(doc(armar, art("ART1")), { cantidad: "999" }));
 await check("ARMAR NO baja el taller", "fail", updateDoc(doc(armar, art("ARTF")), { cantidadBodega: "0" }));
 await check("ARMAR NO crea artículos", "fail", setDoc(doc(armar, art("NUEVO")), { nombre: "x" }));
 const etq = (resurtidoId, enlaceId = "E1") => ({ resurtidoId, enlaceId, creadoEn: serverTimestamp() });
-await check("ARMAR registra una etiqueta en su lote", "ok", setDoc(doc(armar, etiqueta("880000000050")), etq("L261116-A7")));
+/** Como lo hace el teléfono: la etiqueta y la caja (o paquete) en una sola escritura. */
+const conLote = (db, codigo, loteId, campo) => {
+  const b = writeBatch(db);
+  b.set(doc(db, etiqueta(codigo)), etq(loteId));
+  b.update(doc(db, lote(loteId)), campo);
+  return b.commit();
+};
+await check("ARMAR registra una etiqueta de caja en su lote", "ok", conLote(armar, "880000000050", "L261116-A7", {
+  "cajas.c880000000050": { codigo: "880000000050", orden: 1 },
+}));
+await check("ARMAR registra una etiqueta de paquete en su lote", "ok", conLote(armar, "880000000054", "L261116-A7", {
+  "paquetes.p880000000054": { codigo: "880000000054", caja: "c880000000050", orden: 1, contenido: [{ articuloId: "ARTF", piezas: 3 }] },
+}));
+await check("ARMAR NO aparta una etiqueta que su lote no usa", "fail", setDoc(doc(armar, etiqueta("880000000055")), etq("L261116-A7")));
+await check("ARMAR NO aparta una etiqueta que no se ha impreso (pasa del contador)", "fail", conLote(armar, "880000000101", "L261116-A7", {
+  "cajas.c880000000101": { codigo: "880000000101", orden: 2 },
+}));
+await check("ARMAR NO aparta una etiqueta para un lote listo", "fail", setDoc(doc(armar, etiqueta("880000000056")), etq("L261116-A3")));
 await check("ARMAR NO registra una etiqueta en el lote de otro", "fail", setDoc(doc(armar, etiqueta("880000000051")), etq("L261116-B1")));
 await check("ARMAR NO registra a nombre de otro enlace", "fail", setDoc(doc(armar, etiqueta("880000000052")), etq("L261116-A7", "E2")));
 await check("ARMAR NO registra un código que no es etiqueta", "fail", setDoc(doc(armar, etiqueta("12300001")), etq("L261116-A7")));
@@ -214,7 +245,7 @@ for (const [nombre, db] of [
   await check(`ARMAR ${nombre} NO lee sus lotes`, "fail", mio(db));
   await check(`ARMAR ${nombre} NO lee un lote`, "fail", getDoc(doc(db, lote("L261116-A7"))));
   await check(`ARMAR ${nombre} NO edita`, "fail", updateDoc(doc(db, lote("L261116-A7")), { paqueteria: "DHL" }));
-  await check(`ARMAR ${nombre} NO lee artículos`, "fail", getDoc(doc(db, art("ART1"))));
+  await check(`ARMAR ${nombre} NO lee artículos`, "fail", getDoc(doc(db, art("ARTF"))));
 }
 
 // ============ El enlace no toca nada más ============
@@ -283,6 +314,7 @@ await check("mercancia NO lee accesos", "fail", getDoc(doc(merc, enl("E1"))));
 await check("anon NO lee accesos", "fail", getDoc(doc(anon, enl("E1"))));
 await check("caja crea un acceso de fotos para un lote enviado de su sucursal", "ok", setDoc(doc(nodo1, enl("Q1")), enlaceFotos("n1", S1, "L261116-A2")));
 await check("caja crea un acceso de fotos para un lote recibido en parte", "ok", setDoc(doc(nodo1, enl("Q2")), enlaceFotos("n1", S1, "L261116-A6")));
+await check("caja crea un acceso de fotos para un lote cerrado de su sucursal", "ok", setDoc(doc(nodo1, enl("Q11")), enlaceFotos("n1", S1, "L261116-A30")));
 await check("caja NO crea un acceso para un lote de otra sucursal", "fail", setDoc(doc(nodo1, enl("Q3")), enlaceFotos("n1", S1, "L261116-A4")));
 await check("caja NO crea un acceso diciendo otra sucursal", "fail", setDoc(doc(nodo1, enl("Q4")), enlaceFotos("n1", S2, "L261116-A4")));
 await check("caja NO crea un acceso de armar", "fail", setDoc(doc(nodo1, enl("Q5")), enlaceNuevo({ creadoPor: "n1" })));
@@ -304,7 +336,12 @@ const recibirSesion = (sid, extra = {}) => ({
 });
 await check("caja agrega una sesión a un lote enviado de su sucursal", "ok", updateDoc(doc(nodo1, lote("L261116-A2")), recibirSesion("s1")));
 await check("caja agrega otra sesión y cierra", "ok", updateDoc(doc(nodo1, lote("L261116-A2")), recibirSesion("s2", { estado: "cerrado", fechaCerrado: "2026-11-19 09:00:00" })));
-await check("caja NO escribe en un lote ya cerrado", "fail", updateDoc(doc(nodo1, lote("L261116-A2")), recibirSesion("s3")));
+await check("caja NO reabre un lote cerrado", "fail", updateDoc(doc(nodo1, lote("L261116-A2")), recibirSesion("s3")));
+await check("caja recibe lo que aparece después de 'no llegó' y el lote sigue cerrado", "ok", updateDoc(doc(nodo1, lote("L261116-A30")), recibirSesion("t1", { estado: "cerrado" })));
+await check("caja NO agrega dos sesiones de una vez", "fail", updateDoc(doc(nodo1, lote("L261116-A30")), {
+  estado: "cerrado", "recepcion.sesiones.t2": SESION, "recepcion.sesiones.t3": SESION,
+}));
+await check("caja NO cierra un lote sin agregar una sesión", "fail", updateDoc(doc(nodo1, lote("L261116-A8")), { estado: "cerrado", fechaCerrado: "2026-11-19 09:00:00" }));
 await check("caja NO edita una sesión guardada", "fail", updateDoc(doc(nodo1, lote("L261116-A6")), { "recepcion.sesiones.s1.quien": "Otro" }));
 await check("caja NO borra una sesión guardada", "fail", updateDoc(doc(nodo1, lote("L261116-A6")), { "recepcion.sesiones.s1": deleteField() }));
 await check("caja NO borra toda la recepción", "fail", updateDoc(doc(nodo1, lote("L261116-A6")), { recepcion: deleteField() }));
@@ -345,6 +382,8 @@ await check("admin corrige paquetería y guías de un lote enviado", "ok", updat
 await check("admin NO cambia las cajas de un lote enviado", "fail", updateDoc(doc(admin, lote("L261116-A3")), { "cajas.c880000000002": { codigo: "880000000002", orden: 2 } }));
 await check("admin NO cambia la lista de un lote enviado", "fail", updateDoc(doc(admin, lote("L261116-A3")), { lineas: [] }));
 await check("admin NO cambia el destino de un lote enviado", "fail", updateDoc(doc(admin, lote("L261116-A3")), { sucursalDestinoId: S2 }));
+await check("admin NO regresa un lote enviado a armarse", "fail", updateDoc(doc(admin, lote("L261116-A3")), { estado: "creando" }));
+await check("admin NO cierra un lote que se está armando sin enviarlo", "fail", updateDoc(doc(admin, lote("L261116-A7")), { estado: "cerrado" }));
 await check("admin NO cambia el folio", "fail", updateDoc(doc(admin, lote("L261116-A7")), { folio: "L261116-A99" }));
 await check("admin NO le quita las cajas a un lote (volverlo simple)", "fail", updateDoc(doc(admin, lote("L261116-A7")), { cajas: deleteField() }));
 await check("admin NO pone un lote en un estado viejo", "fail", updateDoc(doc(admin, lote("L261116-A7")), { estado: "en_transito" }));

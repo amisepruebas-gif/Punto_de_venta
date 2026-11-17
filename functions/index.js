@@ -2356,7 +2356,10 @@ exports.canjearEnlaceLote = onCall(
       const ref = negocioRef.collection(`enlaces_lote${SUFFIX}`).doc(enlaceId);
       const ahoraMs = Date.now();
       // Un uid por teléfono: admin ve quién entró y las fotos llevan su dueño.
-      const uid = `enl_${enlaceId}_${cryptoNode.randomBytes(6).toString("hex")}`;
+      const uidNuevo = `enl_${enlaceId}_${cryptoNode.randomBytes(6).toString("hex")}`;
+      // Del número del dispositivo solo se guarda su huella (como del secreto).
+      const dispositivoHash = typeof data.dispositivo === "string" ?
+        acceso.hashSecreto(data.dispositivo) : "";
       const headers = (request.rawRequest && request.rawRequest.headers) || {};
       const userAgent = String(headers["user-agent"] || "").slice(0, 200);
 
@@ -2369,8 +2372,9 @@ exports.canjearEnlaceLote = onCall(
         }
         const creadoEnMs = d.creadoEn && typeof d.creadoEn.toMillis === "function" ?
           d.creadoEn.toMillis() : 0;
-        const decision = enlaceLote.decidirCanje({...d, creadoEnMs}, ahoraMs);
+        const decision = enlaceLote.decidirCanje({...d, creadoEnMs}, ahoraMs, dispositivoHash);
         if (!decision.ok) return decision;
+        const uid = decision.uid || uidNuevo;
         let lote = null;
         if (d.tipo === "recibir") {
           const loteSnap = await tx.get(
@@ -2382,21 +2386,27 @@ exports.canjearEnlaceLote = onCall(
             sucursalDestinoNombre: l.sucursalDestinoNombre || "",
           };
         }
-        tx.update(ref, {
-          canjes: (Number(d.canjes) || 0) + 1,
-          ultimoUsoMs: ahoraMs,
-          [`sesiones.${uid}`]: {
-            fechaMs: ahoraMs,
-            gen: Number(d.gen) || 0,
-            ...(userAgent ? {userAgent} : {}),
-          },
-        });
-        return {ok: true, venceMs: decision.venceMs, enlace: d, lote};
+        // El mismo teléfono que vuelve a entrar no gasta otra entrada.
+        tx.update(ref, decision.uid ?
+          {ultimoUsoMs: ahoraMs, [`sesiones.${uid}.ultimoMs`]: ahoraMs} :
+          {
+            canjes: (Number(d.canjes) || 0) + 1,
+            ultimoUsoMs: ahoraMs,
+            [`sesiones.${uid}`]: {
+              fechaMs: ahoraMs,
+              gen: Number(d.gen) || 0,
+              venceMs: decision.venceMs,
+              ...(dispositivoHash ? {dispositivo: dispositivoHash} : {}),
+              ...(userAgent ? {userAgent} : {}),
+            },
+          });
+        return {ok: true, venceMs: decision.venceMs, enlace: d, lote, uid};
       });
       if (!r.ok) {
         throw new HttpsError("permission-denied", enlaceLote.mensajeDeMotivo(r.motivo));
       }
 
+      const uid = r.uid;
       const claims = enlaceLote.claimsDeEnlace(negocioId, enlaceId, r.enlace, r.venceMs);
       const token = await admin.auth().createCustomToken(uid, claims);
       return {

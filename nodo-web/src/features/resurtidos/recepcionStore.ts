@@ -26,6 +26,12 @@ import {
 // servidor contesta `yaEstaba`). Una sellada solo se borra de la tablet
 // cuando el servidor contestó bien. Se guarda en localStorage: sobrevive a
 // cerrar la app o a que se apague la tablet.
+//
+// Dos pestañas de la caja en el mismo navegador comparten ese guardado: cada
+// una vuelve a leerlo cuando la otra lo cambia (zustand no lo hace solo), y lo
+// que no se guarda (si está subiendo, la última subida) vive en otro store
+// para que la vuelta de cada minuto no reescriba el guardado con una copia
+// vieja.
 
 export type SesionSellada = {
   sesionId: string;
@@ -45,13 +51,6 @@ export type RecepcionLoteLocal = {
 
 type RecepcionState = {
   lotes: Record<string, RecepcionLoteLocal>;
-  // ----- No se guardan -----
-  /** Hay una subida en curso. */
-  subiendo: boolean;
-  /** La última vuelta se cortó por falta de conexión. */
-  sinRed: boolean;
-  /** Última subida buena de cada lote (para decir qué entró). */
-  ultimaSubida: Record<string, { sesionId: string; resultado: ResultadoSubidaLote }>;
 
   setConteo: (negocioId: string, loteId: string, conteo: ConteoLote) => void;
   /** Sella lo contado como sesión por subir y deja el conteo en blanco.
@@ -64,6 +63,8 @@ type RecepcionState = {
 };
 
 export const llaveRecepcion = (negocioId: string, loteId: string) => `${negocioId}|${loteId}`;
+
+const NOMBRE_GUARDADO = "amise_nodo_recepcion_lotes";
 
 /** Constantes para los selectores: devolver uno nuevo cada vez haría que
  *  zustand vuelva a pintar sin fin. */
@@ -103,9 +104,6 @@ export const useRecepcionLotes = create<RecepcionState>()(
 
       return {
         lotes: {},
-        subiendo: false,
-        sinRed: false,
-        ultimaSubida: {},
 
         setConteo: (negocioId, loteId, conteo) =>
           set((st) => {
@@ -136,12 +134,38 @@ export const useRecepcionLotes = create<RecepcionState>()(
       };
     },
     {
-      name: "amise_nodo_recepcion_lotes",
+      name: NOMBRE_GUARDADO,
       version: 1,
       partialize: (s) => ({ lotes: s.lotes }),
     },
   ),
 );
+
+// Otra pestaña cambió lo guardado: se vuelve a leer antes de escribir encima.
+// (El evento solo llega a las DEMÁS pestañas, nunca a la que escribió.)
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === NOMBRE_GUARDADO || e.key === null) {
+      void useRecepcionLotes.persist.rehydrate();
+    }
+  });
+}
+
+/** Lo que no se guarda: el estado de la subida en ESTA pestaña. */
+type SubidaState = {
+  /** Hay una subida en curso. */
+  subiendo: boolean;
+  /** La última vuelta se cortó por falta de conexión. */
+  sinRed: boolean;
+  /** Última subida buena de cada lote (para decir qué entró). */
+  ultimaSubida: Record<string, { sesionId: string; resultado: ResultadoSubidaLote }>;
+};
+
+export const useSubidaLotes = create<SubidaState>()(() => ({
+  subiendo: false,
+  sinRed: false,
+  ultimaSubida: {},
+}));
 
 /** Lo escaneado (sin terminar) de un lote. */
 export function useConteoLote(negocioId: string | null, loteId: string): ConteoLote {
@@ -219,8 +243,9 @@ async function vueltaDeSubida(): Promise<void> {
   // quedaría marcada como rechazada: se espera a que la caja entre.
   if (!auth.currentUser) return;
   const st = useRecepcionLotes;
+  const subida = useSubidaLotes;
   const intentadas = new Set<string>();
-  st.setState({ subiendo: true });
+  subida.setState({ subiendo: true });
   try {
     for (;;) {
       // Se vuelve a leer en cada paso: lo sellado mientras sube también entra.
@@ -233,7 +258,7 @@ async function vueltaDeSubida(): Promise<void> {
         }
       }
       if (!siguiente) {
-        st.setState({ sinRed: false });
+        subida.setState({ sinRed: false });
         return;
       }
       const { l, s } = siguiente;
@@ -248,7 +273,7 @@ async function vueltaDeSubida(): Promise<void> {
         });
         // Contestó bien (también `yaEstaba` o `vacia`): ya no vive aquí.
         st.getState().descartarSellada(l.negocioId, l.loteId, s.sesionId);
-        st.setState((x) => ({
+        subida.setState((x) => ({
           ultimaSubida: {
             ...x.ultimaSubida,
             [llaveRecepcion(l.negocioId, l.loteId)]: { sesionId: s.sesionId, resultado },
@@ -258,7 +283,7 @@ async function vueltaDeSubida(): Promise<void> {
         if (esPasajero(e)) {
           // Sin red no tiene caso intentar las demás: se sigue después.
           console.warn("Recepción de lote pendiente de subir:", e);
-          st.setState({ sinRed: true });
+          subida.setState({ sinRed: true });
           return;
         }
         console.error("Recepción de lote rechazada:", e);
@@ -282,7 +307,7 @@ async function vueltaDeSubida(): Promise<void> {
       }
     }
   } finally {
-    st.setState({ subiendo: false });
+    subida.setState({ subiendo: false });
   }
 }
 

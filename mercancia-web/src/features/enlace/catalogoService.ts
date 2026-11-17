@@ -3,9 +3,9 @@
 // ============================================================
 //
 // La regla del enlace SOLO deja listar los artículos con el filtro exacto
-// `fabricado == true` y leer cualquier otro por su código (`get`). Nunca el
-// catálogo entero. Todo se guarda en memoria mientras dure la sesión para
-// no repetir lecturas.
+// `fabricado == true` y leer otro por su código (`get`) si tiene piezas en
+// el taller (lo único que se puede enviar). Nunca el catálogo entero. Todo se
+// guarda en memoria mientras dure la sesión para no repetir lecturas.
 
 import {
   collection,
@@ -29,7 +29,7 @@ import {
   type ArticuloSubvariacion,
   type Sucursal,
 } from "@shared";
-import { ErrorEnlace, type SesionEnlace } from "@/firebase/enlaceApp";
+import { ErrorEnlace, esPermisoDenegado, type SesionEnlace } from "@/firebase/enlaceApp";
 
 type Cache = {
   fabricados: Promise<Articulo[]> | null;
@@ -37,6 +37,8 @@ type Cache = {
   porId: Map<string, Articulo>;
   /** Ids que se buscaron y no existen. */
   noExisten: Set<string>;
+  /** Ids que existen pero no se pueden enviar desde el taller. */
+  noPermitidos: Set<string>;
   sucursales: Promise<Sucursal[]> | null;
 };
 
@@ -45,10 +47,33 @@ const caches = new Map<string, Cache>();
 function cache(s: SesionEnlace): Cache {
   let c = caches.get(s.enlaceId);
   if (!c) {
-    c = { fabricados: null, porId: new Map(), noExisten: new Set(), sucursales: null };
+    c = {
+      fabricados: null,
+      porId: new Map(),
+      noExisten: new Set(),
+      noPermitidos: new Set(),
+      sucursales: null,
+    };
     caches.set(s.enlaceId, c);
   }
   return c;
+}
+
+const NO_SE_ENVIA =
+  "Ese artículo no se puede mandar en un lote: no es de fabricación y no tiene piezas en el taller.";
+
+/**
+ * Tras un "sin permiso" al leer un artículo: ¿el acceso sigue sirviendo? Se
+ * pregunta por un código de lote que no puede existir (la regla lo deja si
+ * el acceso está prendido). Si sirve, el problema es ESE artículo.
+ */
+async function accesoSigueVivo(s: SesionEnlace): Promise<boolean> {
+  try {
+    await getDocFromServer(doc(s.db, paths.resurtido(s.negocioId, `L000000-${s.letra ?? "A"}0`)));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const colArticulos = (s: SesionEnlace) =>
@@ -86,10 +111,20 @@ export async function leerArticulo(s: SesionEnlace, id: string): Promise<Articul
   const ya = c.porId.get(id);
   if (ya) return ya;
   if (c.noExisten.has(id)) return null;
+  if (c.noPermitidos.has(id)) throw new ErrorEnlace(NO_SE_ENVIA);
   // Un id de documento no puede traer "/" ni ser cualquier cosa: lo que no
   // parece código ni se pregunta.
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return null;
-  const snap = await getDocFromServer(doc(s.db, paths.articulo(s.negocioId, id)));
+  let snap;
+  try {
+    snap = await getDocFromServer(doc(s.db, paths.articulo(s.negocioId, id)));
+  } catch (e) {
+    if (esPermisoDenegado(e) && (await accesoSigueVivo(s))) {
+      c.noPermitidos.add(id);
+      throw new ErrorEnlace(NO_SE_ENVIA);
+    }
+    throw e;
+  }
   if (!snap.exists()) {
     c.noExisten.add(id);
     return null;

@@ -25,37 +25,74 @@ const RE_SECRETO = /^[A-Za-z0-9_-]{43}$/;
 const RE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const RE_LETRA = /^[A-Z]{1,2}$/;
 
-/** Formato de lo que manda el teléfono, antes de leer nada. */
+/** Formato de lo que manda el teléfono, antes de leer nada. `dispositivo`
+ *  (opcional) es un número al azar que el teléfono guarda para sí. */
 function entradaValida(data) {
-  const {negocioId, enlaceId, secreto} = data || {};
+  const {negocioId, enlaceId, secreto, dispositivo} = data || {};
   return typeof negocioId === "string" && RE_ID.test(negocioId) &&
     typeof enlaceId === "string" && RE_ID.test(enlaceId) &&
-    typeof secreto === "string" && RE_SECRETO.test(secreto);
+    typeof secreto === "string" && RE_SECRETO.test(secreto) &&
+    (dispositivo === undefined || dispositivo === null ||
+      (typeof dispositivo === "string" && RE_SECRETO.test(dispositivo)));
 }
 
 /**
- * ¿Puede entrar otro teléfono con este enlace? Se llama DESPUÉS de
- * comprobar el secreto. `enlace` es el doc más `creadoEnMs`.
- * Devuelve {ok: true, venceMs} o {ok: false, motivo}.
+ * La sesión que ya abrió ESTE teléfono con la generación actual del enlace
+ * (se reconoce por la huella de su número de dispositivo). `null` si no hay.
  */
-function decidirCanje(enlace, ahoraMs) {
+function sesionDelDispositivo(enlace, dispositivoHash) {
+  if (!dispositivoHash || !enlace || !enlace.sesiones ||
+      typeof enlace.sesiones !== "object") {
+    return null;
+  }
+  const gen = Number(enlace.gen) || 0;
+  for (const [uid, s] of Object.entries(enlace.sesiones)) {
+    if (s && typeof s === "object" && s.dispositivo === dispositivoHash &&
+        (Number(s.gen) || 0) === gen) {
+      return {uid, venceMs: Number(s.venceMs) || 0};
+    }
+  }
+  return null;
+}
+
+/**
+ * ¿Puede entrar este teléfono con este enlace? Se llama DESPUÉS de
+ * comprobar el secreto. `enlace` es el doc más `creadoEnMs`.
+ *
+ * Si el mismo teléfono ya había entrado (se perdió la respuesta, falló el
+ * inicio de sesión o volvió a tocar "Entrar"), se le da otra vez SU sesión
+ * sin gastar otra entrada: `uid` trae la que ya tenía.
+ *
+ * Devuelve {ok: true, venceMs, uid?} o {ok: false, motivo}.
+ */
+function decidirCanje(enlace, ahoraMs, dispositivoHash) {
   if (!enlace) return {ok: false, motivo: "no_sirve"};
   if (enlace.tipo !== "armar" && enlace.tipo !== "recibir") {
     return {ok: false, motivo: "no_sirve"};
   }
   if (enlace.activo !== true) return {ok: false, motivo: "apagado"};
-  const canjes = Number(enlace.canjes) || 0;
-  if (canjes >= MAX_CANJES[enlace.tipo]) return {ok: false, motivo: "agotado"};
   if (enlace.tipo === "armar") {
     if (typeof enlace.letra !== "string" || !RE_LETRA.test(enlace.letra)) {
       return {ok: false, motivo: "no_sirve"};
     }
-    return {ok: true, venceMs: SIN_VENCIMIENTO_MS};
-  }
-  if (typeof enlace.resurtidoId !== "string" || !enlace.resurtidoId ||
+  } else if (typeof enlace.resurtidoId !== "string" || !enlace.resurtidoId ||
       typeof enlace.sucursalId !== "string" || !enlace.sucursalId) {
     return {ok: false, motivo: "no_sirve"};
   }
+
+  const previa = sesionDelDispositivo(enlace, dispositivoHash);
+  if (previa) {
+    if (enlace.tipo === "armar") {
+      return {ok: true, venceMs: SIN_VENCIMIENTO_MS, uid: previa.uid};
+    }
+    // Fotos: la misma sesión de 30 minutos, contada desde que entró.
+    if (!previa.venceMs || ahoraMs >= previa.venceMs) return {ok: false, motivo: "tarde"};
+    return {ok: true, venceMs: previa.venceMs, uid: previa.uid};
+  }
+
+  const canjes = Number(enlace.canjes) || 0;
+  if (canjes >= MAX_CANJES[enlace.tipo]) return {ok: false, motivo: "agotado"};
+  if (enlace.tipo === "armar") return {ok: true, venceMs: SIN_VENCIMIENTO_MS};
   const creadoEnMs = Number(enlace.creadoEnMs) || 0;
   // Sin hora de creación (o del futuro) no hay forma de medir los 5 minutos.
   if (!creadoEnMs || creadoEnMs > ahoraMs + 60 * 1000) {
@@ -99,6 +136,7 @@ module.exports = {
   RECIBIR_DURACION_MS,
   SIN_VENCIMIENTO_MS,
   entradaValida,
+  sesionDelDispositivo,
   decidirCanje,
   claimsDeEnlace,
   mensajeDeMotivo,

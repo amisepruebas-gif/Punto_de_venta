@@ -22,6 +22,7 @@ import { ImageLightbox } from "@/components/ImageLightbox";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useAuth } from "@/hooks/useAuth";
 import { useArticulos } from "@/features/articulos/useArticulos";
+import { useSucursales } from "@/features/sucursales/useSucursales";
 import { useFotosLote } from "@/features/lotes/useFotosLote";
 import {
   borrarFotoLote,
@@ -89,12 +90,25 @@ function problemasDe(e: unknown): string[] | null {
  * paquetería y guías, ve lo recibido contra lo declarado y cierra lo que no
  * llegó.
  */
-export function LoteDetail({ lote, loteId }: { lote: Lote; loteId: string }) {
+export function LoteDetail({ lote: loteGuardado, loteId }: { lote: Lote; loteId: string }) {
   const navigate = useNavigate();
   const { negocioId } = useNegocio();
   const { user } = useAuth();
   const quien = user?.user.email ?? user?.user.uid ?? "";
   const { articulos, loading: cargandoCatalogo } = useArticulos();
+  const { sucursales, loading: cargandoSucursales } = useSucursales();
+  // El destino lo escribe el teléfono: el id es donde se suma al recibir, así
+  // que el nombre que se muestra es el de ESA sucursal (no el que escribió).
+  const lote = useMemo<Lote>(() => {
+    if (cargandoSucursales) return loteGuardado;
+    const real = sucursales.find((s) => s.sucursalId === loteGuardado.sucursalDestinoId);
+    const nombre = real
+      ? real.nombre
+      : `${loteGuardado.sucursalDestinoNombre || "Sin destino"} (esa sucursal no existe)`;
+    return nombre === loteGuardado.sucursalDestinoNombre
+      ? loteGuardado
+      : { ...loteGuardado, sucursalDestinoNombre: nombre };
+  }, [loteGuardado, sucursales, cargandoSucursales]);
   const porId = useMemo(
     () => new Map<string, Articulo>(articulos.map((a) => [a.id, a])),
     [articulos],
@@ -352,7 +366,7 @@ function Acciones({
     }
     if (
       !confirm(
-        `¿Marcar ${piezas(resumen.totales.pendiente)} como no llegadas?\n\nEl lote se cierra y la sucursal ya no podrá recibir nada más de él.`,
+        `¿Marcar ${piezas(resumen.totales.pendiente)} como no llegadas?\n\nEl lote se cierra. Si después aparecen (o la caja las contó sin internet), la sucursal todavía las puede recibir y entran a su inventario.`,
       )
     ) {
       return;
@@ -463,8 +477,8 @@ function Acciones({
         <h3 className="text-base font-semibold">Lo que falta</h3>
         <p className="text-sm text-muted-foreground">
           Faltan <b className="text-foreground">{piezas(resumen.totales.pendiente)}</b> por llegar. Si
-          ya no van a llegar, márcalas como no llegadas: el lote se cierra y la sucursal ya no puede
-          recibir más de él.
+          ya no van a llegar, márcalas como no llegadas: el lote se cierra. Si después aparecen, la
+          sucursal todavía las puede recibir.
         </p>
         <div className="space-y-1.5">
           <Label htmlFor="nota-no-llego">Nota (obligatoria)</Label>
