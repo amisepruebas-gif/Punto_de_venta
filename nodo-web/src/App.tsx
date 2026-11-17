@@ -6,6 +6,14 @@ import { ResurtidosNodoPage } from "./routes/resurtidos/ResurtidosNodoPage";
 import { ResurtidoNodoDetailPage } from "./routes/resurtidos/ResurtidoNodoDetailPage";
 import { useNodoSession } from "./hooks/useNodoSession";
 import { useRefrescoRender } from "./hooks/useRefrescoRender";
+import { useSubirSesiones } from "./features/resurtidos/recepcionStore";
+
+/** Sube las recepciones de lotes que quedaron en la tablet sin internet,
+ *  aunque la caja esté en otra pantalla (vendiendo). */
+function SubidorRecepcionesLote() {
+  useSubirSesiones();
+  return null;
+}
 
 export default function App() {
   const { nodoId, loading } = useNodoSession();
@@ -22,36 +30,39 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route
-        path="/first-run"
-        element={nodoId ? <Navigate to="/" replace /> : <FirstRun />}
-      />
-      <Route
-        path="/"
-        element={nodoId ? <Ventas /> : <Navigate to="/first-run" replace />}
-      />
-      <Route
-        path="/ajustes"
-        element={nodoId ? <Ajustes /> : <Navigate to="/first-run" replace />}
-      />
-      <Route
-        path="/resurtidos"
-        element={
-          nodoId ? <ResurtidosNodoPage /> : <Navigate to="/first-run" replace />
-        }
-      />
-      <Route
-        path="/resurtidos/:id"
-        element={
-          nodoId ? (
-            <ResurtidoNodoDetailPage />
-          ) : (
-            <Navigate to="/first-run" replace />
-          )
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      {nodoId && <SubidorRecepcionesLote />}
+      <Routes>
+        <Route
+          path="/first-run"
+          element={nodoId ? <Navigate to="/" replace /> : <FirstRun />}
+        />
+        <Route
+          path="/"
+          element={nodoId ? <Ventas /> : <Navigate to="/first-run" replace />}
+        />
+        <Route
+          path="/ajustes"
+          element={nodoId ? <Ajustes /> : <Navigate to="/first-run" replace />}
+        />
+        <Route
+          path="/resurtidos"
+          element={
+            nodoId ? <ResurtidosNodoPage /> : <Navigate to="/first-run" replace />
+          }
+        />
+        <Route
+          path="/resurtidos/:id"
+          element={
+            nodoId ? (
+              <ResurtidoNodoDetailPage />
+            ) : (
+              <Navigate to="/first-run" replace />
+            )
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }

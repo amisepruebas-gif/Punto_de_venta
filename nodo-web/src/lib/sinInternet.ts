@@ -119,14 +119,18 @@ export function conLimite<T>(
  * servidor): sin red avisa al instante con `mensaje`; con red lo intenta con
  * `conLimite` y, si el servidor no contesta, avisa con el mismo mensaje en
  * vez de un error técnico ("Connection failed.").
+ *
+ * `opciones.limiteMs` fija el límite (lo que lee o escribe mucho, como una
+ * recepción de lote grande): uno explícito no se acorta tras un fallo.
  */
 export async function enLineaOAvisar<T>(
   mensaje: string,
   trabajo: (ctl: ControlLimite) => Promise<T>,
+  opciones?: { limiteMs?: number },
 ): Promise<T> {
   if (!hayRed()) throw new SinConexion(mensaje);
   try {
-    return await conLimite(trabajo);
+    return await conLimite(trabajo, opciones);
   } catch (e) {
     if (esFallaDeRed(e)) throw new SinConexion(mensaje);
     throw e;

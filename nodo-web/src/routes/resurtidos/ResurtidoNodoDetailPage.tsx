@@ -19,10 +19,12 @@ import {
   cerrarResurtido,
   marcarRecibido,
 } from "@/features/resurtidos/resurtidoService";
-import type {
-  Resurtido,
-  ResurtidoDisposicion,
-  ResurtidoEstado,
+import { LoteRecepcionPage } from "./LoteRecepcionPage";
+import {
+  esLote,
+  type Resurtido,
+  type ResurtidoDisposicion,
+  type ResurtidoEstado,
 } from "@shared";
 
 const ESTADO_LABEL: Record<ResurtidoEstado, string> = {
@@ -134,6 +136,10 @@ export function ResurtidoNodoDetailPage() {
       </div>
     );
   }
+
+  // Un lote de envío (tiene `cajas`) se recibe escaneando, en su propia
+  // pantalla. Los resurtidos simples siguen con el flujo de abajo.
+  if (esLote(resurtido)) return <LoteRecepcionPage lote={resurtido} />;
 
   const puedeAccion =
     resurtido.estado === "en_transito" || resurtido.estado === "recibido";
