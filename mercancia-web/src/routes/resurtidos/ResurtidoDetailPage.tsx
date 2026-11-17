@@ -22,11 +22,13 @@ import {
   marcarEnTransito,
   marcarRecibido,
 } from "@/features/resurtidos/resurtidoService";
-import type {
-  Resurtido,
-  ResurtidoDisposicion,
-  ResurtidoEstado,
+import {
+  esLote,
+  type Resurtido,
+  type ResurtidoDisposicion,
+  type ResurtidoEstado,
 } from "@shared";
+import { LoteSoloLectura } from "./LoteSoloLectura";
 
 const ESTADO_LABEL: Record<ResurtidoEstado, string> = {
   creando: "Creando",
@@ -108,6 +110,19 @@ export function ResurtidoDetailPage() {
           </div>
         )}
       </div>
+    );
+  }
+
+  // Un lote de envío (tiene `cajas`) es de solo lectura aquí: se arma en el
+  // teléfono y se confirma y sigue en admin. Mientras se arma trae
+  // `lineas: []`, así que no puede pasar por el flujo de abajo.
+  if (esLote(resurtido)) {
+    return (
+      <LoteSoloLectura
+        lote={resurtido}
+        negocioId={negocioId}
+        onVolver={() => navigate("/resurtidos")}
+      />
     );
   }
 

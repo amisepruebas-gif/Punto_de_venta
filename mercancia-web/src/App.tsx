@@ -10,6 +10,11 @@ import { IngresoMercanciaPage } from "@/routes/ingreso-mercancia/IngresoMercanci
 import { ResurtidosListPage } from "@/routes/resurtidos/ResurtidosListPage";
 import { ResurtidoCreatePage } from "@/routes/resurtidos/ResurtidoCreatePage";
 import { ResurtidoDetailPage } from "@/routes/resurtidos/ResurtidoDetailPage";
+import { EnlaceLayout } from "@/routes/enlace/EnlaceLayout";
+import { EntrarPage } from "@/routes/enlace/EntrarPage";
+import { MisLotesPage } from "@/routes/enlace/MisLotesPage";
+import { ArmarLotePage } from "@/routes/enlace/ArmarLotePage";
+import { FotosPage } from "@/routes/enlace/FotosPage";
 import { AuthWatcher } from "@/features/auth/AuthWatcher";
 import { useSession } from "@/hooks/useSession";
 
@@ -122,6 +127,16 @@ export default function App() {
           </Protected>
         }
       />
+      {/* Teléfono que entra por un enlace de lote: SIN PIN ni sucursal
+          (va fuera de Protected). Usa su propia sesión de Firebase
+          (`firebase/enlaceApp.ts`); AuthWatcher solo vigila la de PIN. */}
+      <Route path="/enlace/:negocioId/:enlaceId" element={<EnlaceLayout />}>
+        <Route index element={<EntrarPage />} />
+        <Route path="lotes" element={<MisLotesPage />} />
+        <Route path="lotes/:loteId" element={<ArmarLotePage />} />
+        <Route path="fotos" element={<FotosPage />} />
+        <Route path="*" element={<EntrarPage />} />
+      </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

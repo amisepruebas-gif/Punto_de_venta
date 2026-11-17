@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useResurtidos } from "@/features/resurtidos/useResurtidos";
-import type { ResurtidoEstado } from "@shared";
+import { esLote, totalesLote, type Resurtido, type ResurtidoEstado } from "@shared";
 
 const ESTADOS: Array<{ key: ResurtidoEstado | "todos"; label: string }> = [
   { key: "todos", label: "Todos" },
@@ -28,6 +28,18 @@ const ESTADO_LABEL: Record<ResurtidoEstado, string> = {
   parcial: "Recibido en parte",
 };
 
+/** Los estados de los lotes caen en el filtro equivalente del flujo viejo. */
+const GRUPO_FILTRO: Partial<Record<ResurtidoEstado, ResurtidoEstado>> = {
+  enviado: "en_transito",
+  parcial: "recibido",
+};
+
+/** Un lote que se arma y ya está listo espera a que admin lo envíe. */
+function etiquetaEstado(r: Resurtido): string {
+  if (esLote(r) && r.estado === "creando") return r.listo ? "Lote listo" : "Lote armándose";
+  return ESTADO_LABEL[r.estado];
+}
+
 const ESTADO_COLOR: Record<ResurtidoEstado, string> = {
   creando: "bg-muted text-muted-foreground",
   en_transito: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
@@ -44,7 +56,7 @@ export function ResurtidosListPage() {
 
   const filtrados = useMemo(() => {
     if (filtro === "todos") return resurtidos;
-    return resurtidos.filter((r) => r.estado === filtro);
+    return resurtidos.filter((r) => (GRUPO_FILTRO[r.estado] ?? r.estado) === filtro);
   }, [resurtidos, filtro]);
 
   return (
@@ -96,10 +108,12 @@ export function ResurtidosListPage() {
         {filtrados.length > 0 && (
           <ul className="space-y-2">
             {filtrados.map((r) => {
-              const totalPiezas = r.lineas.reduce(
-                (acc, l) => acc + l.cantidadEnviada,
-                0,
-              );
+              // Un lote que se arma todavía no tiene `lineas`: sus cuentas
+              // salen de sus cajas y paquetes.
+              const lote = esLote(r) ? totalesLote(r) : null;
+              const totalPiezas = lote
+                ? lote.piezas
+                : r.lineas.reduce((acc, l) => acc + l.cantidadEnviada, 0);
               return (
                 <li key={r.id}>
                   <button
@@ -117,19 +131,33 @@ export function ResurtidosListPage() {
                             ESTADO_COLOR[r.estado]
                           }`}
                         >
-                          {ESTADO_LABEL[r.estado]}
+                          {etiquetaEstado(r)}
                         </span>
                         <span className="truncate text-xs text-muted-foreground">
-                          {r.fechaCreacion.slice(0, 10)}
+                          {lote ? (
+                            <span className="font-mono">{r.folio ?? r.id}</span>
+                          ) : (
+                            r.fechaCreacion.slice(0, 10)
+                          )}
                         </span>
                       </div>
                       <p className="mt-1 truncate text-sm font-medium">
                         → {r.sucursalDestinoNombre}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {r.lineas.length} línea
-                        {r.lineas.length === 1 ? "" : "s"} · {totalPiezas} pza
-                        {totalPiezas === 1 ? "" : "s"} · empacó {r.responsableEmpaco}
+                        {lote ? (
+                          <>
+                            {lote.cajas} caja{lote.cajas === 1 ? "" : "s"} · {lote.paquetes} paquete
+                            {lote.paquetes === 1 ? "" : "s"} · {totalPiezas} pza
+                            {totalPiezas === 1 ? "" : "s"}
+                          </>
+                        ) : (
+                          <>
+                            {r.lineas.length} línea
+                            {r.lineas.length === 1 ? "" : "s"} · {totalPiezas} pza
+                            {totalPiezas === 1 ? "" : "s"} · empacó {r.responsableEmpaco}
+                          </>
+                        )}
                       </p>
                     </div>
                     <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
