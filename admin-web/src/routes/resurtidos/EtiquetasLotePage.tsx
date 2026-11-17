@@ -11,6 +11,7 @@ import {
   prepararEtiquetasNumeradas,
 } from "@/features/etiquetas/etiquetasNumeradasPdf";
 import { MAX_ETIQUETAS_POR_PDF, reservarEtiquetasLote } from "@/features/lotes/loteService";
+import { MandarAImpresora } from "@/features/impresoras/MandarAImpresora";
 import { codigoEtiquetaLote, etiquetaLoteLegible } from "@shared";
 
 // Misma preferencia que las etiquetas de artículo (Fabricación): casi
@@ -148,6 +149,17 @@ export function EtiquetasLotePage() {
           </Button>
         </div>
       </section>
+
+      {negocioId && (
+        <section className="space-y-3 rounded-lg border bg-card p-4">
+          <h2 className="text-base font-semibold">O mándalas a una impresora de etiquetas</h2>
+          <p className="text-sm text-muted-foreground">
+            Salen directo en la impresora de etiquetas de una PC con el programa AMISE Impresora. Los números
+            salen del mismo contador que los PDF.
+          </p>
+          <MandarAImpresora negocioId={negocioId} />
+        </section>
+      )}
     </div>
   );
 }

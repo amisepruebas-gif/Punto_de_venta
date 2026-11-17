@@ -212,6 +212,9 @@ await env.withSecurityRulesDisabled(async (c) => {
 await check("el programa NO termina una que tomó otra sesión", "fail", updateDoc(doc(pc3, trabajo("T7")), { estado: "impreso", terminadoEn: serverTimestamp(), impresiones: 1 }));
 await check("admin libera una que se quedó imprimiendo", "ok", updateDoc(doc(admin, trabajo("T7")), { estado: "error", error: "Se interrumpió" }));
 await check("admin la manda a reimprimir", "ok", updateDoc(doc(admin, trabajo("T7")), { estado: "pendiente", error: deleteField() }));
+await check("el teléfono NO cancela una orden en cola", "fail", updateDoc(doc(armar, trabajo("T7")), { estado: "error", error: "x" }));
+await check("admin cancela una orden en cola", "ok", updateDoc(doc(admin, trabajo("T7")), { estado: "error", error: "Se canceló en admin" }));
+await check("admin NO marca impresa una orden", "fail", updateDoc(doc(admin, trabajo("T7")), { estado: "impreso" }));
 
 // Sin contador todavía: el programa lo crea al tomar la primera orden.
 await env.withSecurityRulesDisabled(async (c) => {

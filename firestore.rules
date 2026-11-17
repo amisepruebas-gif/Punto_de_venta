@@ -454,9 +454,11 @@ service cloud.firestore {
                 || (esNodo(nid) && resource.data.sucursalId == request.auth.token.sucursalId))
               && resource.data.estado in ['impreso', 'error'] && nueva().estado == 'pendiente'
               && cambiaTrabajo().hasOnly(['estado', 'error']))
-          // Admin libera una que se quedó "imprimiendo" (la PC se apagó y se
-          // renovó su acceso): la marca con error para que se pueda reimprimir.
-          || (esAdmin(nid) && resource.data.estado == 'imprimiendo' && nueva().estado == 'error'
+          // Admin cancela una que espera en la cola (p. ej. al borrar su
+          // impresora) o libera una que se quedó "imprimiendo" (la PC se apagó
+          // y se renovó su acceso): queda con error y se puede reimprimir.
+          || (esAdmin(nid) && resource.data.estado in ['pendiente', 'imprimiendo']
+              && nueva().estado == 'error'
               && cambiaTrabajo().hasOnly(['estado', 'error']) && nueva().error is string);
 
         allow delete: if esAdmin(nid);

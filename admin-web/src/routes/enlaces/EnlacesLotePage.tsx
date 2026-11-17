@@ -32,6 +32,8 @@ import {
   renovarEnlace,
 } from "@/features/lotes/loteService";
 import { fechaCorta } from "@/features/lotes/loteVista";
+import { Apagador } from "./Apagador";
+import { ImpresorasSeccion } from "./ImpresorasSeccion";
 import {
   ENLACE_MAX_CANJES,
   ENLACE_RECIBIR_DURACION_MS,
@@ -92,6 +94,7 @@ export function EnlacesLotePage() {
   const [mostrado, setMostrado] = useState<{ titulo: string; url: string } | null>(null);
 
   const armar = enlaces.filter((e) => e.tipo === "armar");
+  const impresoras = enlaces.filter((e) => e.tipo === "imprimir");
   const fotos = enlaces.filter((e) => {
     if (e.tipo !== "recibir" || !e.activo) return false;
     const creado = msDeTimestamp(e.creadoEn);
@@ -126,7 +129,7 @@ export function EnlacesLotePage() {
     if (!negocioId) return;
     if (
       !confirm(
-        "¿Apagar todos los accesos?\n\nTodos los teléfonos pierden la entrada al instante. Luego los puedes prender uno por uno.",
+        "¿Apagar todos los accesos?\n\nTodos los teléfonos pierden la entrada al instante y las impresoras dejan de imprimir. Luego los puedes prender uno por uno.",
       )
     ) {
       return;
@@ -248,6 +251,8 @@ export function EnlacesLotePage() {
           fotos.map((e) => <TarjetaFotos key={e.id} enlace={e} negocioId={negocioId} ahora={ahora} />)
         )}
       </section>
+
+      {negocioId && <ImpresorasSeccion negocioId={negocioId} accesos={impresoras} />}
     </div>
   );
 }
@@ -335,40 +340,6 @@ function EnlaceMostrado({
 }
 
 // ---------- Un acceso para armar ----------
-
-function Apagador({
-  activo,
-  disabled,
-  onCambiar,
-}: {
-  activo: boolean;
-  disabled?: boolean;
-  onCambiar: (activo: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={activo}
-      disabled={disabled}
-      onClick={() => onCambiar(!activo)}
-      className={`inline-flex items-center gap-2 rounded-full px-2 py-1 text-xs font-medium transition disabled:opacity-50 ${
-        activo
-          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-          : "bg-muted text-muted-foreground"
-      }`}
-    >
-      <span
-        className={`relative inline-block h-4 w-7 rounded-full transition ${activo ? "bg-emerald-600" : "bg-muted-foreground/40"}`}
-      >
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${activo ? "left-3.5" : "left-0.5"}`}
-        />
-      </span>
-      {activo ? "Prendido" : "Apagado"}
-    </button>
-  );
-}
 
 function TarjetaEnlace({
   enlace,

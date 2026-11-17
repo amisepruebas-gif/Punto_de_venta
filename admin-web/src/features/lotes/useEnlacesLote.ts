@@ -33,14 +33,17 @@ export function useEnlacesLote() {
       (snap) => {
         const arr: EnlaceLoteConId[] = [];
         snap.forEach((d) => arr.push({ ...(d.data() as EnlaceLote), id: d.id }));
-        // Los de armar por letra (A, B… AA); los de fotos, el más nuevo primero.
+        // Los de armar por letra (A, B… AA); luego las impresoras por nombre;
+        // los de fotos, el más nuevo primero.
+        const ORDEN: Record<string, number> = { armar: 0, imprimir: 1, recibir: 2 };
         arr.sort((a, b) => {
-          if (a.tipo !== b.tipo) return a.tipo === "armar" ? -1 : 1;
+          if (a.tipo !== b.tipo) return (ORDEN[a.tipo] ?? 3) - (ORDEN[b.tipo] ?? 3);
           if (a.tipo === "armar") {
             const la = a.letra ?? "";
             const lb = b.letra ?? "";
             return la.length - lb.length || la.localeCompare(lb);
           }
+          if (a.tipo === "imprimir") return (a.nombre ?? "").localeCompare(b.nombre ?? "", "es");
           return (msDeTimestamp(b.creadoEn) ?? Infinity) - (msDeTimestamp(a.creadoEn) ?? Infinity);
         });
         setEnlaces(arr);
