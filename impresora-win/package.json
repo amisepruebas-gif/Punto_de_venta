@@ -1,0 +1,63 @@
+{
+  "name": "amise-impresora",
+  "productName": "AMISE Impresora",
+  "version": "1.0.0",
+  "description": "Recibe las órdenes de impresión de etiquetas de AMISE y las imprime por USB.",
+  "private": true,
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8",
+    "esbuild": "^0.24.0",
+    "firebase": "^10.14.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  },
+  "build": {
+    "appId": "com.amise.impresora",
+    "productName": "AMISE Impresora",
+    "copyright": "AMISE",
+    "directories": {
+      "output": "dist/instalador",
+      "buildResources": "recursos"
+    },
+    "files": [
+      "dist/main/**",
+      "dist/preload/**",
+      "dist/renderer/**",
+      "recursos/bandeja.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/raw-print.exe",
+        "to": "raw-print.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "recursos/icono.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "shortcutName": "AMISE Impresora",
+      "artifactName": "AMISE-Impresora-Setup-${version}.${ext}"
+    }
+  }
+}
