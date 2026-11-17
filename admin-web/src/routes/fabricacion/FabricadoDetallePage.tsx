@@ -14,20 +14,23 @@ import {
 } from "@/features/fabricacion/useFabricacion";
 import {
   calcularExistencias,
-  embarqueAbierto,
+  piezasEnTransito,
 } from "@/features/fabricacion/existenciasFabricado";
 import {
   ReducirExistenciaModal,
   type UbicacionConStock,
 } from "@/features/fabricacion/ReducirExistenciaModal";
 import type { PrefillResurtido } from "@/features/resurtidos/prefill";
-import { MOTIVOS_AJUSTE } from "@shared";
+import { MOTIVOS_AJUSTE, esLote, type ResurtidoEstado } from "@shared";
 
-const ESTADO_EMBARQUE: Record<string, string> = {
+const ESTADO_EMBARQUE: Record<ResurtidoEstado, string> = {
   creando: "Armando",
   en_transito: "En tránsito",
   recibido: "Recibido",
   cerrado: "Cerrado",
+  // Lotes de envío.
+  enviado: "Enviado",
+  parcial: "Recibido en parte",
 };
 
 type Evento = {
@@ -89,7 +92,7 @@ export function FabricadoDetallePage() {
       ev.push({
         clave: `r-${r.id}`,
         fecha: r.fechaCreacion,
-        titulo: `Embarque a ${r.sucursalDestinoNombre} · ${ESTADO_EMBARQUE[r.estado] ?? r.estado}`,
+        titulo: `${esLote(r) ? `Lote ${r.folio ?? r.id}` : "Embarque"} a ${r.sucursalDestinoNombre} · ${ESTADO_EMBARQUE[r.estado] ?? r.estado}`,
         detalle: `${piezas} pz · empacó ${r.responsableEmpaco}`,
         delta: null,
         enlace: `/resurtidos/${r.id}`,
@@ -124,8 +127,9 @@ export function FabricadoDetallePage() {
       },
     ],
   };
+  // Un lote recibido en parte solo cuenta si de ESTE artículo aún falta algo.
   const embarquesAbiertos = resurtidos.filter(
-    (r) => embarqueAbierto(r) && r.lineas.some((l) => l.articuloId === articulo.id),
+    (r) => piezasEnTransito(r, articulo.id) > 0,
   ).length;
 
   return (

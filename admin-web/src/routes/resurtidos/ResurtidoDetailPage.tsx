@@ -22,11 +22,13 @@ import {
   marcarEnTransito,
   marcarRecibido,
 } from "@/features/resurtidos/resurtidoService";
-import type {
-  Resurtido,
-  ResurtidoDisposicion,
-  ResurtidoEstado,
+import {
+  esLote,
+  type Resurtido,
+  type ResurtidoDisposicion,
+  type ResurtidoEstado,
 } from "@shared";
+import { LoteDetail } from "./LoteDetail";
 
 const ESTADO_LABEL: Record<ResurtidoEstado, string> = {
   creando: "Creando",
@@ -106,6 +108,12 @@ export function ResurtidoDetailPage() {
         )}
       </div>
     );
+  }
+
+  // Un lote de envío (resurtido con cajas) tiene su propio flujo y pantalla;
+  // los resurtidos simples siguen igual que siempre.
+  if (esLote(resurtido)) {
+    return <LoteDetail lote={resurtido} loteId={id ?? resurtido.id} />;
   }
 
   async function avanzar() {

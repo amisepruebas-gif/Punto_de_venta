@@ -22,12 +22,14 @@ import {
   ArrowRightLeft,
   Factory,
   MessagesSquare,
+  Link2,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/firebase/config";
 import { useAuth } from "@/hooks/useAuth";
 import { useNegocio } from "@/hooks/useNegocio";
 import { useChatNotifications } from "@/features/chat/useChatNotifications";
+import { useLotesListos } from "@/features/lotes/useLotesListos";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
@@ -37,6 +39,8 @@ type NavItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   disabled?: boolean;
+  /** Muestra un contador en vivo junto a la opción. */
+  contador?: "lotesListos";
 };
 
 const NAV: NavItem[] = [
@@ -44,7 +48,8 @@ const NAV: NavItem[] = [
   { to: "/articulos", label: "Artículos", icon: Package },
   { to: "/categorias", label: "Categorías y géneros", icon: FolderTree },
   { to: "/ingreso-mercancia", label: "Ingreso", icon: Truck },
-  { to: "/resurtidos", label: "Resurtidos", icon: ArrowRightLeft },
+  { to: "/resurtidos", label: "Resurtidos", icon: ArrowRightLeft, contador: "lotesListos" },
+  { to: "/enlaces-lote", label: "Accesos por enlace", icon: Link2 },
   { to: "/fabricacion", label: "Fabricación", icon: Factory },
   { to: "/ventas", label: "Ventas", icon: ShoppingBag },
   { to: "/cortes", label: "Cortes", icon: ScrollText },
@@ -74,6 +79,9 @@ export function AppShell() {
   // notificación OS al llegar mensaje nuevo.
   useChatNotifications();
   const { negocio } = useNegocio();
+  // Lotes que ya terminaron de armarse y esperan a que admin confirme el envío.
+  const lotesListos = useLotesListos();
+  const contadores: Record<NonNullable<NavItem["contador"]>, number> = { lotesListos };
   const [mobileOpen, setMobileOpen] = useState(false);
   const loc = useLocation();
 
@@ -97,28 +105,39 @@ export function AppShell() {
         </Button>
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {NAV.map(({ to, label, icon: Icon, disabled }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === "/"}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                disabled && "pointer-events-none opacity-50",
-              )
-            }
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-            {disabled && (
-              <span className="ml-auto text-[10px] uppercase">Próx.</span>
-            )}
-          </NavLink>
-        ))}
+        {NAV.map(({ to, label, icon: Icon, disabled, contador }) => {
+          const n = contador ? contadores[contador] : 0;
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === "/"}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  disabled && "pointer-events-none opacity-50",
+                )
+              }
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+              {disabled && (
+                <span className="ml-auto text-[10px] uppercase">Próx.</span>
+              )}
+              {n > 0 && (
+                <span
+                  className="ml-auto rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+                  title={`${n} ${n === 1 ? "lote listo" : "lotes listos"} para confirmar el envío`}
+                >
+                  {n}
+                </span>
+              )}
+            </NavLink>
+          );
+        })}
       </nav>
       <div className="border-t p-3">
         <p className="truncate text-xs text-muted-foreground">

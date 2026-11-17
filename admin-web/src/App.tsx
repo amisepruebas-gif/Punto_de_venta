@@ -15,6 +15,8 @@ import { ResurtidosPage } from "./routes/resurtidos/ResurtidosPage";
 import { FabricacionRoutes } from "./routes/fabricacion/FabricacionRoutes";
 import { ResurtidoCreatePage } from "./routes/resurtidos/ResurtidoCreatePage";
 import { ResurtidoDetailPage } from "./routes/resurtidos/ResurtidoDetailPage";
+import { EtiquetasLotePage } from "./routes/resurtidos/EtiquetasLotePage";
+import { EnlacesLotePage } from "./routes/enlaces/EnlacesLotePage";
 import { TallasPage } from "./routes/tallas/TallasPage";
 import { VentasPage } from "./routes/ventas/VentasPage";
 import { PinAdminVentasGate } from "./features/ventas-admin/PinAdminVentasGate";
@@ -99,10 +101,16 @@ export default function App() {
             path="resurtidos/nuevo"
             element={<ResurtidoCreatePage />}
           />
+          {/* Antes de `resurtidos/:id` para que "etiquetas" no se lea como id. */}
+          <Route
+            path="resurtidos/etiquetas"
+            element={<EtiquetasLotePage />}
+          />
           <Route
             path="resurtidos/:id"
             element={<ResurtidoDetailPage />}
           />
+          <Route path="enlaces-lote" element={<EnlacesLotePage />} />
           <Route path="tallas" element={<TallasPage />} />
           <Route
             path="ventas"

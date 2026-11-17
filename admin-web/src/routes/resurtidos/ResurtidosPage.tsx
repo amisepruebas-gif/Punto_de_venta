@@ -1,15 +1,24 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Loader2, Plus } from "lucide-react";
+import { ChevronRight, Loader2, Plus, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useResurtidos } from "@/features/resurtidos/useResurtidos";
-import type { ResurtidoEstado } from "@shared";
+import {
+  ETAPA_LOTE_COLOR,
+  ETAPA_LOTE_PALABRAS,
+  avanceLote,
+  etapaLote,
+} from "@/features/lotes/loteVista";
+import { esLote, type ResurtidoEstado } from "@shared";
 
 const ESTADOS: Array<{ key: ResurtidoEstado | "todos"; label: string }> = [
   { key: "todos", label: "Todos" },
   { key: "creando", label: "Creando" },
   { key: "en_transito", label: "En tránsito" },
   { key: "recibido", label: "Recibido" },
+  // Solo los lotes de envío llegan a estos dos.
+  { key: "enviado", label: "Enviados" },
+  { key: "parcial", label: "Recibidos en parte" },
   { key: "cerrado", label: "Cerrados" },
 ];
 
@@ -49,11 +58,18 @@ export function ResurtidosPage() {
             Transferencias bodega → sucursal.
           </p>
         </div>
-        <Button asChild>
-          <Link to="/resurtidos/nuevo">
-            <Plus className="mr-2 h-4 w-4" /> Nuevo
-          </Link>
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button asChild variant="outline">
+            <Link to="/resurtidos/etiquetas">
+              <Tags className="mr-2 h-4 w-4" /> Etiquetas de lote
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link to="/resurtidos/nuevo">
+              <Plus className="mr-2 h-4 w-4" /> Nuevo
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -93,7 +109,7 @@ export function ResurtidosPage() {
               <tr>
                 <th className="p-2">Estado</th>
                 <th className="p-2">Destino</th>
-                <th className="p-2">Líneas</th>
+                <th className="p-2">Contenido</th>
                 <th className="p-2">Empacó</th>
                 <th className="p-2">Creado</th>
                 <th className="p-2"></th>
@@ -101,6 +117,10 @@ export function ResurtidosPage() {
             </thead>
             <tbody>
               {filtrados.map((r) => {
+                // Un lote armándose tiene `lineas: []`: su contenido está en
+                // las cajas, y su avance sale de lo recibido.
+                const lote = esLote(r);
+                const etapa = lote ? etapaLote(r) : null;
                 const totalPiezas = r.lineas.reduce(
                   (acc, l) => acc + l.cantidadEnviada,
                   0,
@@ -113,17 +133,24 @@ export function ResurtidosPage() {
                     <td className="p-2">
                       <span
                         className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase ${
-                          ESTADO_COLOR[r.estado]
+                          etapa ? ETAPA_LOTE_COLOR[etapa] : ESTADO_COLOR[r.estado]
                         }`}
                       >
-                        {ESTADO_LABEL[r.estado]}
+                        {etapa ? ETAPA_LOTE_PALABRAS[etapa] : ESTADO_LABEL[r.estado]}
                       </span>
                     </td>
                     <td className="p-2 font-medium">
+                      {lote && (
+                        <span className="mr-1.5 font-mono text-xs text-muted-foreground">
+                          {r.folio ?? r.id}
+                        </span>
+                      )}
                       → {r.sucursalDestinoNombre}
                     </td>
                     <td className="p-2 text-xs">
-                      {r.lineas.length} líneas · {totalPiezas} pzas
+                      {lote
+                        ? avanceLote(r)
+                        : `${r.lineas.length} líneas · ${totalPiezas} pzas`}
                     </td>
                     <td className="p-2 text-xs">{r.responsableEmpaco}</td>
                     <td className="p-2 text-xs text-muted-foreground">

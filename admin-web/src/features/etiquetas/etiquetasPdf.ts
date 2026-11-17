@@ -17,8 +17,21 @@ export const FORMATOS_ETIQUETA: Record<FormatoEtiqueta, string> = {
 
 const PT_POR_MM = 72 / 25.4;
 
-/** PNG (data URL) del código de barras Code128 de `codigo`. */
-async function codigoDeBarras(codigo: string): Promise<string> {
+/** Opciones de jsbarcode que se pueden cambiar (las demás quedan igual). */
+export type OpcionesBarras = {
+  format?: string;
+  width?: number;
+  height?: number;
+  margin?: number;
+  displayValue?: boolean;
+};
+
+/** PNG (data URL) del código de barras de `codigo`. Sin `opciones` es el
+ *  Code128 de las etiquetas de artículo. */
+export async function codigoDeBarras(
+  codigo: string,
+  opciones: OpcionesBarras = {},
+): Promise<string> {
   const { default: JsBarcode } = await import("jsbarcode");
   const canvas = document.createElement("canvas");
   JsBarcode(canvas, codigo, {
@@ -29,11 +42,12 @@ async function codigoDeBarras(codigo: string): Promise<string> {
     margin: 20,
     height: 60,
     width: 2,
+    ...opciones,
   });
   return canvas.toDataURL("image/png");
 }
 
-async function cargarPdfMake() {
+export async function cargarPdfMake() {
   // @ts-expect-error — pdfmake no expone tipos de su build
   const pdfMakeMod = await import("pdfmake/build/pdfmake");
   const pdfMake = pdfMakeMod.default ?? pdfMakeMod;
@@ -144,38 +158,64 @@ export function construirDocEtiquetas(
   formato: FormatoEtiqueta,
   barras: string,
 ): Record<string, unknown> {
+  const opts =
+    formato === "rollo-50x25"
+      ? { ancho: ANCHO_ETIQUETA[formato], altoBarras: 26, maxNombre: 40 }
+      : { ancho: ANCHO_ETIQUETA[formato], altoBarras: 22, maxNombre: 46 };
+  return acomodarEtiquetas(cantidad, formato, () => etiqueta(art, barras, opts));
+}
+
+// Carta 3 × 10 (medidas tipo Avery 5160): etiquetas de 189 × 72 pt, 9 pt
+// entre columnas, márgenes 13.5 pt a los lados y 36 pt arriba y abajo.
+const CARTA_ANCHO = 189;
+const CARTA_ALTO = 72;
+const CARTA_SEPARACION = 9;
+const CARTA_RELLENO = 6;
+
+/** Ancho útil (pt) del contenido de una etiqueta en cada formato. */
+export const ANCHO_ETIQUETA: Record<FormatoEtiqueta, number> = {
+  "rollo-50x25": 50 * PT_POR_MM - 8,
+  "carta-3x10": CARTA_ANCHO - CARTA_RELLENO * 2,
+};
+
+/**
+ * Acomoda `cantidad` etiquetas en páginas del `formato` (rollo: una por
+ * página; carta: tabla de 3 × 10). `celda(i)` da el contenido pdfmake de la
+ * etiqueta `i`. Lo comparten las etiquetas de artículo y las numeradas de
+ * lote para que salgan con las mismas medidas.
+ */
+export function acomodarEtiquetas(
+  cantidad: number,
+  formato: FormatoEtiqueta,
+  celda: (i: number) => Record<string, unknown>,
+): Record<string, unknown> {
   let docDefinition: Record<string, unknown>;
   if (formato === "rollo-50x25") {
-    const opts = { ancho: 50 * PT_POR_MM - 8, altoBarras: 26, maxNombre: 40 };
     docDefinition = {
       pageSize: { width: 50 * PT_POR_MM, height: 25 * PT_POR_MM },
       pageMargins: [4, 3, 4, 2],
       content: Array.from({ length: cantidad }, (_, i) => ({
-        ...etiqueta(art, barras, opts),
+        ...celda(i),
         ...(i < cantidad - 1 ? { pageBreak: "after" } : {}),
       })),
       defaultStyle: { font: "Roboto" },
     };
   } else {
-    // Carta 3 × 10 (medidas tipo Avery 5160): etiquetas de 189 × 72 pt,
-    // 9 pt entre columnas, márgenes 13.5 pt a los lados y 36 pt arriba y
-    // abajo. Columnas 0, 2 y 4 = etiquetas (con relleno); 1 y 3 = separación.
-    const ANCHO = 189;
-    const ALTO = 72;
-    const SEPARACION = 9;
-    const RELLENO = 6;
+    // Columnas 0, 2 y 4 = etiquetas (con relleno); 1 y 3 = separación.
+    const ALTO = CARTA_ALTO;
+    const SEPARACION = CARTA_SEPARACION;
+    const RELLENO = CARTA_RELLENO;
     const esEtiqueta = (col: number) => col % 2 === 0;
-    const opts = { ancho: ANCHO - RELLENO * 2, altoBarras: 22, maxNombre: 46 };
     const filas: unknown[][] = [];
     for (let i = 0; i < cantidad; i += 3) {
       const fila: unknown[] = [];
       for (let c = 0; c < 3; c++) {
         if (c > 0) fila.push({ text: "" });
-        fila.push(i + c < cantidad ? etiqueta(art, barras, opts) : { text: "" });
+        fila.push(i + c < cantidad ? celda(i + c) : { text: "" });
       }
       filas.push(fila);
     }
-    const anchoCol = ANCHO - RELLENO * 2;
+    const anchoCol = ANCHO_ETIQUETA["carta-3x10"];
     docDefinition = {
       pageSize: "LETTER",
       pageMargins: [13.5, 36, 13.5, 36],
