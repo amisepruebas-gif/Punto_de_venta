@@ -4,6 +4,7 @@ import { Ventas } from "./routes/Ventas";
 import { Ajustes } from "./routes/Ajustes";
 import { ResurtidosNodoPage } from "./routes/resurtidos/ResurtidosNodoPage";
 import { ResurtidoNodoDetailPage } from "./routes/resurtidos/ResurtidoNodoDetailPage";
+import { EtiquetasPrecioPage } from "./routes/etiquetas/EtiquetasPrecioPage";
 import { useNodoSession } from "./hooks/useNodoSession";
 import { useRefrescoRender } from "./hooks/useRefrescoRender";
 import { useSubirSesiones } from "./features/resurtidos/recepcionStore";
@@ -60,6 +61,10 @@ export default function App() {
               <Navigate to="/first-run" replace />
             )
           }
+        />
+        <Route
+          path="/etiquetas"
+          element={nodoId ? <EtiquetasPrecioPage /> : <Navigate to="/first-run" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

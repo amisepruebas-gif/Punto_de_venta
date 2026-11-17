@@ -61,9 +61,11 @@ import {
   PackagePlus,
   Printer,
   Settings,
+  Tag,
   Truck,
 } from "lucide-react";
 import { useResurtidosPendientesCount } from "@/features/resurtidos/useResurtidosPendientesCount";
+import { useImpresorasSucursal } from "@/features/etiquetas/etiquetasPrecioService";
 import type { Articulo, Venta } from "@shared";
 import { MenuPuntosRegalo } from "@/features/puntos/MenuPuntosRegalo";
 import {
@@ -209,6 +211,8 @@ export function Ventas() {
   const { fondo, fondoOpacidad, cabecera, cabeceraOpacidad, logo } =
     useApariencia();
   const resurtidosPendientes = useResurtidosPendientesCount();
+  // "Etiquetas" solo aparece si esta sucursal tiene impresora de etiquetas.
+  const impresorasEtiquetas = useImpresorasSucursal(negocioId, sucursalId);
   usePuntosColaFlush();
   const pendientePuntos = useClientePuntos((s) => s.pendiente);
   // "Caja 1 · Centro" junto al logo, para saber en qué caja se está.
@@ -1339,6 +1343,9 @@ export function Ventas() {
             onClick={() => navigate("/resurtidos")}
             badge={resurtidosPendientes}
           />
+          {(impresorasEtiquetas?.length ?? 0) > 0 && (
+            <BotonCabecera icono={Tag} etiqueta="Etiquetas" onClick={() => navigate("/etiquetas")} />
+          )}
           {/* Solo aparece si hay cashback/tarjetas/regalos sin enviar. */}
           <ColaPuntosAviso />
           <BotonCorte abierto={!!corte} onClick={() => setCorteOpen(true)} />
