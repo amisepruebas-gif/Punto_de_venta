@@ -67,7 +67,7 @@ const NO_SE_ENVIA =
  * pregunta por un código de lote que no puede existir (la regla lo deja si
  * el acceso está prendido). Si sirve, el problema es ESE artículo.
  */
-async function accesoSigueVivo(s: SesionEnlace): Promise<boolean> {
+export async function accesoSigueVivo(s: SesionEnlace): Promise<boolean> {
   try {
     await getDocFromServer(doc(s.db, paths.resurtido(s.negocioId, `L000000-${s.letra ?? "A"}0`)));
     return true;

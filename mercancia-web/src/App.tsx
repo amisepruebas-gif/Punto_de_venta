@@ -15,6 +15,7 @@ import { EntrarPage } from "@/routes/enlace/EntrarPage";
 import { MisLotesPage } from "@/routes/enlace/MisLotesPage";
 import { ArmarLotePage } from "@/routes/enlace/ArmarLotePage";
 import { FotosPage } from "@/routes/enlace/FotosPage";
+import { EtiquetasPage } from "@/routes/enlace/EtiquetasPage";
 import { AuthWatcher } from "@/features/auth/AuthWatcher";
 import { useSession } from "@/hooks/useSession";
 
@@ -135,6 +136,7 @@ export default function App() {
         <Route path="lotes" element={<MisLotesPage />} />
         <Route path="lotes/:loteId" element={<ArmarLotePage />} />
         <Route path="fotos" element={<FotosPage />} />
+        <Route path="etiquetas" element={<EtiquetasPage />} />
         <Route path="*" element={<EntrarPage />} />
       </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

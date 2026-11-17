@@ -130,6 +130,17 @@ function ArmarLote({ sesion: s, loteId }: { sesion: SesionEnlace; loteId: string
   const [ultimo, setUltimo] = useState<Record<string, LoteContenido[]>>({});
   const { pantalla, abrir, cambiar, cerrar, irA } = usePantalla<PantallaLote>();
   const nombre = useNombres(s, lote);
+  /** En los escáneres de etiqueta: ir a imprimir más (y volver a este lote). */
+  const sinEtiquetas = (
+    <Button
+      type="button"
+      variant="outline"
+      className="h-11 w-full text-base"
+      onClick={() => irA(`${base}/etiquetas?volver=${encodeURIComponent(rutaLote)}`)}
+    >
+      ¿Sin etiquetas? Imprimir más
+    </Button>
+  );
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -204,6 +215,7 @@ function ArmarLote({ sesion: s, loteId }: { sesion: SesionEnlace; loteId: string
             mensaje={mensaje}
             ocupado={ocupado}
             onClose={cerrar}
+            pie={sinEtiquetas}
             onCodigo={(codigo) =>
               enEscaner(async () => {
                 const nuevo = await agregarCaja(s, l.id, codigo);
@@ -225,6 +237,7 @@ function ArmarLote({ sesion: s, loteId }: { sesion: SesionEnlace; loteId: string
             mensaje={mensaje}
             ocupado={ocupado}
             onClose={cerrar}
+            pie={sinEtiquetas}
             onCodigo={(codigo) =>
               enEscaner(async () => {
                 const problema = await revisarEtiqueta(s, l, codigo);

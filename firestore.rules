@@ -397,9 +397,13 @@ service cloud.firestore {
           return esEnlace(nid, 'imprimir') && resource.data.impresoraId == request.auth.token.enlaceId;
         }
 
+        // `resource == null`: el teléfono y la caja pueden preguntar por una
+        // orden que aún no existe (al reintentar saben si ya quedó).
         allow read: if esAdmin(nid)
-          || (esEnlace(nid, 'armar') && resource.data.enlaceId == request.auth.token.enlaceId)
-          || (esNodo(nid) && resource.data.sucursalId == request.auth.token.sucursalId)
+          || (esEnlace(nid, 'armar')
+              && (resource == null || resource.data.enlaceId == request.auth.token.enlaceId))
+          || (esNodo(nid)
+              && (resource == null || resource.data.sucursalId == request.auth.token.sucursalId))
           || (esEnlace(nid, 'imprimir') && resource.data.impresoraId == request.auth.token.enlaceId);
 
         allow create: if

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { ChevronRight, Loader2, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, Loader2, Plus, Printer, RefreshCw } from "lucide-react";
 import { totalesLote, type ResurtidoEstado, type Sucursal } from "@shared";
 import { Button } from "@/components/ui/button";
 import { useEnlace, usePantalla } from "@/features/enlace/EnlaceContext";
@@ -208,6 +208,13 @@ export function MisLotesPage() {
       >
         <Plus className="mr-2 h-6 w-6" /> Nuevo lote
       </BotonGrande>
+      <Button
+        variant="outline"
+        className="h-12 w-full text-base"
+        onClick={() => navigate(`${base}/etiquetas`)}
+      >
+        <Printer className="mr-2 h-5 w-5" /> Imprimir etiquetas
+      </Button>
 
       {error ? (
         <AvisoError error={error} onReintentar={cargar} />

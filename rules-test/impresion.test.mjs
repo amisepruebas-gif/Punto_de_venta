@@ -164,6 +164,9 @@ await check("el programa NO se manda órdenes", "fail", setDoc(doc(pc3, trabajo(
 await check("el teléfono ve su orden", "ok", getDoc(doc(armar, trabajo("T1"))));
 await check("el teléfono lista sus órdenes", "ok", getDocs(query(collection(armar, COLA), where("enlaceId", "==", "E1"))));
 await check("el teléfono NO ve la orden de admin", "fail", getDoc(doc(armar, trabajo("T3"))));
+await check("el teléfono pregunta por una orden que no existe", "ok", getDoc(doc(armar, trabajo("NO_EXISTE"))));
+await check("la caja pregunta por una orden que no existe", "ok", getDoc(doc(nodo1, trabajo("NO_EXISTE"))));
+await check("el teléfono de fotos NO lee órdenes", "fail", getDoc(doc(fotos, trabajo("NO_EXISTE"))));
 await check("otro teléfono NO ve la orden", "fail", getDoc(doc(armarB, trabajo("T1"))));
 await check("la caja ve la orden de su sucursal", "ok", getDoc(doc(nodo1, trabajo("T5"))));
 await check("la caja de otra sucursal NO la ve", "fail", getDoc(doc(nodo2, trabajo("T5"))));
