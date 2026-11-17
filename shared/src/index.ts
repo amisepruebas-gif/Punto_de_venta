@@ -16,3 +16,5 @@ export * from "./busqueda";
 export * from "./clasificacion";
 export * from "./lotes";
 export * from "./enlaceLote";
+export * from "./impresion";
+export * from "./tspl";

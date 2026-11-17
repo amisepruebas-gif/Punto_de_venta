@@ -111,6 +111,46 @@ test("fotos: el mismo teléfono recupera su sesión de 30 minutos, no una nueva"
   assert.deepEqual(enlace.decidirCanje(viejo, AHORA, OTRO), {ok: false, motivo: "tarde"});
 });
 
+const impresora = (extra = {}) => ({tipo: "imprimir", activo: true, gen: 0, nombre: "Taller", ...extra});
+
+test("imprimir: entra UNA computadora, sin vencimiento; la misma reintenta sin gastar", () => {
+  assert.deepEqual(enlace.decidirCanje(impresora(), AHORA, DISP), {
+    ok: true, venceMs: enlace.SIN_VENCIMIENTO_MS,
+  });
+  assert.deepEqual(enlace.decidirCanje(conSesion(impresora()), AHORA, DISP), {
+    ok: true, venceMs: enlace.SIN_VENCIMIENTO_MS, uid: "enl_E1_aaaa",
+  });
+  assert.deepEqual(enlace.decidirCanje(conSesion(impresora()), AHORA, OTRO), {
+    ok: false, motivo: "agotado",
+  });
+  assert.deepEqual(enlace.decidirCanje(impresora({activo: false}), AHORA, DISP), {
+    ok: false, motivo: "apagado",
+  });
+});
+
+test("imprimir: la sucursal es opcional, pero si viene debe ser un id", () => {
+  assert.equal(enlace.decidirCanje(impresora({sucursalId: "S2"}), AHORA).ok, true);
+  assert.equal(enlace.decidirCanje(impresora({sucursalId: "a/b"}), AHORA).motivo, "no_sirve");
+  assert.equal(enlace.decidirCanje(impresora({sucursalId: 5}), AHORA).motivo, "no_sirve");
+});
+
+test("imprimir: claims sin letra ni lote; con sucursal si la tiene", () => {
+  assert.deepEqual(enlace.claimsDeEnlace("amise", "I1", impresora(), 99), {
+    role: "enlace", negocioId: "amise", enlaceId: "I1", tipo: "imprimir", gen: 0, vence: 99,
+  });
+  assert.deepEqual(enlace.claimsDeEnlace("amise", "I1", impresora({sucursalId: "S2"}), 99), {
+    role: "enlace", negocioId: "amise", enlaceId: "I1", tipo: "imprimir", gen: 0, vence: 99,
+    sucursalId: "S2",
+  });
+});
+
+test("imprimir: los mensajes hablan de la computadora y de admin", () => {
+  assert.match(enlace.mensajeDeMotivo("agotado", "imprimir"), /otra computadora/);
+  assert.match(enlace.mensajeDeMotivo("apagado", "imprimir"), /impresora está apagada/);
+  assert.match(enlace.mensajeDeMotivo("agotado", "armar"), /otro teléfono/);
+  assert.match(enlace.mensajeDeMotivo("tarde", "imprimir"), /venció/);
+});
+
 test("claims: solo lo que las reglas leen, según el tipo", () => {
   assert.deepEqual(enlace.claimsDeEnlace("amise", "E1", armar({gen: 2}), 99), {
     role: "enlace", negocioId: "amise", enlaceId: "E1", tipo: "armar", gen: 2, vence: 99, letra: "A",

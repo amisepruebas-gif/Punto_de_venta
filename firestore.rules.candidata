@@ -16,7 +16,8 @@ rules_version = '2';
 // Claims: role (nodo|admin|superadmin|mercancia|colaborador|enlace), negocioId, sucursalId, nodoId,
 //   colaboradorId. OJO: superadmin NO trae negocioId (por eso esAdmin lo incluye aparte).
 //   Rol `enlace` (teléfono que entra por una URL, ver functions canjearEnlaceLote): trae
-//   enlaceId, tipo (armar|recibir), gen, vence (ms) y, según el tipo, letra o resurtidoId.
+//   enlaceId, tipo (armar|recibir|imprimir), gen, vence (ms) y, según el tipo, letra o
+//   resurtidoId. `imprimir` es la PC del programa "AMISE Impresora" (sucursalId opcional).
 //   NO es `miembro`: solo puede lo que diga una regla con `esEnlace`.
 // ============================================================
 service cloud.firestore {
@@ -135,6 +136,19 @@ service cloud.firestore {
         allow write: if esAdmin(nid)
           || ((esNodo(nid) || esMercancia(nid))
               && k != '_contadorFabricacion' && k != '_contadorEtiquetasLote');
+        // El programa de una impresora (acceso `imprimir`) aparta números de
+        // etiquetas de lote al tomar una orden: solo sube el contador, de a lo
+        // más 300 (la regla de la cola revisa que cuadre con la orden).
+        allow get: if k == '_contadorEtiquetasLote' && esEnlace(nid, 'imprimir');
+        allow create: if k == '_contadorEtiquetasLote' && esEnlace(nid, 'imprimir')
+          && request.resource.data.keys().hasOnly(['ultimo'])
+          && request.resource.data.ultimo is int
+          && request.resource.data.ultimo >= 1 && request.resource.data.ultimo <= 300;
+        allow update: if k == '_contadorEtiquetasLote' && esEnlace(nid, 'imprimir')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ultimo'])
+          && request.resource.data.ultimo is int
+          && request.resource.data.ultimo > resource.data.ultimo
+          && request.resource.data.ultimo - resource.data.ultimo <= 300;
       }
 
       // Resurtidos y LOTES de envío (un lote es un resurtido con `cajas`).
@@ -253,7 +267,7 @@ service cloud.firestore {
         allow create: if (esAdmin(nid) || esNodo(nid))
           && request.resource.data.keys().hasOnly(['tipo', 'activo', 'nombre', 'letra', 'secretoHash',
                                                    'gen', 'creadoPor', 'creadoEn', 'sucursalId', 'resurtidoId'])
-          && request.resource.data.tipo in ['armar', 'recibir']
+          && request.resource.data.tipo in ['armar', 'recibir', 'imprimir']
           && request.resource.data.activo == true
           && request.resource.data.gen == 0
           && request.resource.data.secretoHash is string
@@ -296,6 +310,156 @@ service cloud.firestore {
               || (esEnlace(nid, 'armar')
                   && request.resource.data.enlaceId == request.auth.token.enlaceId
                   && etiquetaParaSuLote(request.resource.data.resurtidoId)));
+      }
+
+      // Impresoras de etiquetas: una por PC con el programa "AMISE Impresora";
+      // el id es el de su acceso `imprimir`. Las ven las apps del negocio y el
+      // teléfono de armar (para elegir dónde imprimir). Admin las crea y
+      // renombra; el programa solo escribe su aviso de vida (`latidoEn`, hora
+      // del servidor), la impresora de Windows, la pausa y su versión.
+      match /impresoras_web_new_version/{iid} {
+        function cambiaImpresora() {
+          return request.resource.data.diff(resource.data).affectedKeys();
+        }
+        allow read: if miembro(nid) || esEnlace(nid, 'armar')
+          || (esEnlace(nid, 'imprimir') && iid == request.auth.token.enlaceId);
+        allow create: if esAdmin(nid)
+          && request.resource.data.keys().hasOnly(['nombre', 'sucursalId', 'creadoEn'])
+          && request.resource.data.nombre is string
+          && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 60
+          && (!('sucursalId' in request.resource.data) || request.resource.data.sucursalId is string);
+        allow delete: if esAdmin(nid);
+        allow update: if (esAdmin(nid) && cambiaImpresora().hasOnly(['nombre', 'sucursalId']))
+          || (esEnlace(nid, 'imprimir') && iid == request.auth.token.enlaceId
+              && cambiaImpresora().hasOnly(['latidoEn', 'windows', 'pausada', 'version'])
+              && (!cambiaImpresora().hasAny(['latidoEn'])
+                  || request.resource.data.latidoEn == request.time)
+              && (!('windows' in request.resource.data)
+                  || (request.resource.data.windows is string
+                      && request.resource.data.windows.size() <= 120))
+              && (!('pausada' in request.resource.data) || request.resource.data.pausada is bool)
+              && (!('version' in request.resource.data)
+                  || (request.resource.data.version is string
+                      && request.resource.data.version.size() <= 20)));
+      }
+
+      // Cola de impresión de etiquetas (ver shared/src/impresion.ts).
+      //  - La crean: el teléfono de armar (etiquetas de lote, hasta 60), admin
+      //    (etiquetas de lote, hasta 300) y la caja (etiquetas de precio, a la
+      //    impresora de SU sucursal). Siempre a una impresora con su acceso
+      //    prendido y siempre "pendiente".
+      //  - Solo el programa de esa impresora la toma y la termina. Al tomar una
+      //    de etiquetas de lote aparta sus números EN LA MISMA ESCRITURA en que
+      //    sube el contador (getAfter): no hay números repetidos ni sueltos.
+      //  - "Reimprimir": quien la mandó (o admin) la regresa a la cola; conserva
+      //    sus números.
+      match /impresiones_web_new_version/{tid} {
+        function rutaImpresora(iid) {
+          return /databases/$(database)/documents/negocios_web_new_version/$(nid)/impresoras_web_new_version/$(iid);
+        }
+        function rutaAcceso(iid) {
+          return /databases/$(database)/documents/negocios_web_new_version/$(nid)/enlaces_lote_web_new_version/$(iid);
+        }
+        function rutaContador() {
+          return /databases/$(database)/documents/negocios_web_new_version/$(nid)/datos_web_new_version/_contadorEtiquetasLote;
+        }
+        function nueva() { return request.resource.data; }
+        function cambiaTrabajo() { return request.resource.data.diff(resource.data).affectedKeys(); }
+        // La impresora existe y su acceso `imprimir` está prendido.
+        function impresoraPrendida(iid) {
+          return exists(rutaImpresora(iid))
+            && get(rutaAcceso(iid)).data.tipo == 'imprimir'
+            && get(rutaAcceso(iid)).data.activo == true;
+        }
+        function nuevaValida(campos) {
+          return nueva().keys().hasOnly(campos)
+            && nueva().estado == 'pendiente'
+            && nueva().creadoPor == request.auth.uid
+            && nueva().creadoEn == request.time
+            && nueva().impresoraId is string
+            && (!('quien' in nueva()) || (nueva().quien is string && nueva().quien.size() <= 80))
+            && impresoraPrendida(nueva().impresoraId);
+        }
+        function cantidadHasta(n) {
+          return nueva().cantidad is int && nueva().cantidad >= 1 && nueva().cantidad <= n;
+        }
+        // Los números que aparta el programa: tantos como pide la orden, justo
+        // después de lo que marcaba el contador, y el contador queda en `hasta`.
+        function rangoApartado() {
+          return nueva().desde is int && nueva().hasta is int
+            && nueva().hasta - nueva().desde + 1 == resource.data.cantidad
+            && getAfter(rutaContador()).data.ultimo == nueva().hasta
+            && (exists(rutaContador())
+                ? get(rutaContador()).data.ultimo == nueva().desde - 1
+                : nueva().desde == 1);
+        }
+        function esElPrograma() {
+          return esEnlace(nid, 'imprimir') && resource.data.impresoraId == request.auth.token.enlaceId;
+        }
+
+        allow read: if esAdmin(nid)
+          || (esEnlace(nid, 'armar') && resource.data.enlaceId == request.auth.token.enlaceId)
+          || (esNodo(nid) && resource.data.sucursalId == request.auth.token.sucursalId)
+          || (esEnlace(nid, 'imprimir') && resource.data.impresoraId == request.auth.token.enlaceId);
+
+        allow create: if
+          (esAdmin(nid)
+            && nuevaValida(['tipo', 'impresoraId', 'estado', 'origen', 'creadoPor', 'quien', 'creadoEn',
+                            'cantidad'])
+            && nueva().tipo == 'etiquetas_lote' && nueva().origen == 'admin' && cantidadHasta(300))
+          || (esEnlace(nid, 'armar')
+            && nuevaValida(['tipo', 'impresoraId', 'estado', 'origen', 'creadoPor', 'quien', 'creadoEn',
+                            'cantidad', 'enlaceId'])
+            && nueva().tipo == 'etiquetas_lote' && nueva().origen == 'enlace' && cantidadHasta(60)
+            && nueva().enlaceId == request.auth.token.enlaceId)
+          || (esNodo(nid)
+            && nuevaValida(['tipo', 'impresoraId', 'estado', 'origen', 'creadoPor', 'quien', 'creadoEn',
+                            'renglones', 'nodoId', 'sucursalId'])
+            && nueva().tipo == 'etiquetas_precio' && nueva().origen == 'nodo'
+            && nueva().nodoId == request.auth.token.nodoId
+            && nueva().sucursalId == request.auth.token.sucursalId
+            && get(rutaImpresora(nueva().impresoraId)).data.get('sucursalId', '') == request.auth.token.sucursalId
+            && nueva().renglones is list
+            && nueva().renglones.size() >= 1 && nueva().renglones.size() <= 20);
+
+        allow update: if
+          // El programa de esa impresora.
+          (esElPrograma()
+            && cambiaTrabajo().hasOnly(['estado', 'desde', 'hasta', 'tomadoPor', 'tomadoEn', 'terminadoEn',
+                                        'error', 'impresiones'])
+            && (
+              // Tomarla. Una de etiquetas de lote sin números los aparta aquí.
+              (resource.data.estado == 'pendiente' && nueva().estado == 'imprimiendo'
+                && nueva().tomadoPor == request.auth.uid && nueva().tomadoEn == request.time
+                && (resource.data.tipo != 'etiquetas_lote' || 'desde' in resource.data
+                    ? !cambiaTrabajo().hasAny(['desde', 'hasta'])
+                    : rangoApartado()))
+              // Terminarla: impresa (cuenta una vez más) o con error.
+              || (resource.data.estado == 'imprimiendo' && resource.data.tomadoPor == request.auth.uid
+                && nueva().estado in ['impreso', 'error']
+                && !cambiaTrabajo().hasAny(['desde', 'hasta', 'tomadoPor', 'tomadoEn'])
+                && nueva().terminadoEn == request.time
+                && (nueva().estado == 'impreso'
+                    ? nueva().impresiones == resource.data.get('impresiones', 0) + 1
+                    : nueva().error is string && nueva().error.size() <= 300))
+              // Una orden que ni se puede intentar (mal formada).
+              || (resource.data.estado == 'pendiente' && nueva().estado == 'error'
+                && cambiaTrabajo().hasOnly(['estado', 'error', 'terminadoEn'])
+                && nueva().terminadoEn == request.time
+                && nueva().error is string && nueva().error.size() <= 300)
+            ))
+          // "Reimprimir": quien la mandó (o admin) la regresa a la cola.
+          || ((esAdmin(nid)
+                || (esEnlace(nid, 'armar') && resource.data.enlaceId == request.auth.token.enlaceId)
+                || (esNodo(nid) && resource.data.sucursalId == request.auth.token.sucursalId))
+              && resource.data.estado in ['impreso', 'error'] && nueva().estado == 'pendiente'
+              && cambiaTrabajo().hasOnly(['estado', 'error']))
+          // Admin libera una que se quedó "imprimiendo" (la PC se apagó y se
+          // renovó su acceso): la marca con error para que se pueda reimprimir.
+          || (esAdmin(nid) && resource.data.estado == 'imprimiendo' && nueva().estado == 'error'
+              && cambiaTrabajo().hasOnly(['estado', 'error']) && nueva().error is string);
+
+        allow delete: if esAdmin(nid);
       }
 
       // Fabricacion: zonas de precios (las leen los editores; solo admin escribe).

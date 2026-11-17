@@ -42,6 +42,10 @@ export const COL_ENLACES_LOTE = `enlaces_lote${SUFFIX}`;
 export const COL_ETIQUETAS_LOTE = `etiquetas_lote${SUFFIX}`;
 /** Sub-colección de un lote con sus fotos. */
 export const COL_LOTE_FOTOS = `fotos${SUFFIX}`;
+/** Impresoras de etiquetas (una por PC vinculada; id = id de su acceso). */
+export const COL_IMPRESORAS = `impresoras${SUFFIX}`;
+/** Cola de impresión de etiquetas. Scope por negocio. */
+export const COL_IMPRESIONES = `impresiones${SUFFIX}`;
 
 // Fabricación — scope por negocio.
 /** Zonas de precios (precio normal + escalones de mayoreo compartidos). */
@@ -140,6 +144,12 @@ export const paths = {
   enlacesLoteCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_ENLACES_LOTE}`,
   etiquetaLote: (nid: string, codigo: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_ETIQUETAS_LOTE}/${codigo}`,
+  impresora: (nid: string, impresoraId: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_IMPRESORAS}/${impresoraId}`,
+  impresorasCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_IMPRESORAS}`,
+  impresion: (nid: string, trabajoId: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_IMPRESIONES}/${trabajoId}`,
+  impresionesCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_IMPRESIONES}`,
   loteFoto: (nid: string, rid: string, fotoId: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}/${rid}/${COL_LOTE_FOTOS}/${fotoId}`,
   loteFotosCol: (nid: string, rid: string) =>

@@ -18,6 +18,7 @@ import type { EnlaceLoteTipo } from "./schema";
 export const ENLACE_MAX_CANJES: Record<EnlaceLoteTipo, number> = {
   armar: 1,
   recibir: 3,
+  imprimir: 1,
 };
 /** Un enlace de fotos se debe canjear en este tiempo desde que se creó. */
 export const ENLACE_RECIBIR_VENTANA_MS = 5 * 60_000;
@@ -73,6 +74,36 @@ export function urlEnlaceLote(
 export function secretoDeFragmento(hash: string): string | null {
   const s = hash.startsWith("#") ? hash.slice(1) : hash;
   return esSecretoEnlace(s) ? s : null;
+}
+
+// ---------- Código de vinculación de una impresora (acceso `imprimir`) ----------
+
+const PREFIJO_VINCULACION = "AMISE1";
+const RE_ID_ENLACE = /^[A-Za-z0-9_-]{1,64}$/;
+const RE_VINCULACION = /^AMISE1\.([A-Za-z0-9_-]{1,64})\.([A-Za-z0-9_-]{1,64})\.([A-Za-z0-9_-]{43})$/;
+
+/**
+ * Lo que admin le da a la PC para vincularla: se pega en el programa "AMISE
+ * Impresora". NO es una URL a propósito: abierto en un teléfono no haría
+ * nada (un acceso `imprimir` sirve para un solo equipo).
+ */
+export function codigoVinculacionImpresora(
+  negocioId: string,
+  enlaceId: string,
+  secreto: string,
+): string {
+  if (!RE_ID_ENLACE.test(negocioId) || !RE_ID_ENLACE.test(enlaceId) || !esSecretoEnlace(secreto)) {
+    throw new Error("Datos inválidos para el código de vinculación");
+  }
+  return `${PREFIJO_VINCULACION}.${negocioId}.${enlaceId}.${secreto}`;
+}
+
+/** Lee un código de vinculación pegado (con o sin espacios ni saltos). */
+export function leerCodigoVinculacion(
+  texto: string,
+): { negocioId: string; enlaceId: string; secreto: string } | null {
+  const m = RE_VINCULACION.exec(texto.replace(/\s+/g, ""));
+  return m ? { negocioId: m[1]!, enlaceId: m[2]!, secreto: m[3]! } : null;
 }
 
 /** Id de la foto número `n` (0…29) de una sesión: `{uid}_{nn}`. Es también

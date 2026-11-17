@@ -2,12 +2,15 @@
 // ============================================================
 // Enlaces de lote: un teléfono sin cuenta entra por una URL
 // ============================================================
-// `armar`  : lo crea admin. Sin vencimiento: se corta con su apagador.
-// `recibir`: lo crea la caja para subir fotos de UN lote. Hay 5 minutos
-//            para entrar y la sesión dura 30.
+// `armar`   : lo crea admin. Sin vencimiento: se corta con su apagador.
+// `recibir` : lo crea la caja para subir fotos de UN lote. Hay 5 minutos
+//             para entrar y la sesión dura 30.
+// `imprimir`: lo crea admin para vincular UNA PC con el programa "AMISE
+//             Impresora" (con un código para pegar). Como `armar`: sin
+//             vencimiento y con apagador.
 // El enlace es una llave al portador, así que:
 //   - del secreto solo se guarda su sha256 (lo compara `llaveCoincide`);
-//   - cada enlace admite pocas entradas (armar: 1 teléfono; fotos: 3);
+//   - cada enlace admite pocas entradas (armar e imprimir: 1 equipo; fotos: 3);
 //   - el vencimiento va en el token con la hora del SERVIDOR (`vence`), y
 //     las reglas además leen en vivo `activo` y `gen` del doc del enlace:
 //     apagarlo o renovarlo corta la sesión aunque el token siga vivo.
@@ -15,7 +18,10 @@
 // Las constantes son espejo de shared/src/enlaceLote.ts (functions es
 // CommonJS y no importa `shared`).
 
-const MAX_CANJES = {armar: 1, recibir: 3};
+const MAX_CANJES = {armar: 1, recibir: 3, imprimir: 1};
+const TIPOS = Object.keys(MAX_CANJES);
+/** Tipos que no vencen (los corta su apagador). */
+const SIN_VENCER = new Set(["armar", "imprimir"]);
 const RECIBIR_VENTANA_MS = 5 * 60 * 1000;
 const RECIBIR_DURACION_MS = 30 * 60 * 1000;
 /** 2100-01-01: los enlaces de armar no vencen; los corta el apagador. */
@@ -67,12 +73,16 @@ function sesionDelDispositivo(enlace, dispositivoHash) {
  */
 function decidirCanje(enlace, ahoraMs, dispositivoHash) {
   if (!enlace) return {ok: false, motivo: "no_sirve"};
-  if (enlace.tipo !== "armar" && enlace.tipo !== "recibir") {
-    return {ok: false, motivo: "no_sirve"};
-  }
+  if (!TIPOS.includes(enlace.tipo)) return {ok: false, motivo: "no_sirve"};
   if (enlace.activo !== true) return {ok: false, motivo: "apagado"};
   if (enlace.tipo === "armar") {
     if (typeof enlace.letra !== "string" || !RE_LETRA.test(enlace.letra)) {
+      return {ok: false, motivo: "no_sirve"};
+    }
+  } else if (enlace.tipo === "imprimir") {
+    // La sucursal es opcional; si viene, debe ser un id.
+    if (enlace.sucursalId !== undefined &&
+        (typeof enlace.sucursalId !== "string" || !RE_ID.test(enlace.sucursalId))) {
       return {ok: false, motivo: "no_sirve"};
     }
   } else if (typeof enlace.resurtidoId !== "string" || !enlace.resurtidoId ||
@@ -82,7 +92,7 @@ function decidirCanje(enlace, ahoraMs, dispositivoHash) {
 
   const previa = sesionDelDispositivo(enlace, dispositivoHash);
   if (previa) {
-    if (enlace.tipo === "armar") {
+    if (SIN_VENCER.has(enlace.tipo)) {
       return {ok: true, venceMs: SIN_VENCIMIENTO_MS, uid: previa.uid};
     }
     // Fotos: la misma sesión de 30 minutos, contada desde que entró.
@@ -92,7 +102,7 @@ function decidirCanje(enlace, ahoraMs, dispositivoHash) {
 
   const canjes = Number(enlace.canjes) || 0;
   if (canjes >= MAX_CANJES[enlace.tipo]) return {ok: false, motivo: "agotado"};
-  if (enlace.tipo === "armar") return {ok: true, venceMs: SIN_VENCIMIENTO_MS};
+  if (SIN_VENCER.has(enlace.tipo)) return {ok: true, venceMs: SIN_VENCIMIENTO_MS};
   const creadoEnMs = Number(enlace.creadoEnMs) || 0;
   // Sin hora de creación (o del futuro) no hay forma de medir los 5 minutos.
   if (!creadoEnMs || creadoEnMs > ahoraMs + 60 * 1000) {
@@ -112,9 +122,13 @@ function claimsDeEnlace(negocioId, enlaceId, enlace, venceMs) {
     gen: Number(enlace.gen) || 0,
     vence: venceMs,
   };
-  return enlace.tipo === "armar" ?
-    {...base, letra: enlace.letra} :
-    {...base, resurtidoId: enlace.resurtidoId, sucursalId: enlace.sucursalId};
+  if (enlace.tipo === "armar") return {...base, letra: enlace.letra};
+  if (enlace.tipo === "imprimir") {
+    return typeof enlace.sucursalId === "string" && enlace.sucursalId ?
+      {...base, sucursalId: enlace.sucursalId} :
+      base;
+  }
+  return {...base, resurtidoId: enlace.resurtidoId, sucursalId: enlace.sucursalId};
 }
 
 const MENSAJES = {
@@ -126,7 +140,18 @@ const MENSAJES = {
   sin_lote: "Ese lote ya no existe.",
 };
 
-function mensajeDeMotivo(motivo) {
+/** Lo mismo, dicho para la PC de la impresora. */
+const MENSAJES_IMPRESORA = {
+  no_sirve: "Este código de vinculación no sirve. Pide uno nuevo en admin → Accesos.",
+  apagado: "Esta impresora está apagada en admin → Accesos. Préndela para seguir.",
+  agotado: "Este código ya se usó en otra computadora. En admin → Accesos, " +
+    "toca \"Renovar\" en esta impresora para tener uno nuevo.",
+};
+
+/** Mensaje en español sencillo. `tipo` (si se sabe) ajusta el texto para la
+ *  PC de una impresora. */
+function mensajeDeMotivo(motivo, tipo) {
+  if (tipo === "imprimir" && MENSAJES_IMPRESORA[motivo]) return MENSAJES_IMPRESORA[motivo];
   return MENSAJES[motivo] || MENSAJES.no_sirve;
 }
 

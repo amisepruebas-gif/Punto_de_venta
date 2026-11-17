@@ -836,13 +836,15 @@ export type LoteSesion = {
   nota?: string;
 };
 
-export type EnlaceLoteTipo = "armar" | "recibir";
+export type EnlaceLoteTipo = "armar" | "recibir" | "imprimir";
 
 /**
  * Acceso por URL para un teléfono sin cuenta. `armar`: lo crea admin, sin
  * vencimiento, con apagador. `recibir`: lo crea la caja para subir fotos
- * de UN lote; hay 5 minutos para entrar y la sesión dura 30.
- * Del secreto de la URL solo se guarda su sha256.
+ * de UN lote; hay 5 minutos para entrar y la sesión dura 30. `imprimir`:
+ * lo crea admin para vincular UNA PC con el programa "AMISE Impresora"
+ * (con un código para pegar, no una URL); sin vencimiento, con apagador.
+ * Del secreto solo se guarda su sha256.
  */
 export type EnlaceLote = {
   tipo: EnlaceLoteTipo;
@@ -858,14 +860,101 @@ export type EnlaceLote = {
   creadoPor: string;
   /** Timestamp del servidor. */
   creadoEn: unknown;
-  /** Solo `recibir`. */
+  /** `recibir`: la sucursal del lote. `imprimir`: la sucursal de la
+   *  impresora, si es de una (opcional). */
   sucursalId?: string;
+  /** Solo `recibir`. */
   resurtidoId?: string;
   /** Lo escribe la function al canjear. */
   canjes?: number;
   ultimoUsoMs?: number;
   /** Sesiones abiertas con este enlace, por uid. */
-  sesiones?: Record<string, { fechaMs: number; userAgent?: string; gen: number }>;
+  sesiones?: Record<
+    string,
+    {
+      fechaMs: number;
+      userAgent?: string;
+      gen: number;
+      /** Vencimiento de esa sesión (ms). */
+      venceMs?: number;
+      /** sha256 del número del equipo: el mismo equipo vuelve a entrar sin
+       *  gastar otra entrada. */
+      dispositivo?: string;
+      /** Última vez que ese equipo volvió a entrar. */
+      ultimoMs?: number;
+    }
+  >;
+};
+
+// ---------- Impresoras de etiquetas (programa "AMISE Impresora") ----------
+
+/**
+ * Impresora de etiquetas conectada por USB a una PC con el programa de
+ * Windows. Su id es el del acceso `imprimir` con el que se vinculó esa PC.
+ * Admin la crea junto con el acceso; el programa solo escribe su aviso de
+ * vida, la impresora de Windows elegida, la pausa y su versión.
+ */
+export type Impresora = {
+  nombre: string;
+  /** Si es de una sucursal: ahí manda la caja sus etiquetas de precio. */
+  sucursalId?: string;
+  /** Último aviso de vida del programa (hora del servidor). */
+  latidoEn?: unknown;
+  /** Impresora de Windows elegida en el programa. */
+  windows?: string;
+  /** En pausa: las órdenes esperan en la cola. */
+  pausada?: boolean;
+  /** Versión del programa. */
+  version?: string;
+  creadoEn?: unknown;
+};
+
+export type TrabajoImpresionTipo = "etiquetas_lote" | "etiquetas_precio";
+export type TrabajoImpresionEstado = "pendiente" | "imprimiendo" | "impreso" | "error";
+export type TrabajoImpresionOrigen = "enlace" | "admin" | "nodo";
+
+/** Renglón de etiquetas de precio (como la app "codigos"). Sin `codigo`
+ *  sale "NO REGISTRADO" con el precio. */
+export type RenglonEtiquetaPrecio = {
+  /** Id del artículo: 8 dígitos. */
+  codigo?: string;
+  /** Lo que va después del `$`: `35` o `120.50`. */
+  precio: string;
+  piezas: number;
+  /** Solo para la pantalla; no se imprime. */
+  nombre?: string;
+};
+
+/** Una orden en la cola de impresión. */
+export type TrabajoImpresion = {
+  tipo: TrabajoImpresionTipo;
+  impresoraId: string;
+  estado: TrabajoImpresionEstado;
+  origen: TrabajoImpresionOrigen;
+  /** uid de quien la mandó. */
+  creadoPor: string;
+  /** Nombre visible de quien la mandó. */
+  quien?: string;
+  creadoEn: unknown;
+  /** `etiquetas_lote`: cuántas. */
+  cantidad?: number;
+  /** `etiquetas_lote`: números que apartó el programa (consecutivos). */
+  desde?: number;
+  hasta?: number;
+  /** `etiquetas_precio`. */
+  renglones?: RenglonEtiquetaPrecio[];
+  /** La mandó un teléfono (acceso `armar`). */
+  enlaceId?: string;
+  /** La mandó una caja. */
+  nodoId?: string;
+  sucursalId?: string;
+  /** uid de la sesión del programa que la tomó. */
+  tomadoPor?: string;
+  tomadoEn?: unknown;
+  terminadoEn?: unknown;
+  /** Veces que salió impresa ("Reimprimir" suma). */
+  impresiones?: number;
+  error?: string;
 };
 
 /** Foto de un lote subida desde un enlace `recibir`. */

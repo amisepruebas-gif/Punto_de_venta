@@ -2373,7 +2373,8 @@ exports.canjearEnlaceLote = onCall(
         const creadoEnMs = d.creadoEn && typeof d.creadoEn.toMillis === "function" ?
           d.creadoEn.toMillis() : 0;
         const decision = enlaceLote.decidirCanje({...d, creadoEnMs}, ahoraMs, dispositivoHash);
-        if (!decision.ok) return decision;
+        // Con el secreto bien ya se puede decir el mensaje propio de su tipo.
+        if (!decision.ok) return {...decision, tipo: d.tipo};
         const uid = decision.uid || uidNuevo;
         let lote = null;
         if (d.tipo === "recibir") {
@@ -2403,12 +2404,25 @@ exports.canjearEnlaceLote = onCall(
         return {ok: true, venceMs: decision.venceMs, enlace: d, lote, uid};
       });
       if (!r.ok) {
-        throw new HttpsError("permission-denied", enlaceLote.mensajeDeMotivo(r.motivo));
+        throw new HttpsError("permission-denied", enlaceLote.mensajeDeMotivo(r.motivo, r.tipo));
       }
 
       const uid = r.uid;
       const claims = enlaceLote.claimsDeEnlace(negocioId, enlaceId, r.enlace, r.venceMs);
       const token = await admin.auth().createCustomToken(uid, claims);
+      // Lo propio de cada tipo (`r.lote` solo existe en `recibir`).
+      let extra;
+      if (r.enlace.tipo === "armar") {
+        extra = {letra: r.enlace.letra};
+      } else if (r.enlace.tipo === "imprimir") {
+        extra = r.enlace.sucursalId ? {sucursalId: r.enlace.sucursalId} : {};
+      } else {
+        extra = {
+          resurtidoId: r.enlace.resurtidoId,
+          folio: r.lote.folio,
+          sucursalDestinoNombre: r.lote.sucursalDestinoNombre,
+        };
+      }
       return {
         token,
         uid,
@@ -2417,13 +2431,7 @@ exports.canjearEnlaceLote = onCall(
         // El teléfono cuenta el tiempo con estos dos, no con su reloj.
         ahoraMs,
         venceMs: r.venceMs,
-        ...(r.enlace.tipo === "armar" ?
-          {letra: r.enlace.letra} :
-          {
-            resurtidoId: r.enlace.resurtidoId,
-            folio: r.lote.folio,
-            sucursalDestinoNombre: r.lote.sucursalDestinoNombre,
-          }),
+        ...extra,
       };
     },
 );
