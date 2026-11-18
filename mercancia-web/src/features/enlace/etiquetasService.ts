@@ -111,11 +111,19 @@ export function escucharMisOrdenesAbiertas(
 export async function reimprimir(s: SesionEnlace, trabajoId: string): Promise<void> {
   exigirInternet();
   const ref = doc(s.db, paths.impresion(s.negocioId, trabajoId));
-  await runTransaction(s.db, async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) throw new ErrorEnlace("Esa orden ya no existe.");
-    const t = snap.data() as TrabajoImpresion;
-    if (t.estado === "pendiente" || t.estado === "imprimiendo") return;
-    tx.update(ref, { estado: "pendiente", error: deleteField() });
-  });
+  try {
+    await runTransaction(s.db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new ErrorEnlace("Esa orden ya no existe.");
+      const t = snap.data() as TrabajoImpresion;
+      if (t.estado === "pendiente" || t.estado === "imprimiendo") return;
+      tx.update(ref, { estado: "pendiente", error: deleteField() });
+    });
+  } catch (e) {
+    // Sin permiso con el acceso vivo = su impresora está apagada o se borró.
+    if (esPermisoDenegado(e) && (await accesoSigueVivo(s))) {
+      throw new ErrorEnlace("Esa impresora está apagada en admin o ya no existe. Pide una orden nueva a otra impresora.");
+    }
+    throw e;
+  }
 }

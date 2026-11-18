@@ -32,6 +32,16 @@ import {
 
 const MAX_NOMBRE = 60;
 
+const APAGADA = "Esa impresora está apagada (Accesos → Impresoras) o ya no existe. Préndela y vuelve a intentar.";
+
+/** Firestore dijo que no al mandar o reimprimir: con admin, es que la
+ *  impresora está apagada o se borró. */
+function traducirPermiso(e: unknown): never {
+  const code = typeof e === "object" && e !== null && "code" in e ? String((e as { code: unknown }).code) : "";
+  if (code === "permission-denied") throw new Error(APAGADA);
+  throw e;
+}
+
 function limpiarNombre(nombre: string): string {
   const n = nombre.trim();
   if (!n) throw new Error("Ponle un nombre a la impresora");
@@ -154,19 +164,23 @@ export async function mandarEtiquetasLote(
   if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > MAX_ETIQUETAS_IMPRESORA) {
     throw new Error(`Indica de 1 a ${MAX_ETIQUETAS_IMPRESORA} etiquetas`);
   }
+  // El id se saca UNA vez y se crea en una transacción: si el SDK la repite
+  // (se perdió la respuesta), encuentra la orden ya creada y no manda otra.
   const ref = doc(collection(db, paths.impresionesCol(negocioId)));
-  const batch = writeBatch(db);
-  batch.set(ref, {
-    tipo: "etiquetas_lote",
-    impresoraId,
-    estado: "pendiente",
-    origen: "admin",
-    creadoPor: uid,
-    ...(quien.trim() ? { quien: quien.trim().slice(0, 80) } : {}),
-    creadoEn: serverTimestamp(),
-    cantidad,
-  });
-  await batch.commit();
+  await runTransaction(db, async (tx) => {
+    const ya = await tx.get(ref);
+    if (ya.exists()) return;
+    tx.set(ref, {
+      tipo: "etiquetas_lote",
+      impresoraId,
+      estado: "pendiente",
+      origen: "admin",
+      creadoPor: uid,
+      ...(quien.trim() ? { quien: quien.trim().slice(0, 80) } : {}),
+      creadoEn: serverTimestamp(),
+      cantidad,
+    });
+  }).catch(traducirPermiso);
   return ref.id;
 }
 
@@ -175,7 +189,7 @@ export async function reimprimirTrabajo(negocioId: string, trabajoId: string): P
   await updateDoc(doc(db, paths.impresion(negocioId, trabajoId)), {
     estado: "pendiente",
     error: deleteField(),
-  });
+  }).catch(traducirPermiso);
 }
 
 /** Cancela una que espera en la cola, o libera una que se quedó imprimiendo. */

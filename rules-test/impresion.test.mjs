@@ -219,6 +219,21 @@ await check("el teléfono NO cancela una orden en cola", "fail", updateDoc(doc(a
 await check("admin cancela una orden en cola", "ok", updateDoc(doc(admin, trabajo("T7")), { estado: "error", error: "Se canceló en admin" }));
 await check("admin NO marca impresa una orden", "fail", updateDoc(doc(admin, trabajo("T7")), { estado: "impreso" }));
 
+// "Reimprimir" solo a una impresora que existe y está prendida (si no, la
+// orden se quedaría en la cola para siempre).
+await env.withSecurityRulesDisabled(async (c) => {
+  const db = c.firestore();
+  const conError = (impresoraId, extra = {}) => ({ tipo: "etiquetas_lote", impresoraId, estado: "error", origen: "admin",
+    creadoPor: "a1", cantidad: 2, desde: 426, hasta: 427, error: "La impresora no respondió", ...extra });
+  await setDoc(doc(db, trabajo("T9")), conError("I2"));
+  await setDoc(doc(db, trabajo("T10")), conError("I2", { origen: "enlace", creadoPor: UID_ARMAR, enlaceId: "E1" }));
+  await setDoc(doc(db, trabajo("T11")), conError("BORRADA"));
+});
+await check("admin NO reimprime a una impresora apagada", "fail", updateDoc(doc(admin, trabajo("T9")), { estado: "pendiente", error: deleteField() }));
+await check("el teléfono NO reimprime a una impresora apagada", "fail", updateDoc(doc(armar, trabajo("T10")), { estado: "pendiente", error: deleteField() }));
+await check("admin NO reimprime a una impresora que ya se borró", "fail", updateDoc(doc(admin, trabajo("T11")), { estado: "pendiente", error: deleteField() }));
+await check("el programa pregunta por una orden que admin ya borró", "ok", getDoc(doc(pc3, trabajo("NO_EXISTE"))));
+
 // Sin contador todavía: el programa lo crea al tomar la primera orden.
 await env.withSecurityRulesDisabled(async (c) => {
   const db = c.firestore();

@@ -56,6 +56,18 @@ export function impresoraConectada(
   return ms !== null && ahoraMs - ms < IMPRESORA_CONECTADA_MS;
 }
 
+/** Cómo está una impresora para quien le manda una orden (teléfono, caja).
+ *  `lista`: conectada, sin pausa y con su impresora de Windows elegida. */
+export function estadoImpresoraParaOrden(
+  imp: Pick<Impresora, "latidoEn" | "pausada" | "windows"> | null | undefined,
+  ahoraMs: number,
+): { texto: string; lista: boolean } {
+  if (!impresoraConectada(imp, ahoraMs)) return { texto: "Sin conexión: la orden espera en la cola", lista: false };
+  if (imp?.pausada) return { texto: "En pausa: la orden espera en la cola", lista: false };
+  if (!imp?.windows) return { texto: "Conectada, pero falta elegir la impresora en la PC", lista: false };
+  return { texto: "Conectada", lista: true };
+}
+
 function rangoValido(desde: unknown, hasta: unknown): desde is number {
   return (
     Number.isInteger(desde) &&

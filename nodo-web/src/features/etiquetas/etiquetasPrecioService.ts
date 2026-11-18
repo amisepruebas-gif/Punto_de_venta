@@ -32,6 +32,16 @@ export type ImpresoraVista = Impresora & { id: string };
 export type TrabajoVista = TrabajoImpresion & { id: string };
 
 const SIN_INTERNET = "Sin internet no se puede mandar a imprimir. Vuelve a intentar cuando regrese la conexión.";
+const APAGADA =
+  "Esa impresora está apagada en admin o ya no es de esta sucursal. Pide al administrador que la revise (Accesos → Impresoras).";
+
+/** Firestore dijo que no: con la caja trabajando bien, es que la impresora
+ *  está apagada (o se borró, o la cambiaron de sucursal). */
+function traducirPermiso(e: unknown): never {
+  const code = typeof e === "object" && e !== null && "code" in e ? String((e as { code: unknown }).code) : "";
+  if (code === "permission-denied") throw new Error(APAGADA);
+  throw e;
+}
 
 /** Las impresoras de etiquetas de esta sucursal, en vivo. */
 export function useImpresorasSucursal(negocioId: string | null, sucursalId: string | null) {
@@ -113,7 +123,7 @@ export async function mandarEtiquetasPrecio(args: {
           nodoId: args.nodoId,
           sucursalId: args.sucursalId,
         });
-      });
+      }).catch(traducirPermiso);
       return ref.id;
     },
     { limiteMs: 15_000 },
@@ -132,6 +142,6 @@ export async function reimprimirEtiquetas(negocioId: string, trabajoId: string):
       if (t.estado === "pendiente" || t.estado === "imprimiendo") return;
       ctl.vaAEscribir();
       tx.update(ref, { estado: "pendiente", error: deleteField() });
-    });
+    }).catch(traducirPermiso);
   });
 }

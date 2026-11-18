@@ -19,7 +19,7 @@ import {
   IMPRESION_TOPE_RENGLONES,
   RE_CODIGO_ARTICULO_ETIQUETA,
   RE_PRECIO_ETIQUETA,
-  impresoraConectada,
+  estadoImpresoraParaOrden,
   normalizarCodigoEscaneado,
   resolverPrecioEfectivo,
   textoEstadoTrabajo,
@@ -237,21 +237,17 @@ export function EtiquetasPrecioPage() {
             ) : (
               <b>{impresora?.nombre}</b>
             )}
-            {impresora && (
-              <span
-                className={
-                  impresoraConectada(impresora, ahora) && !impresora.pausada
-                    ? "text-emerald-700 dark:text-emerald-400"
-                    : "text-amber-800 dark:text-amber-300"
-                }
-              >
-                {!impresoraConectada(impresora, ahora)
-                  ? "Sin conexión: la orden espera en la cola"
-                  : impresora.pausada
-                    ? "En pausa: la orden espera en la cola"
-                    : "Conectada"}
-              </span>
-            )}
+            {impresora &&
+              (() => {
+                const e = estadoImpresoraParaOrden(impresora, ahora);
+                return (
+                  <span
+                    className={e.lista ? "text-emerald-700 dark:text-emerald-400" : "text-amber-800 dark:text-amber-300"}
+                  >
+                    {e.texto}
+                  </span>
+                );
+              })()}
           </section>
         )}
 

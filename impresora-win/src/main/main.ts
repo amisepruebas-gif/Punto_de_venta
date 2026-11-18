@@ -16,8 +16,18 @@
 // Opciones de prueba: `--a-archivo=CARPETA` (guarda los comandos en vez de
 // imprimir) y `--emuladores` (se conecta a los emuladores locales).
 
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  nativeImage,
+  Tray,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from "electron";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { AccionBandeja, OpcionesPrograma } from "../compartido/api";
 import { Almacen } from "./almacen";
 import { imprimirRaw, listarImpresoras, prepararImpresora, puertosUsb } from "./impresoras";
@@ -100,8 +110,24 @@ function crearVentana(): void {
     registrar("error", `La ventana se cerró (${d.reason}); se vuelve a abrir.`);
     if (!saliendo) void ventana?.reload();
   });
-  // Ningún enlace abre otra ventana dentro del programa.
+  // Ningún enlace abre otra ventana dentro del programa, y la ventana nunca
+  // sale de su página (soltar un enlace o un .html encima la navegaría y esa
+  // página tendría el puente).
   ventana.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  ventana.webContents.on("will-navigate", (e) => e.preventDefault());
+  ventana.webContents.on("will-redirect", (e) => e.preventDefault());
+}
+
+const URL_VENTANA = pathToFileURL(path.join(__dirname, "../renderer/index.html")).href.toLowerCase();
+
+/** Solo la página del programa, en su ventana, puede usar el puente. */
+function deConfianza(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  const w = ventana?.webContents;
+  if (!w || e.sender !== w) return false;
+  const f = e.senderFrame;
+  const m = w.mainFrame;
+  if (!f || f.processId !== m.processId || f.routingId !== m.routingId) return false;
+  return (f.url.split(/[?#]/)[0] ?? "").toLowerCase() === URL_VENTANA;
 }
 
 function pedirBandeja(accion: AccionBandeja): void {
@@ -133,29 +159,41 @@ function actualizarBandeja(): void {
 }
 
 function registrarPuente(): void {
-  ipcMain.handle("opciones", () => OPCIONES);
-  ipcMain.handle("vinculacion:leer", () => almacen.vinculacion());
-  ipcMain.handle("vinculacion:guardar", (_e, codigo: unknown) => {
+  const handle = (canal: string, fn: (e: IpcMainInvokeEvent, ...args: unknown[]) => unknown) =>
+    ipcMain.handle(canal, (e, ...args: unknown[]) => {
+      if (!deConfianza(e)) {
+        registrar("error", `Puente: "${canal}" pedido desde fuera de la ventana del programa (${e.senderFrame?.url ?? "?"})`);
+        throw new Error("No permitido");
+      }
+      return fn(e, ...args);
+    });
+  const on = (canal: string, fn: (e: IpcMainEvent, ...args: unknown[]) => void) =>
+    ipcMain.on(canal, (e, ...args: unknown[]) => {
+      if (deConfianza(e)) fn(e, ...args);
+    });
+  handle("opciones", () => OPCIONES);
+  handle("vinculacion:leer", () => almacen.vinculacion());
+  handle("vinculacion:guardar", (_e, codigo: unknown) => {
     if (typeof codigo !== "string" || codigo.length > 400) throw new Error("Código inválido");
     almacen.guardarVinculacion(codigo);
   });
-  ipcMain.handle("vinculacion:borrar", () => almacen.borrarVinculacion());
-  ipcMain.handle("config:leer", () => almacen.config());
-  ipcMain.handle("config:guardar", (_e, cambios: unknown) => {
+  handle("vinculacion:borrar", () => almacen.borrarVinculacion());
+  handle("config:leer", () => almacen.config());
+  handle("config:guardar", (_e, cambios: unknown) => {
     const c = (cambios && typeof cambios === "object" ? cambios : {}) as {
       impresoraWindows?: string;
       pausada?: boolean;
     };
     return almacen.guardarConfig(c);
   });
-  ipcMain.handle("impresoras:listar", () => (ventana ? listarImpresoras(ventana) : []));
-  ipcMain.handle("impresoras:puertos", () => puertosUsb());
-  ipcMain.handle("impresoras:preparar", async (_e, puerto: unknown) => {
+  handle("impresoras:listar", () => (ventana ? listarImpresoras(ventana) : []));
+  handle("impresoras:puertos", () => puertosUsb());
+  handle("impresoras:preparar", async (_e, puerto: unknown) => {
     const r = await prepararImpresora(String(puerto));
     registrar(r.ok ? "info" : "error", `Preparar impresora en ${String(puerto)}: ${r.ok ? "OK" : r.error}`);
     return r;
   });
-  ipcMain.handle("impresoras:imprimir", async (_e, p: unknown) => {
+  handle("impresoras:imprimir", async (_e, p: unknown) => {
     const x = (p ?? {}) as { impresora?: unknown; datos?: unknown; nombre?: unknown };
     if (typeof x.datos !== "string" || x.datos.length === 0 || x.datos.length > 2_000_000) {
       return { ok: false, error: "No hay nada que imprimir." };
@@ -170,9 +208,9 @@ function registrarPuente(): void {
     );
     return r;
   });
-  ipcMain.on("ventana:mostrar", () => mostrarVentana());
-  ipcMain.on("ventana:ocultar", () => ventana?.hide());
-  ipcMain.on("bandeja:estado", (_e, e: unknown) => {
+  on("ventana:mostrar", () => mostrarVentana());
+  on("ventana:ocultar", () => ventana?.hide());
+  on("bandeja:estado", (_e, e: unknown) => {
     const x = (e ?? {}) as Partial<typeof estado>;
     estado = {
       texto: typeof x.texto === "string" ? x.texto : estado.texto,
@@ -181,7 +219,7 @@ function registrarPuente(): void {
     };
     actualizarBandeja();
   });
-  ipcMain.on("registro", (_e, nivel: unknown, mensaje: unknown) => {
+  on("registro", (_e, nivel: unknown, mensaje: unknown) => {
     registrar(nivel === "error" ? "error" : "info", String(mensaje).slice(0, 2000));
   });
 }

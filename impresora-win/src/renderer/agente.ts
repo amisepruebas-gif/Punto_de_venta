@@ -51,7 +51,7 @@ import {
   type RenglonEtiquetaPrecio,
   type TrabajoImpresion,
 } from "@shared";
-import type { ConfigLocal } from "../compartido/api";
+import type { ConfigLocal, ResultadoImpresion } from "../compartido/api";
 import type { ServiciosFirebase } from "./firebase";
 
 export type Fase = "cargando" | "sin_vincular" | "conectando" | "listo" | "apagada" | "sin_red";
@@ -155,6 +155,8 @@ export class Agente {
   private reintentoCola: ReturnType<typeof setTimeout> | null = null;
   private readonly pendientes = new Map<string, number>();
   private procesando = false;
+  /** Ya se revisaron las órdenes que dejó a medias una corrida anterior. */
+  private yaLimpio = false;
   private version = "";
 
   constructor(
@@ -244,6 +246,7 @@ export class Agente {
     await window.amise.vinculacion.guardar(texto.replace(/\s+/g, ""));
     this.vinculo = v;
     this.uid = this.fb.auth.currentUser?.uid ?? null;
+    this.yaLimpio = false;
     this.log("info", `Vinculada con la impresora ${v.enlaceId}`);
     this.arrancar();
   }
@@ -287,11 +290,12 @@ export class Agente {
       const c = (await actual.getIdTokenResult().catch(() => null))?.claims;
       sirve = !!c && c.role === "enlace" && c.tipo === "imprimir" && c.enlaceId === v.enlaceId && c.negocioId === v.negocioId;
     }
-    if (sirve) {
-      // Con la sesión guardada se empieza ya (aunque no haya red); el canje
-      // la refresca en segundo plano (apagador, renovación).
-      void this.canjear(v).catch((e) => this.manejarError(e, "al refrescar la sesión"));
-    } else {
+    // Con la sesión guardada se entra sin canje (aunque no haya red ni
+    // functions). Sin canje en segundo plano: cambiar de sesión a media
+    // escritura hace que el SDK repita escrituras que ya quedaron. Si la
+    // apagaron o la renovaron, las reglas cortan y se reintenta CON canje,
+    // que dice cuál de las dos.
+    if (!sirve) {
       try {
         await this.canjear(v);
       } catch (e) {
@@ -303,20 +307,25 @@ export class Agente {
     this.arrancar();
   }
 
-  private programarReintento(ms: number): void {
+  /** Vuelve a entrar en un rato. `conCanje`: preguntarle a la function
+   *  (apagada, renovada o ya prendida otra vez); sin canje se entra con la
+   *  sesión guardada (sin red o falla del servidor). */
+  private programarReintento(ms: number, conCanje: boolean): void {
     if (this.reintento) clearTimeout(this.reintento);
     this.reintento = setTimeout(() => {
       this.reintento = null;
-      if (this.vinculo) void this.conectar(this.vinculo, true);
+      if (this.vinculo) void this.conectar(this.vinculo, conCanje);
     }, ms);
   }
 
   private manejarError(e: unknown, donde: string): void {
     this.log("error", `${donde}: ${codigoDe(e)} ${mensajeDe(e)}`);
+    // Ya sin vincular (código renovado o desvinculada): nada que reintentar.
+    if (!this.vinculo) return;
     if (esRed(e)) {
       this.poner({ fase: "sin_red", mensaje: "Sin internet: las órdenes esperan en la cola." });
       this.detener();
-      this.programarReintento(REINTENTO_RED_MS);
+      this.programarReintento(REINTENTO_RED_MS, false);
       return;
     }
     const c = codigoDe(e);
@@ -325,23 +334,34 @@ export class Agente {
       // "ya no sirve" / "ya se usó": hay que pegar un código nuevo.
       if (/no sirve|otra computadora/.test(m)) {
         this.detener();
+        this.vinculo = null;
         this.poner({ fase: "sin_vincular", mensaje: m });
         return;
       }
       this.detener();
       this.poner({ fase: "apagada", mensaje: m });
-      this.programarReintento(REINTENTO_APAGADA_MS);
+      this.programarReintento(REINTENTO_APAGADA_MS, true);
       return;
     }
     if (esPermiso(e)) {
       // Firestore dejó de dejar: apagada o renovada en admin. Se vuelve a
-      // entrar (el canje dice cuál de las dos).
+      // entrar con canje (dice cuál de las dos, o que ya la prendieron).
       this.detener();
       this.poner({ fase: "apagada", mensaje: "Esta impresora está apagada en admin o se renovó su código." });
-      this.programarReintento(REINTENTO_APAGADA_MS);
+      this.programarReintento(REINTENTO_APAGADA_MS, true);
       return;
     }
-    this.poner({ mensaje: `Algo falló ${donde}: ${mensajeDe(e)}` });
+    // Otro error (del servidor, demasiados intentos, una consulta…). Un
+    // oyente de Firestore que falló ya no avisa más, y un canje fallido deja
+    // la PC sin entrar: se vuelve a entrar en un rato, sin quedarse muda.
+    this.detener();
+    this.poner({
+      fase: "conectando",
+      mensaje: `Algo falló ${donde}: ${mensajeDe(e)}. Se vuelve a intentar en ${REINTENTO_RED_MS / 1000} s.`,
+    });
+    // Sin canje: con la sesión guardada se entra aunque functions falle (si
+    // no hay sesión que sirva, `conectar` hace el canje de todos modos).
+    this.programarReintento(REINTENTO_RED_MS, false);
   }
 
   private detener(): void {
@@ -415,17 +435,21 @@ export class Agente {
         latidoEn: serverTimestamp(),
         pausada: this.estado.pausada,
         version: this.version.slice(0, 20),
-        ...(this.estado.impresoraWindows ? { windows: this.estado.impresoraWindows.slice(0, 120) } : {}),
+        // "" = no hay impresora de Windows elegida (admin y el teléfono
+        // dicen "falta elegir impresora" en vez de "Conectada").
+        windows: (this.estado.impresoraWindows ?? "").slice(0, 120),
       });
     } catch (e) {
       this.manejarError(e, "al avisar que sigue viva");
     }
   }
 
-  /** Las que esta PC dejó "imprimiendo" (se apagó a media impresión). */
+  /** Las que esta PC dejó "imprimiendo" en una corrida ANTERIOR (se apagó a
+   *  media impresión). Una sola vez por corrida: al reconectar en la misma
+   *  corrida puede haber una imprimiéndose de verdad. */
   private async limpiarInterrumpidas(): Promise<void> {
     const v = this.vinculo;
-    if (!v || !this.uid) return;
+    if (!v || !this.uid || this.yaLimpio) return;
     try {
       const snap = await getDocs(
         query(
@@ -434,15 +458,26 @@ export class Agente {
           where("estado", "==", "imprimiendo"),
         ),
       );
+      const uid = this.uid;
       for (const d of snap.docs) {
-        if ((d.data() as TrabajoImpresion).tomadoPor !== this.uid) continue;
-        await updateDoc(d.ref, {
-          estado: "error",
-          error: 'Se interrumpió (se apagó la PC o el programa). Revisa si salieron; si no, toca "Reimprimir".',
-          terminadoEn: serverTimestamp(),
+        if ((d.data() as TrabajoImpresion).tomadoPor !== uid) continue;
+        if (d.id === this.estado.imprimiendo) continue;
+        // En transacción: si el SDK la repite (respuesta perdida), ve que ya
+        // quedó con error y no la vuelve a tocar.
+        const marcada = await runTransaction(this.fb.db, async (tx) => {
+          const s = await tx.get(d.ref);
+          const t = s.exists() ? (s.data() as TrabajoImpresion) : null;
+          if (!t || t.estado !== "imprimiendo" || t.tomadoPor !== uid) return false;
+          tx.update(d.ref, {
+            estado: "error",
+            error: 'Se interrumpió (se apagó la PC o el programa). Revisa si salieron; si no, toca "Reimprimir".',
+            terminadoEn: serverTimestamp(),
+          });
+          return true;
         });
-        this.log("info", `Orden ${d.id} interrumpida: marcada con error`);
+        if (marcada) this.log("info", `Orden ${d.id} interrumpida: marcada con error`);
       }
+      this.yaLimpio = true;
     } catch (e) {
       this.log("error", `al revisar órdenes interrumpidas: ${mensajeDe(e)}`);
     }
@@ -477,12 +512,19 @@ export class Agente {
     const { db } = this.fb;
     const ref = doc(db, paths.impresion(v.negocioId, id));
     let t: TrabajoImpresion | null;
+    let intento = 0;
     try {
       t = await runTransaction(db, async (tx) => {
+        intento++;
         const snap = await tx.get(ref);
         if (!snap.exists()) return null;
         const actual = snap.data() as TrabajoImpresion;
-        if (actual.estado !== "pendiente" || actual.impresoraId !== v.enlaceId) return null;
+        if (actual.impresoraId !== v.enlaceId) return null;
+        // Reintento del SDK porque se perdió la respuesta del intento
+        // anterior, que SÍ quedó: la orden ya es nuestra y se imprime con los
+        // números que apartó (si no, se quedaría "imprimiendo" para siempre).
+        if (intento > 1 && actual.estado === "imprimiendo" && actual.tomadoPor === uid) return actual;
+        if (actual.estado !== "pendiente") return null;
         const cambios: Record<string, unknown> = {
           estado: "imprimiendo",
           tomadoPor: uid,
@@ -539,11 +581,17 @@ export class Agente {
 
     const n = etiquetasDeTrabajo(t);
     this.poner({ imprimiendo: id, mensaje: `Imprimiendo ${n} etiqueta${n === 1 ? "" : "s"}…` });
-    const r = await window.amise.impresoras.imprimir({
-      impresora: this.estado.impresoraWindows ?? "",
-      datos,
-      nombre: `AMISE ${t.tipo === "etiquetas_lote" ? "lote" : "precio"} ${id}`,
-    });
+    let r: ResultadoImpresion;
+    try {
+      r = await window.amise.impresoras.imprimir({
+        impresora: this.estado.impresoraWindows ?? "",
+        datos,
+        nombre: `AMISE ${t.tipo === "etiquetas_lote" ? "lote" : "precio"} ${id}`,
+      });
+    } catch (e) {
+      // Que nunca se quede "imprimiendo" (disco lleno, antivirus…).
+      r = { ok: false, error: `No se pudo mandar a Windows: ${mensajeDe(e)}` };
+    }
     if (r.ok) {
       await this.terminar(ref, { estado: "impreso", impresiones: (t.impresiones ?? 0) + 1 });
       this.agregarHistorial(id, t, "impreso");
@@ -624,11 +672,9 @@ export class Agente {
   async imprimirPrueba(): Promise<string | null> {
     const impresora = this.estado.impresoraWindows;
     if (!impresora) return "Primero elige la impresora de Windows.";
-    const r = await window.amise.impresoras.imprimir({
-      impresora,
-      datos: tsplPrueba(this.estado.nombre || "AMISE"),
-      nombre: "AMISE prueba",
-    });
+    const r = await window.amise.impresoras
+      .imprimir({ impresora, datos: tsplPrueba(this.estado.nombre || "AMISE"), nombre: "AMISE prueba" })
+      .catch((e: unknown): ResultadoImpresion => ({ ok: false, error: `No se pudo mandar a Windows: ${mensajeDe(e)}` }));
     return r.ok ? null : r.error;
   }
 
@@ -646,7 +692,9 @@ export class Agente {
     } catch (e) {
       return mensajeDe(e);
     }
-    const r = await window.amise.impresoras.imprimir({ impresora, datos, nombre: `AMISE reimpresión ${o.id}` });
+    const r = await window.amise.impresoras
+      .imprimir({ impresora, datos, nombre: `AMISE reimpresión ${o.id}` })
+      .catch((e: unknown): ResultadoImpresion => ({ ok: false, error: `No se pudo mandar a Windows: ${mensajeDe(e)}` }));
     return r.ok ? null : r.error;
   }
 }

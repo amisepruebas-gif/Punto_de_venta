@@ -24,6 +24,8 @@ export function App() {
   const [listo, setListo] = useState<Listo | null>(null);
   const [estado, setEstado] = useState<EstadoAgente | null>(null);
   const [errorInicio, setErrorInicio] = useState<string | null>(null);
+  // Sin window.alert/confirm: congelan esta ventana, que es la que oye la cola.
+  const [avisoBandeja, setAvisoBandeja] = useState<string | null>(null);
 
   useEffect(() => {
     let quitar: () => void = () => undefined;
@@ -47,10 +49,8 @@ export function App() {
         else if (accion === "reanudar") await listo.agente.pausar(false);
         else {
           const error = await listo.agente.imprimirPrueba();
-          if (error) {
-            window.amise.ventana.mostrar();
-            window.alert(error);
-          }
+          setAvisoBandeja(error ? `La prueba no salió: ${error}` : null);
+          if (error) window.amise.ventana.mostrar();
         }
       })();
     });
@@ -88,6 +88,15 @@ export function App() {
           {TEXTO_FASE[estado.fase]}
         </span>
       </header>
+
+      {avisoBandeja && (
+        <div className="fila aviso-texto" role="alert">
+          <span>{avisoBandeja}</span>
+          <button type="button" className="secundario" onClick={() => setAvisoBandeja(null)}>
+            Cerrar
+          </button>
+        </div>
+      )}
 
       {estado.fase === "sin_vincular" || estado.fase === "cargando" ? (
         <Vincular agente={agente} estado={estado} />
@@ -312,10 +321,11 @@ function Ordenes({ agente, estado }: { agente: Agente; estado: EstadoAgente }) {
 
 function Ultimas({ agente, estado }: { agente: Agente; estado: EstadoAgente }) {
   const [aviso, setAviso] = useState<string | null>(null);
+  // Confirmación en la misma lista (un window.confirm congelaría la cola).
+  const [seguro, setSeguro] = useState<string | null>(null);
   async function otraVez(o: OrdenVista) {
-    if (!window.confirm(`¿Volver a imprimir aquí ${o.etiquetas} etiqueta(s) con los mismos números? (para un atasco de papel)`)) {
-      return;
-    }
+    setSeguro(null);
+    setAviso("Mandando otra vez…");
     const error = await agente.reimprimirLocal(o);
     setAviso(error ?? "Se mandó otra vez.");
   }
@@ -335,11 +345,24 @@ function Ultimas({ agente, estado }: { agente: Agente; estado: EstadoAgente }) {
                 <div className="sutil">{o.detalle}</div>
                 {o.estado === "error" && <div className="error">{o.error}</div>}
               </div>
-              {o.estado === "impreso" && (
-                <button type="button" className="secundario" onClick={() => void otraVez(o)}>
-                  Otra vez aquí
-                </button>
-              )}
+              {o.estado === "impreso" &&
+                (seguro === `${o.id}-${o.cuandoMs}` ? (
+                  <span className="fila">
+                    <span className="sutil">
+                      ¿Otra vez {o.etiquetas} con los mismos números? (para un atasco de papel)
+                    </span>
+                    <button type="button" onClick={() => void otraVez(o)}>
+                      Sí, otra vez
+                    </button>
+                    <button type="button" className="secundario" onClick={() => setSeguro(null)}>
+                      No
+                    </button>
+                  </span>
+                ) : (
+                  <button type="button" className="secundario" onClick={() => setSeguro(`${o.id}-${o.cuandoMs}`)}>
+                    Otra vez aquí
+                  </button>
+                ))}
             </li>
           ))}
         </ul>

@@ -132,15 +132,25 @@ export async function imprimirRaw(
   aArchivo: string | null,
 ): Promise<ResultadoImpresion> {
   if (aArchivo) {
-    mkdirSync(aArchivo, { recursive: true });
-    const archivo = path.join(aArchivo, `${Date.now()}-${limpiarNombreArchivo(p.nombre)}.prn`);
-    writeFileSync(archivo, p.datos, "latin1");
-    return { ok: true };
+    try {
+      mkdirSync(aArchivo, { recursive: true });
+      const archivo = path.join(aArchivo, `${Date.now()}-${limpiarNombreArchivo(p.nombre)}.prn`);
+      writeFileSync(archivo, p.datos, "latin1");
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: `No se pudo guardar el archivo de prueba: ${(e as Error)?.message ?? e}` };
+    }
   }
   if (!p.impresora) return { ok: false, error: "No hay impresora elegida en el programa." };
-  const dir = mkdtempSync(path.join(os.tmpdir(), "amise-etiquetas-"));
-  const archivo = path.join(dir, "etiquetas.prn");
-  writeFileSync(archivo, p.datos, "latin1");
+  let dir: string;
+  let archivo: string;
+  try {
+    dir = mkdtempSync(path.join(os.tmpdir(), "amise-etiquetas-"));
+    archivo = path.join(dir, "etiquetas.prn");
+    writeFileSync(archivo, p.datos, "latin1");
+  } catch (e) {
+    return { ok: false, error: `No se pudo preparar la impresión (¿disco lleno o antivirus?): ${(e as Error)?.message ?? e}` };
+  }
   try {
     // El ayudante espera a que el trabajo salga de la cola de Windows (hasta
     // 4 min si sí está imprimiendo; 12 s si la impresora no avanza).

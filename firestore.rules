@@ -398,13 +398,15 @@ service cloud.firestore {
         }
 
         // `resource == null`: el teléfono y la caja pueden preguntar por una
-        // orden que aún no existe (al reintentar saben si ya quedó).
+        // orden que aún no existe (al reintentar saben si ya quedó), y el
+        // programa por una que admin acaba de borrar (no es "apagada").
         allow read: if esAdmin(nid)
           || (esEnlace(nid, 'armar')
               && (resource == null || resource.data.enlaceId == request.auth.token.enlaceId))
           || (esNodo(nid)
               && (resource == null || resource.data.sucursalId == request.auth.token.sucursalId))
-          || (esEnlace(nid, 'imprimir') && resource.data.impresoraId == request.auth.token.enlaceId);
+          || (esEnlace(nid, 'imprimir')
+              && (resource == null || resource.data.impresoraId == request.auth.token.enlaceId));
 
         allow create: if
           (esAdmin(nid)
@@ -452,12 +454,15 @@ service cloud.firestore {
                 && nueva().terminadoEn == request.time
                 && nueva().error is string && nueva().error.size() <= 300)
             ))
-          // "Reimprimir": quien la mandó (o admin) la regresa a la cola.
+          // "Reimprimir": quien la mandó (o admin) la regresa a la cola, si su
+          // impresora sigue existiendo y prendida (si no, se quedaría en la
+          // cola para siempre).
           || ((esAdmin(nid)
                 || (esEnlace(nid, 'armar') && resource.data.enlaceId == request.auth.token.enlaceId)
                 || (esNodo(nid) && resource.data.sucursalId == request.auth.token.sucursalId))
               && resource.data.estado in ['impreso', 'error'] && nueva().estado == 'pendiente'
-              && cambiaTrabajo().hasOnly(['estado', 'error']))
+              && cambiaTrabajo().hasOnly(['estado', 'error'])
+              && impresoraPrendida(resource.data.impresoraId))
           // Admin cancela una que espera en la cola (p. ej. al borrar su
           // impresora) o libera una que se quedó "imprimiendo" (la PC se apagó
           // y se renovó su acceso): queda con error y se puede reimprimir.

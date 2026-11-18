@@ -6,6 +6,7 @@ import {
   codigoEtiquetaLote,
   codigoVinculacionImpresora,
   codigosDeTrabajo,
+  estadoImpresoraParaOrden,
   etiquetasDeTrabajo,
   generarSecretoEnlace,
   impresoraConectada,
@@ -172,6 +173,20 @@ describe("cola de impresión", () => {
     expect(impresoraConectada({ latidoEn: { seconds: (ahora - 10_000) / 1000, nanoseconds: 0 } }, ahora)).toBe(true);
     expect(impresoraConectada({}, ahora)).toBe(false);
     expect(impresoraConectada(null, ahora)).toBe(false);
+  });
+
+  it("dice al teléfono y a la caja si la impresora está lista para su orden", () => {
+    const ahora = 1_800_000_000_000;
+    const viva = { latidoEn: { toMillis: () => ahora - 20_000 } };
+    expect(estadoImpresoraParaOrden({ ...viva, windows: "Etiquetas AMISE" }, ahora)).toEqual({ texto: "Conectada", lista: true });
+    expect(estadoImpresoraParaOrden({ ...viva, windows: "Etiquetas AMISE", pausada: true }, ahora).lista).toBe(false);
+    // "" = el programa avisa que no tiene impresora de Windows elegida.
+    expect(estadoImpresoraParaOrden({ ...viva, windows: "" }, ahora)).toEqual({
+      texto: "Conectada, pero falta elegir la impresora en la PC",
+      lista: false,
+    });
+    expect(estadoImpresoraParaOrden({ windows: "X" }, ahora).texto).toMatch(/Sin conexión/);
+    expect(estadoImpresoraParaOrden(null, ahora).lista).toBe(false);
   });
 
   it("valida los renglones de precio que manda la caja", () => {

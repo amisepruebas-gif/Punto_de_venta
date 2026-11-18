@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2, Printer, RefreshCw, RotateCcw } from "lucide-react";
 import {
   IMPRESION_TOPE_ENLACE,
-  impresoraConectada,
+  estadoImpresoraParaOrden,
   textoEstadoTrabajo,
 } from "@shared";
 import { Button } from "@/components/ui/button";
@@ -45,13 +45,6 @@ function useAhora(cada: number): number {
     return () => clearInterval(t);
   }, [cada]);
   return ahora;
-}
-
-function estadoImpresora(i: ImpresoraVista, ahora: number): { texto: string; ok: boolean } {
-  if (!impresoraConectada(i, ahora)) return { texto: "Sin conexión: la orden espera", ok: false };
-  if (i.pausada) return { texto: "En pausa: la orden espera", ok: false };
-  if (!i.windows) return { texto: "Conectada, falta elegir impresora en la PC", ok: false };
-  return { texto: "Conectada", ok: true };
 }
 
 /** Pedir etiquetas numeradas a una impresora de etiquetas (teléfono). */
@@ -149,7 +142,7 @@ function Etiquetas({ sesion: s }: { sesion: SesionEnlace }) {
             <h2 className="text-base font-semibold">Impresora</h2>
             <ul className="space-y-2">
               {impresoras.map((i) => {
-                const e = estadoImpresora(i, ahora);
+                const e = estadoImpresoraParaOrden(i, ahora);
                 return (
                   <li key={i.id}>
                     <button
@@ -163,7 +156,7 @@ function Etiquetas({ sesion: s }: { sesion: SesionEnlace }) {
                       <Printer className="h-6 w-6 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1">
                         <span className="block text-lg font-medium">{i.nombre}</span>
-                        <span className={`block text-sm ${e.ok ? "text-emerald-700" : "text-amber-800"}`}>{e.texto}</span>
+                        <span className={`block text-sm ${e.lista ? "text-emerald-700" : "text-amber-800"}`}>{e.texto}</span>
                       </span>
                     </button>
                   </li>
