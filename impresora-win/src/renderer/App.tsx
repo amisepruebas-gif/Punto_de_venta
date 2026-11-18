@@ -137,7 +137,10 @@ function Vincular({ agente, estado }: { agente: Agente; estado: EstadoAgente }) 
     <section className="tarjeta">
       <h2>Vincular esta computadora</h2>
       <ol className="pasos">
-        <li>En admin entra a Accesos → Impresoras y crea una (o toca "Renovar" en la que ya tienes).</li>
+        <li>
+          En admin entra a Accesos y baja hasta <b>"Impresoras de etiquetas"</b>: crea una (o toca "Nuevo código" en
+          la que ya tienes). No es el enlace de un teléfono.
+        </li>
         <li>Copia el código de vinculación (empieza con AMISE1.) y pégalo aquí.</li>
       </ol>
       {estado.mensaje && estado.fase === "sin_vincular" && <p className="aviso-texto">{estado.mensaje}</p>}

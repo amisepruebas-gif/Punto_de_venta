@@ -231,8 +231,14 @@ export class Agente {
   async vincular(texto: string): Promise<void> {
     const v = leerCodigoVinculacion(texto);
     if (!v) {
+      // Lo que más se confunde: el enlace de un teléfono (armar lotes).
+      if (/\/enlace\//.test(texto)) {
+        throw new Error(
+          'Ese es el enlace de un teléfono, no el código de la impresora. En admin → Accesos baja hasta "Impresoras de etiquetas", crea la impresora y copia su código (empieza con AMISE1.).',
+        );
+      }
       throw new Error(
-        "Ese no es un código de vinculación. Cópialo completo de admin → Accesos → Impresoras (empieza con AMISE1.).",
+        'Ese no es un código de vinculación. Cópialo completo de admin → Accesos → "Impresoras de etiquetas" (empieza con AMISE1.).',
       );
     }
     this.detener();
@@ -537,8 +543,11 @@ export class Agente {
           const ultimo = c.exists() ? Number((c.data() as { ultimo?: unknown }).ultimo) : null;
           const plan = planearTomaEtiquetasLote(actual, ultimo);
           if (plan.nuevoUltimo !== null) {
-            if (c.exists()) tx.update(refContador, { ultimo: plan.nuevoUltimo });
-            else tx.set(refContador, { ultimo: plan.nuevoUltimo });
+            // Con el id de esta orden: las reglas solo dejan mover el contador
+            // junto con la orden que se toma en esta misma escritura.
+            const contador = { ultimo: plan.nuevoUltimo, trabajoId: id };
+            if (c.exists()) tx.update(refContador, contador);
+            else tx.set(refContador, contador);
             cambios.desde = plan.desde;
             cambios.hasta = plan.hasta;
           }

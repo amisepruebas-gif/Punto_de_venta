@@ -137,18 +137,35 @@ service cloud.firestore {
           || ((esNodo(nid) || esMercancia(nid))
               && k != '_contadorFabricacion' && k != '_contadorEtiquetasLote');
         // El programa de una impresora (acceso `imprimir`) aparta números de
-        // etiquetas de lote al tomar una orden: solo sube el contador, de a lo
-        // más 300 (la regla de la cola revisa que cuadre con la orden).
+        // etiquetas de lote al tomar una orden: sube el contador (de a lo más
+        // 300) SOLO junto con esa orden. En la misma escritura la orden
+        // `trabajoId` pasa de pendiente a imprimiendo, tomada por esta PC, y
+        // su `hasta` es el nuevo `ultimo`. Sin orden no lo puede mover, y la
+        // regla de la cola exige que el contador traiga su id: dos órdenes no
+        // pueden llevarse el mismo rango.
+        function contadorDeSuOrden() {
+          let tid = request.resource.data.trabajoId;
+          let ruta = /databases/$(database)/documents/negocios_web_new_version/$(nid)/impresiones_web_new_version/$(tid);
+          return get(ruta).data.estado == 'pendiente'
+            && getAfter(ruta).data.estado == 'imprimiendo'
+            && getAfter(ruta).data.impresoraId == request.auth.token.enlaceId
+            && getAfter(ruta).data.tomadoPor == request.auth.uid
+            && getAfter(ruta).data.hasta == request.resource.data.ultimo;
+        }
         allow get: if k == '_contadorEtiquetasLote' && esEnlace(nid, 'imprimir');
         allow create: if k == '_contadorEtiquetasLote' && esEnlace(nid, 'imprimir')
-          && request.resource.data.keys().hasOnly(['ultimo'])
+          && request.resource.data.keys().hasOnly(['ultimo', 'trabajoId'])
           && request.resource.data.ultimo is int
-          && request.resource.data.ultimo >= 1 && request.resource.data.ultimo <= 300;
+          && request.resource.data.ultimo >= 1 && request.resource.data.ultimo <= 300
+          && request.resource.data.trabajoId is string
+          && contadorDeSuOrden();
         allow update: if k == '_contadorEtiquetasLote' && esEnlace(nid, 'imprimir')
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ultimo'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ultimo', 'trabajoId'])
           && request.resource.data.ultimo is int
           && request.resource.data.ultimo > resource.data.ultimo
-          && request.resource.data.ultimo - resource.data.ultimo <= 300;
+          && request.resource.data.ultimo - resource.data.ultimo <= 300
+          && request.resource.data.trabajoId is string
+          && contadorDeSuOrden();
       }
 
       // Resurtidos y LOTES de envío (un lote es un resurtido con `cajas`).
@@ -384,11 +401,14 @@ service cloud.firestore {
           return nueva().cantidad is int && nueva().cantidad >= 1 && nueva().cantidad <= n;
         }
         // Los números que aparta el programa: tantos como pide la orden, justo
-        // después de lo que marcaba el contador, y el contador queda en `hasta`.
+        // después de lo que marcaba el contador, y el contador queda en `hasta`
+        // con el id de ESTA orden (una sola orden por escritura: dos no se
+        // pueden llevar el mismo rango).
         function rangoApartado() {
           return nueva().desde is int && nueva().hasta is int
             && nueva().hasta - nueva().desde + 1 == resource.data.cantidad
             && getAfter(rutaContador()).data.ultimo == nueva().hasta
+            && getAfter(rutaContador()).data.get('trabajoId', '') == tid
             && (exists(rutaContador())
                 ? get(rutaContador()).data.ultimo == nueva().desde - 1
                 : nueva().desde == 1);

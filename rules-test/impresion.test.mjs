@@ -129,6 +129,8 @@ await check("el programa NO sube el contador más de 300", "fail", updateDoc(doc
 await check("el programa NO mete otros campos al contador", "fail", updateDoc(doc(pc3, CONTADOR), { ultimo: 101, x: 1 }));
 await check("el teléfono NO sube el contador", "fail", updateDoc(doc(armar, CONTADOR), { ultimo: 101 }));
 await check("el programa apagado NO sube el contador", "fail", updateDoc(doc(pcApagada, CONTADOR), { ultimo: 101 }));
+await check("el programa NO sube el contador sin decir de qué orden", "fail", updateDoc(doc(pc3, CONTADOR), { ultimo: 101 }));
+await check("el programa NO sube el contador con una orden que no existe", "fail", updateDoc(doc(pc3, CONTADOR), { ultimo: 101, trabajoId: "NO_EXISTE" }));
 
 // ============ Cola: crear ============
 const orden = (extra) => ({ estado: "pendiente", creadoEn: serverTimestamp(), ...extra });
@@ -176,12 +178,35 @@ await check("el programa NO ve órdenes de otra impresora", "fail", getDoc(doc(p
 await check("admin ve toda la cola", "ok", getDocs(collection(admin, COLA)));
 
 // ============ Cola: el programa toma, aparta números e imprime ============
-const tomar = (db, uid, id, campos, contador) => {
+// El contador se sube con el id de la orden que se toma (`trabajoContador`
+// solo cambia para probar que no se puede poner el de otra).
+const tomar = (db, uid, id, campos, contador, trabajoContador = id) => {
   const b = writeBatch(db);
   b.update(doc(db, trabajo(id)), { estado: "imprimiendo", tomadoPor: uid, tomadoEn: serverTimestamp(), ...campos });
-  if (contador !== undefined) b.update(doc(db, CONTADOR), { ultimo: contador });
+  if (contador !== undefined) b.update(doc(db, CONTADOR), { ultimo: contador, trabajoId: trabajoContador });
   return b.commit();
 };
+await env.withSecurityRulesDisabled(async (c) => {
+  // Otra orden de 20 al taller, para intentar darle el mismo rango que a T1.
+  await setDoc(doc(c.firestore(), trabajo("T12")), { tipo: "etiquetas_lote", impresoraId: "I3", estado: "pendiente",
+    origen: "admin", creadoPor: "a1", cantidad: 20 });
+});
+const dosConElMismoRango = (db, uid) => {
+  const b = writeBatch(db);
+  const rango = { estado: "imprimiendo", tomadoPor: uid, tomadoEn: serverTimestamp(), desde: 101, hasta: 120 };
+  b.update(doc(db, trabajo("T1")), rango);
+  b.update(doc(db, trabajo("T12")), rango);
+  b.update(doc(db, CONTADOR), { ultimo: 120, trabajoId: "T1" });
+  return b.commit();
+};
+await check("el programa NO sube el contador con una orden que no toma en la misma escritura", "fail", updateDoc(doc(pc3, CONTADOR), { ultimo: 120, trabajoId: "T1" }));
+await check("el programa NO pone en el contador el id de otra orden", "fail", tomar(pc3, "enl_I3_pc03", "T1", { desde: 101, hasta: 120 }, 120, "T3"));
+await check("el programa NO da el mismo rango a dos órdenes en una escritura", "fail", dosConElMismoRango(pc3, "enl_I3_pc03"));
+await env.withSecurityRulesDisabled(async (c) => {
+  const b = writeBatch(c.firestore());
+  b.delete(doc(c.firestore(), trabajo("T12")));
+  await b.commit();
+});
 await check("otra impresora NO toma la orden", "fail", tomar(pc1, UID_P1, "T1", { desde: 101, hasta: 120 }, 120));
 await check("el programa NO toma una de lote sin apartar números", "fail", tomar(pc3, "enl_I3_pc03", "T1", {}));
 await check("el programa NO aparta números que no siguen al contador", "fail", tomar(pc3, "enl_I3_pc03", "T1", { desde: 90, hasta: 109 }, 109));
@@ -189,6 +214,7 @@ await check("el programa NO aparta más números de los que pide la orden", "fai
 await check("el programa NO aparta sin subir el contador", "fail", tomar(pc3, "enl_I3_pc03", "T1", { desde: 101, hasta: 120 }));
 await check("el programa NO toma a nombre de otra sesión", "fail", tomar(pc3, "otro", "T1", { desde: 101, hasta: 120 }, 120));
 await check("el programa toma la orden y aparta 101 a 120 subiendo el contador", "ok", tomar(pc3, "enl_I3_pc03", "T1", { desde: 101, hasta: 120 }, 120));
+await check("el programa NO reusa una orden ya tomada para subir el contador", "fail", updateDoc(doc(pc3, CONTADOR), { ultimo: 140, trabajoId: "T1" }));
 await check("el programa NO cambia la cantidad", "fail", updateDoc(doc(pc3, trabajo("T1")), { cantidad: 60 }));
 await check("el programa NO cambia sus números al terminar", "fail", updateDoc(doc(pc3, trabajo("T1")), { estado: "impreso", terminadoEn: serverTimestamp(), impresiones: 1, desde: 1 }));
 await check("el programa la marca impresa", "ok", updateDoc(doc(pc3, trabajo("T1")), { estado: "impreso", terminadoEn: serverTimestamp(), impresiones: 1 }));
@@ -246,9 +272,15 @@ await env.withSecurityRulesDisabled(async (c) => {
 const tomarCreando = (db, uid, id, campos, ultimo) => {
   const b = writeBatch(db);
   b.update(doc(db, trabajo(id)), { estado: "imprimiendo", tomadoPor: uid, tomadoEn: serverTimestamp(), ...campos });
-  b.set(doc(db, CONTADOR), { ultimo });
+  b.set(doc(db, CONTADOR), { ultimo, trabajoId: id });
   return b.commit();
 };
+await check("sin contador NO lo crea sin decir de qué orden", "fail", (() => {
+  const b = writeBatch(pc3);
+  b.update(doc(pc3, trabajo("T8")), { estado: "imprimiendo", tomadoPor: "enl_I3_pc03", tomadoEn: serverTimestamp(), desde: 1, hasta: 5 });
+  b.set(doc(pc3, CONTADOR), { ultimo: 5 });
+  return b.commit();
+})());
 await check("sin contador NO empieza en otro número que 1", "fail", tomarCreando(pc3, "enl_I3_pc03", "T8", { desde: 2, hasta: 6 }, 6));
 await check("sin contador el programa lo crea y aparta 1 a 5", "ok", tomarCreando(pc3, "enl_I3_pc03", "T8", { desde: 1, hasta: 5 }, 5));
 

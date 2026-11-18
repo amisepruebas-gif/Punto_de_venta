@@ -9,6 +9,7 @@ import { useArticulos } from "@/features/articulos/useArticulos";
 import { useCarrito } from "@/features/ventas/carritoStore";
 import { resolverCodigoExacto } from "@/features/ventas/elegirArticulo";
 import {
+  idNuevaOrden,
   mandarEtiquetasPrecio,
   reimprimirEtiquetas,
   useImpresorasSucursal,
@@ -65,6 +66,9 @@ export function EtiquetasPrecioPage() {
   const [error, setError] = useState<string | null>(null);
   const [trabajoId, setTrabajoId] = useState<string | null>(null);
   const trabajo = useTrabajo(negocioId, trabajoId);
+  // La orden que se intentó mandar y con qué: si salió "Sin internet" pero sí
+  // llegó, reintentar lo MISMO usa el mismo id y no sale doble.
+  const intento = useRef<{ id: string; firma: string } | null>(null);
   const siguienteId = useRef(1);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -151,18 +155,26 @@ export function EtiquetasPrecioPage() {
     if (!negocioId || !nodoId || !sucursalId || !impresora || !validas) return;
     setMandando(true);
     setError(null);
+    const firma = JSON.stringify([impresora.id, renglones.map((r) => [r.codigo ?? "", r.precio, r.piezas])]);
+    if (intento.current?.firma !== firma) intento.current = { id: idNuevaOrden(negocioId), firma };
+    const id = intento.current.id;
     try {
-      const id = await mandarEtiquetasPrecio({
+      await mandarEtiquetasPrecio({
         negocioId,
         sucursalId,
         nodoId,
         impresoraId: impresora.id,
         renglones,
         quien: enTurno ?? "",
+        trabajoId: id,
       });
+      intento.current = null;
       setTrabajoId(id);
       setFilas([]);
     } catch (e) {
+      // No se sabe si llegó: se queda viendo esa orden (si llega, aparece su
+      // avance aquí) y un reintento con lo mismo usa su mismo id.
+      setTrabajoId(id);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setMandando(false);
@@ -216,7 +228,7 @@ export function EtiquetasPrecioPage() {
           </p>
         ) : impresoras.length === 0 ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
-            Esta sucursal no tiene impresora de etiquetas. Pide a admin que le asigne una (Accesos → Impresoras).
+            Esta sucursal no tiene impresora de etiquetas. Pide a admin que le asigne una (Accesos → Impresoras de etiquetas).
           </p>
         ) : (
           <section className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 text-sm">

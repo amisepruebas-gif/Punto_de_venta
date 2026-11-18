@@ -33,7 +33,7 @@ export type TrabajoVista = TrabajoImpresion & { id: string };
 
 const SIN_INTERNET = "Sin internet no se puede mandar a imprimir. Vuelve a intentar cuando regrese la conexión.";
 const APAGADA =
-  "Esa impresora está apagada en admin o ya no es de esta sucursal. Pide al administrador que la revise (Accesos → Impresoras).";
+  "Esa impresora está apagada en admin o ya no es de esta sucursal. Pide al administrador que la revise (Accesos → Impresoras de etiquetas).";
 
 /** Firestore dijo que no: con la caja trabajando bien, es que la impresora
  *  está apagada (o se borró, o la cambiaron de sucursal). */
@@ -82,6 +82,13 @@ export function useTrabajo(negocioId: string | null, trabajoId: string | null): 
   return trabajo;
 }
 
+/** Un id nuevo para una orden. La pantalla lo guarda: si sale "Sin internet"
+ *  pero la orden sí llegó, al reintentar con lo mismo usa el MISMO id y la
+ *  transacción la encuentra ya creada (no sale doble). */
+export function idNuevaOrden(negocioId: string): string {
+  return doc(collection(db, paths.impresionesCol(negocioId))).id;
+}
+
 export async function mandarEtiquetasPrecio(args: {
   negocioId: string;
   sucursalId: string;
@@ -89,6 +96,8 @@ export async function mandarEtiquetasPrecio(args: {
   impresoraId: string;
   renglones: RenglonEtiquetaPrecio[];
   quien?: string;
+  /** De `idNuevaOrden`; el mismo en cada reintento de la misma orden. */
+  trabajoId: string;
 }): Promise<string> {
   const problemas = validarRenglonesPrecio(args.renglones);
   if (problemas.length > 0) throw new Error(problemas.join(". "));
@@ -105,7 +114,7 @@ export async function mandarEtiquetasPrecio(args: {
   return enLineaOAvisar(
     SIN_INTERNET,
     async (ctl) => {
-      const ref = doc(collection(db, paths.impresionesCol(args.negocioId)));
+      const ref = doc(db, paths.impresion(args.negocioId, args.trabajoId));
       await runTransaction(db, async (tx) => {
         ctl.siAbandonada();
         const ya = await tx.get(ref);
