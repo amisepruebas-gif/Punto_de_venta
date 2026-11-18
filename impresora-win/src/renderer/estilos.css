@@ -64,6 +64,16 @@ h2 {
   font-size: 13px;
   margin: 0;
 }
+.bien-texto {
+  color: var(--verde);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+.lista li[data-conectada="si"] {
+  border-color: var(--verde);
+  background: var(--verde-claro);
+}
 .aviso-texto {
   background: var(--ambar-claro);
   color: var(--ambar);

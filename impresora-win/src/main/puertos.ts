@@ -19,19 +19,21 @@ function lista<T>(x: T | T[] | null | undefined): T[] {
   return Array.isArray(x) ? x : [x];
 }
 
+type DispositivoCrudo = { puerto?: string; descripcion?: string; conectada?: boolean };
+
 /**
  * Lo que devuelve el script de PowerShell de los puertos USB:
- * `{puertos: ["USB001"], impresoras: [{nombre, puerto}], dispositivos: [{puerto, descripcion}]}`.
+ * `{puertos: ["USB001"], impresoras: [{nombre, puerto}], dispositivos: [{puerto, descripcion, conectada}]}`.
  * ConvertTo-Json a veces da un solo objeto en vez de una lista: se aguantan
- * las dos formas.
+ * las dos formas. Primero van los puertos con la impresora conectada ahora
+ * (Windows guarda puertos viejos sin nada detrás: elegir uno de esos no
+ * imprime).
  */
 export function parsearPuertos(json: string): PuertoUsb[] {
   let d: {
     puertos?: string | string[];
     impresoras?: { nombre?: string; puerto?: string } | Array<{ nombre?: string; puerto?: string }>;
-    dispositivos?:
-      | { puerto?: string; descripcion?: string }
-      | Array<{ puerto?: string; descripcion?: string }>;
+    dispositivos?: DispositivoCrudo | DispositivoCrudo[];
   };
   try {
     d = JSON.parse(json.replace(/^﻿/, "").trim() || "{}");
@@ -41,16 +43,23 @@ export function parsearPuertos(json: string): PuertoUsb[] {
   const puertos = lista(d.puertos).filter((p): p is string => typeof p === "string" && RE_PUERTO_USB.test(p));
   const impresoras = lista(d.impresoras);
   const dispositivos = lista(d.dispositivos);
-  return [...new Set(puertos)].sort().map((puerto) => {
-    const desc = dispositivos.find((x) => x?.puerto === puerto)?.descripcion?.trim();
-    return {
-      puerto,
-      ...(desc ? { dispositivo: desc } : {}),
-      impresoras: impresoras
-        .filter((i) => i?.puerto === puerto && typeof i?.nombre === "string")
-        .map((i) => i.nombre as string),
-    };
-  });
+  return [...new Set(puertos)]
+    .sort()
+    .map((puerto): PuertoUsb => {
+      const aparatos = dispositivos.filter((x) => x?.puerto === puerto);
+      // Si Windows recuerda varios aparatos en el mismo puerto, el conectado.
+      const aparato = aparatos.find((x) => x?.conectada === true) ?? aparatos[0];
+      const desc = aparato?.descripcion?.trim();
+      return {
+        puerto,
+        ...(desc ? { dispositivo: desc } : {}),
+        ...(aparato?.conectada === true ? { conectada: true } : {}),
+        impresoras: impresoras
+          .filter((i) => i?.puerto === puerto && typeof i?.nombre === "string")
+          .map((i) => i.nombre as string),
+      };
+    })
+    .sort((a, b) => Number(b.conectada === true) - Number(a.conectada === true));
 }
 
 /** Mensaje en español sencillo para lo que contestó `raw-print.exe`. */

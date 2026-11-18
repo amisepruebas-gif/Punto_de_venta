@@ -44,14 +44,23 @@ export async function listarImpresoras(win: BrowserWindow): Promise<ImpresoraWin
 
 // Puertos USB de impresora, qué impresora de Windows los usa y qué aparato
 // está detrás (Windows lo guarda en el registro al conectar una impresora USB).
+// Las claves del registro se llaman "##?#USB#VID_…": con -Path el "?" es
+// comodín y PowerShell no entra a la subclave, por eso todo va con
+// -LiteralPath. "conectada": el aparato está enchufado ahora (Windows guarda
+// puertos viejos).
 const SCRIPT_PUERTOS = [
   "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
   "$puertos = @(Get-PrinterPort -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'USB*' } | ForEach-Object { $_.Name })",
   "$impresoras = @(Get-Printer -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ nombre = $_.Name; puerto = $_.PortName } })",
   "$clase = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceClasses\\{28d78fad-5a12-11d1-ae5b-0000f803a8c2}'",
-  "$dispositivos = @(Get-ChildItem $clase -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem $_.PSPath -ErrorAction SilentlyContinue } | ForEach-Object {",
-  "  $p = Get-ItemProperty -Path (Join-Path $_.PSPath 'Device Parameters') -ErrorAction SilentlyContinue",
-  "  if ($p -and $null -ne $p.'Port Number') { [pscustomobject]@{ puerto = ('{0}{1:000}' -f $p.'Base Name', [int]$p.'Port Number'); descripcion = [string]$p.'Port Description' } }",
+  "$dispositivos = @(Get-ChildItem -LiteralPath $clase -ErrorAction SilentlyContinue | ForEach-Object {",
+  "  $instancia = [string](Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue).DeviceInstance",
+  "  $conectada = $false",
+  "  if ($instancia) { try { $conectada = [bool](Get-PnpDevice -InstanceId $instancia -ErrorAction Stop).Present } catch { } }",
+  "  Get-ChildItem -LiteralPath $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {",
+  "    $p = Get-ItemProperty -LiteralPath (Join-Path $_.PSPath 'Device Parameters') -ErrorAction SilentlyContinue",
+  "    if ($p -and $null -ne $p.'Port Number') { [pscustomobject]@{ puerto = ('{0}{1:000}' -f $p.'Base Name', [int]$p.'Port Number'); descripcion = [string]$p.'Port Description'; conectada = $conectada } }",
+  "  }",
   "})",
   "[pscustomobject]@{ puertos = $puertos; impresoras = $impresoras; dispositivos = $dispositivos } | ConvertTo-Json -Depth 4 -Compress",
 ].join("\n");
@@ -81,9 +90,9 @@ export async function prepararImpresora(puerto: string): Promise<ResultadoImpres
       "  } else {",
       `    Add-Printer -Name ${psq(NOMBRE_IMPRESORA_GENERICA)} -DriverName ${psq(DRIVER_GENERICO)} -PortName ${psq(puerto)}`,
       "  }",
-      `  Set-Content -Path ${psq(resultado)} -Value 'OK' -Encoding UTF8`,
+      `  Set-Content -LiteralPath ${psq(resultado)} -Value 'OK' -Encoding UTF8`,
       "} catch {",
-      `  Set-Content -Path ${psq(resultado)} -Value ('ERROR ' + $_.Exception.Message) -Encoding UTF8`,
+      `  Set-Content -LiteralPath ${psq(resultado)} -Value ('ERROR ' + $_.Exception.Message) -Encoding UTF8`,
       "}",
     ].join("\r\n"),
     "utf8",

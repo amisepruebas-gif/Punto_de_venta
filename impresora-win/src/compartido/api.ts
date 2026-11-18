@@ -13,6 +13,8 @@ export type PuertoUsb = {
   puerto: string;
   /** Lo que dijo el aparato al conectarse (p. ej. "XP-365B"), si se sabe. */
   dispositivo?: string;
+  /** El aparato de ese puerto está conectado ahora mismo. */
+  conectada?: boolean;
   /** Impresoras de Windows que ya usan ese puerto. */
   impresoras: string[];
 };

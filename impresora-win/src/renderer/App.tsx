@@ -253,16 +253,28 @@ function PrepararImpresora({ alTerminar }: { alTerminar: (nombre: string) => Pro
           driver de la marca y elígela arriba.
         </p>
       )}
+      {!!puertos?.length && !puertos.some((p) => p.conectada) && (
+        <p className="aviso-texto">
+          Ningún puerto tiene una impresora conectada ahora. Revisa el cable y que esté prendida, y toca "Buscar otra
+          vez".
+        </p>
+      )}
       <ul className="lista">
         {puertos?.map((p) => (
-          <li key={p.puerto}>
+          <li key={p.puerto} data-puerto={p.puerto} data-conectada={p.conectada ? "si" : "no"}>
             <div>
               <b>{p.puerto}</b> {p.dispositivo ? `· ${p.dispositivo}` : ""}
-              <div className="sutil">
-                {p.impresoras.length > 0 ? `Ya lo usa: ${p.impresoras.join(", ")}` : "Sin impresora en Windows"}
+              <div className={p.conectada ? "bien-texto" : "sutil"}>
+                {p.conectada ? "Conectada ahora: aquí está tu impresora" : "Nada conectado ahora"}
+                {p.impresoras.length > 0 ? ` · Ya lo usa: ${p.impresoras.join(", ")}` : ""}
               </div>
             </div>
-            <button type="button" disabled={!!trabajando} onClick={() => void preparar(p.puerto)}>
+            <button
+              type="button"
+              className={p.conectada ? undefined : "secundario"}
+              disabled={!!trabajando}
+              onClick={() => void preparar(p.puerto)}
+            >
               {trabajando === p.puerto ? "Creando…" : "Usar este"}
             </button>
           </li>

@@ -20,6 +20,24 @@ describe("puertos USB de impresora", () => {
     ]);
   });
 
+  it("pone primero el puerto con la impresora conectada ahora (los viejos al final)", () => {
+    // Como en la PC del taller: USB001 y USB002 sin nada; la de etiquetas en USB005.
+    const json = JSON.stringify({
+      puertos: ["USB001", "USB002", "USB005"],
+      impresoras: [{ nombre: "Etiquetas AMISE", puerto: "USB001" }],
+      dispositivos: [
+        { puerto: "USB002", descripcion: "Vieja", conectada: false },
+        { puerto: "USB005", descripcion: "Otra vieja", conectada: false },
+        { puerto: "USB005", descripcion: "UnknownPrinter", conectada: true },
+      ],
+    });
+    expect(parsearPuertos(json)).toEqual([
+      { puerto: "USB005", dispositivo: "UnknownPrinter", conectada: true, impresoras: [] },
+      { puerto: "USB001", impresoras: ["Etiquetas AMISE"] },
+      { puerto: "USB002", dispositivo: "Vieja", impresoras: [] },
+    ]);
+  });
+
   it("aguanta lo raro de ConvertTo-Json: un solo objeto, nulos, BOM y basura", () => {
     const uno = "\uFEFF" + JSON.stringify({
       puertos: "USB003",
