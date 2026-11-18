@@ -164,7 +164,10 @@ function registrarPuente(): void {
       { impresora: String(x.impresora ?? ""), datos: x.datos, nombre: String(x.nombre ?? "AMISE etiquetas") },
       OPCIONES.aArchivo,
     );
-    registrar(r.ok ? "info" : "error", `Imprimir "${String(x.nombre)}" en "${String(x.impresora)}": ${r.ok ? "OK" : r.error}`);
+    registrar(
+      r.ok ? "info" : "error",
+      `Imprimir "${String(x.nombre)}" en "${String(x.impresora)}": ${r.ok ? "OK" : r.error}${!r.ok && r.detalle ? ` [${r.detalle}]` : ""}`,
+    );
     return r;
   });
   ipcMain.on("ventana:mostrar", () => mostrarVentana());

@@ -19,7 +19,17 @@ export type PuertoUsb = {
   impresoras: string[];
 };
 
-export type ResultadoImpresion = { ok: true } | { ok: false; error: string };
+export type ResultadoImpresion =
+  | { ok: true }
+  | {
+      ok: false;
+      /** Para la persona, en español sencillo. */
+      error: string;
+      /** La impresora no avanzó (apagada, desconectada, sin papel…): no se imprimió y no quedó en la cola. */
+      noResponde?: true;
+      /** Lo que dijo Windows, para la bitácora. */
+      detalle?: string;
+    };
 
 export type ConfigLocal = {
   /** Número al azar de esta PC (43 caracteres): con él la function la

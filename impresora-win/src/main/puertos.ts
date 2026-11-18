@@ -1,6 +1,6 @@
 // Partes puras del manejo de impresoras de Windows (sin Electron): se prueban
 // con vitest.
-import type { PuertoUsb } from "../compartido/api";
+import type { PuertoUsb, ResultadoImpresion } from "../compartido/api";
 
 /** Nombre de la impresora que crea "Preparar impresora". */
 export const NOMBRE_IMPRESORA_GENERICA = "Etiquetas AMISE";
@@ -62,12 +62,37 @@ export function parsearPuertos(json: string): PuertoUsb[] {
     .sort((a, b) => Number(b.conectada === true) - Number(a.conectada === true));
 }
 
+/** `raw-print.exe`: la impresora no avanzó y el trabajo se quitó de la cola. */
+export const RAW_NO_RESPONDE = 9001;
+/** `raw-print.exe`: alguien canceló el trabajo en la cola de Windows. */
+export const RAW_CANCELADA = 9002;
+
+/** Lo que contestó `raw-print.exe`, como resultado para el programa. */
+export function resultadoRaw(salida: string, impresora: string): ResultadoImpresion {
+  const s = salida.trim();
+  if (s.startsWith("OK")) return { ok: true };
+  const m = /ERROR\s+(\d+)/.exec(s);
+  return {
+    ok: false,
+    error: mensajeErrorRaw(s, impresora),
+    ...(m && Number(m[1]) === RAW_NO_RESPONDE ? { noResponde: true as const } : {}),
+    ...(s ? { detalle: s.slice(0, 300) } : {}),
+  };
+}
+
 /** Mensaje en español sencillo para lo que contestó `raw-print.exe`. */
 export function mensajeErrorRaw(salida: string, impresora: string): string {
   const m = /ERROR\s+(\d+)\s*(.*)/s.exec(salida);
   const codigo = m ? Number(m[1]) : NaN;
   const detalle = (m?.[2] ?? salida).trim().slice(0, 160);
   switch (codigo) {
+    case RAW_NO_RESPONDE:
+      return (
+        `La impresora "${impresora}" no respondió: revisa que esté prendida, con etiquetas y bien conectada, y toca "Reimprimir".` +
+        (/NO se pudo quitar/.test(detalle) ? " Ojo: quedó esperando en Windows y puede salir sola al prenderla." : "")
+      );
+    case RAW_CANCELADA:
+      return 'Se canceló en la cola de Windows. Toca "Reimprimir" si hace falta.';
     case 1801:
       return `No encuentro la impresora "${impresora}" en Windows. Elígela otra vez en el programa.`;
     case 1804:

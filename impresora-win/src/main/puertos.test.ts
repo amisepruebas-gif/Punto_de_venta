@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { limpiarNombreArchivo, mensajeErrorRaw, parsearPuertos, psq } from "./puertos";
+import { limpiarNombreArchivo, mensajeErrorRaw, parsearPuertos, psq, resultadoRaw } from "./puertos";
 
 describe("puertos USB de impresora", () => {
   it("junta cada puerto con su aparato y las impresoras que lo usan", () => {
@@ -62,6 +62,30 @@ describe("mensajes de raw-print.exe", () => {
     expect(mensajeErrorRaw("ERROR 5 OpenPrinter: Acceso denegado.", "X")).toMatch(/permisos/);
     expect(mensajeErrorRaw("ERROR 31 WritePrinter: algo raro", "X")).toBe('Windows no pudo imprimir en "X": WritePrinter: algo raro');
     expect(mensajeErrorRaw("spawn ENOENT", "X")).toBe('Windows no pudo imprimir en "X": spawn ENOENT');
+  });
+
+  it("impresora apagada o desconectada: no responde, sin quedar en la cola", () => {
+    const salida = "ERROR 9001 La impresora no respondió en 12 s, estado 0x12 (error imprimiendo); se quitó de la cola de Windows\r\n";
+    const r = resultadoRaw(salida, "Etiquetas AMISE");
+    expect(r).toEqual({
+      ok: false,
+      noResponde: true,
+      error:
+        'La impresora "Etiquetas AMISE" no respondió: revisa que esté prendida, con etiquetas y bien conectada, y toca "Reimprimir".',
+      detalle: salida.trim(),
+    });
+    // Si Windows no dejó quitarla, se avisa que puede salir sola después.
+    const atorada = resultadoRaw("ERROR 9001 … estado 0x2 (error); NO se pudo quitar de la cola de Windows", "X");
+    expect(!atorada.ok && atorada.error).toMatch(/puede salir sola al prenderla/);
+  });
+
+  it("OK, cancelada en Windows y otros errores", () => {
+    expect(resultadoRaw("OK\r\n", "X")).toEqual({ ok: true });
+    const cancelada = resultadoRaw("ERROR 9002 Se canceló en la cola de Windows", "X");
+    expect(cancelada).toMatchObject({ ok: false, error: 'Se canceló en la cola de Windows. Toca "Reimprimir" si hace falta.' });
+    expect(cancelada).not.toHaveProperty("noResponde");
+    expect(resultadoRaw("ERROR 1801 OpenPrinter: no válido", "X")).not.toHaveProperty("noResponde");
+    expect(resultadoRaw("", "X")).toEqual({ ok: false, error: 'Windows no pudo imprimir en "X": error desconocido' });
   });
 });
 

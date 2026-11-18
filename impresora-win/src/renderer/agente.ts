@@ -92,6 +92,8 @@ const CLAVE_HISTORIAL = "amise.impresora.historial.v1";
 const MAX_HISTORIAL = 50;
 const REINTENTO_RED_MS = 30_000;
 const REINTENTO_APAGADA_MS = 60_000;
+/** Si la impresora no respondió, las demás órdenes esperan y se reintenta. */
+const REINTENTO_IMPRESORA_MS = 60_000;
 
 function codigoDe(e: unknown): string {
   return e instanceof FirebaseError ? e.code : typeof e === "object" && e && "code" in e ? String((e as { code: unknown }).code) : "";
@@ -150,6 +152,7 @@ export class Agente {
   private cancelar: Unsubscribe[] = [];
   private latido: ReturnType<typeof setInterval> | null = null;
   private reintento: ReturnType<typeof setTimeout> | null = null;
+  private reintentoCola: ReturnType<typeof setTimeout> | null = null;
   private readonly pendientes = new Map<string, number>();
   private procesando = false;
   private version = "";
@@ -347,6 +350,17 @@ export class Agente {
     this.latido = null;
     if (this.reintento) clearTimeout(this.reintento);
     this.reintento = null;
+    if (this.reintentoCola) clearTimeout(this.reintentoCola);
+    this.reintentoCola = null;
+  }
+
+  /** Vuelve a revisar la cola en un rato (las órdenes que siguen pendientes). */
+  private programarCola(ms: number): void {
+    if (this.reintentoCola) clearTimeout(this.reintentoCola);
+    this.reintentoCola = setTimeout(() => {
+      this.reintentoCola = null;
+      void this.procesarCola();
+    }, ms);
   }
 
   private arrancar(): void {
@@ -539,6 +553,12 @@ export class Agente {
       await this.terminar(ref, { estado: "error", error: r.error });
       this.agregarHistorial(id, t, "error", r.error);
       this.poner({ mensaje: r.error });
+      if (r.noResponde) {
+        // Apagada, desconectada o sin papel: no se gastan las demás órdenes;
+        // esperan en la cola y se reintenta en un rato (o al llegar otra).
+        this.programarCola(REINTENTO_IMPRESORA_MS);
+        return false;
+      }
     }
     return true;
   }

@@ -15,6 +15,7 @@ import {
   mensajeErrorRaw,
   parsearPuertos,
   psq,
+  resultadoRaw,
 } from "./puertos";
 
 const ejecutar = promisify(execFile);
@@ -141,14 +142,18 @@ export async function imprimirRaw(
   const archivo = path.join(dir, "etiquetas.prn");
   writeFileSync(archivo, p.datos, "latin1");
   try {
+    // El ayudante espera a que el trabajo salga de la cola de Windows (hasta
+    // 4 min si sí está imprimiendo; 12 s si la impresora no avanza).
     const { stdout } = await ejecutar(rutaAyudante(), [p.impresora, archivo, p.nombre.slice(0, 60)], {
-      timeout: 30_000,
+      timeout: 260_000,
       windowsHide: true,
     });
-    return stdout.trim().startsWith("OK") ? { ok: true } : { ok: false, error: mensajeErrorRaw(stdout, p.impresora) };
+    return resultadoRaw(stdout, p.impresora);
   } catch (e) {
+    // Sale con 1 cuando no se imprimió: su salida trae el "ERROR …".
     const salida = String((e as { stdout?: string })?.stdout || (e as Error)?.message || e);
-    return { ok: false, error: mensajeErrorRaw(salida, p.impresora) };
+    const r = resultadoRaw(salida, p.impresora);
+    return r.ok ? { ok: false, error: mensajeErrorRaw(salida, p.impresora), detalle: salida.slice(0, 300) } : r;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
