@@ -8,9 +8,13 @@
 // `imprimir`: lo crea admin para vincular UNA PC con el programa "AMISE
 //             Impresora" (con un código para pegar). Como `armar`: sin
 //             vencimiento y con apagador.
+// `precio`  : lo crea admin para la página aparte de etiquetas de precio
+//             (código + precio, como la app "codigos"). Como `armar`: un
+//             equipo, sin vencimiento y con apagador.
 // El enlace es una llave al portador, así que:
 //   - del secreto solo se guarda su sha256 (lo compara `llaveCoincide`);
-//   - cada enlace admite pocas entradas (armar e imprimir: 1 equipo; fotos: 3);
+//   - cada enlace admite pocas entradas (armar, imprimir y precio: 1 equipo;
+//     fotos: 3);
 //   - el vencimiento va en el token con la hora del SERVIDOR (`vence`), y
 //     las reglas además leen en vivo `activo` y `gen` del doc del enlace:
 //     apagarlo o renovarlo corta la sesión aunque el token siga vivo.
@@ -18,10 +22,10 @@
 // Las constantes son espejo de shared/src/enlaceLote.ts (functions es
 // CommonJS y no importa `shared`).
 
-const MAX_CANJES = {armar: 1, recibir: 3, imprimir: 1};
+const MAX_CANJES = {armar: 1, recibir: 3, imprimir: 1, precio: 1};
 const TIPOS = Object.keys(MAX_CANJES);
 /** Tipos que no vencen (los corta su apagador). */
-const SIN_VENCER = new Set(["armar", "imprimir"]);
+const SIN_VENCER = new Set(["armar", "imprimir", "precio"]);
 const RECIBIR_VENTANA_MS = 5 * 60 * 1000;
 const RECIBIR_DURACION_MS = 30 * 60 * 1000;
 /** 2100-01-01: los enlaces de armar no vencen; los corta el apagador. */
@@ -85,6 +89,8 @@ function decidirCanje(enlace, ahoraMs, dispositivoHash) {
         (typeof enlace.sucursalId !== "string" || !RE_ID.test(enlace.sucursalId))) {
       return {ok: false, motivo: "no_sirve"};
     }
+  } else if (enlace.tipo === "precio") {
+    // Nada más que revisar: solo manda etiquetas de precio (lo dicen las reglas).
   } else if (typeof enlace.resurtidoId !== "string" || !enlace.resurtidoId ||
       typeof enlace.sucursalId !== "string" || !enlace.sucursalId) {
     return {ok: false, motivo: "no_sirve"};
@@ -123,6 +129,7 @@ function claimsDeEnlace(negocioId, enlaceId, enlace, venceMs) {
     vence: venceMs,
   };
   if (enlace.tipo === "armar") return {...base, letra: enlace.letra};
+  if (enlace.tipo === "precio") return base;
   if (enlace.tipo === "imprimir") {
     return typeof enlace.sucursalId === "string" && enlace.sucursalId ?
       {...base, sucursalId: enlace.sucursalId} :
@@ -148,10 +155,17 @@ const MENSAJES_IMPRESORA = {
     "toca \"Renovar\" en esta impresora para tener uno nuevo.",
 };
 
+/** La página de etiquetas de precio se abre en un teléfono o en una
+ *  computadora: se habla de "equipo". */
+const MENSAJES_PRECIO = {
+  agotado: "Este enlace ya se usó en otro equipo. Pide uno nuevo.",
+};
+
 /** Mensaje en español sencillo. `tipo` (si se sabe) ajusta el texto para la
- *  PC de una impresora. */
+ *  PC de una impresora o la página de etiquetas de precio. */
 function mensajeDeMotivo(motivo, tipo) {
   if (tipo === "imprimir" && MENSAJES_IMPRESORA[motivo]) return MENSAJES_IMPRESORA[motivo];
+  if (tipo === "precio" && MENSAJES_PRECIO[motivo]) return MENSAJES_PRECIO[motivo];
   return MENSAJES[motivo] || MENSAJES.no_sirve;
 }
 

@@ -2339,7 +2339,9 @@ exports.loginMercanciaConPin = onCall(
 // ============================================================
 // Lotes de envío: armar un lote desde un teléfono (enlace `armar`, con
 // apagador) o subir fotos de un lote (enlace `recibir`, QR de la caja, 30
-// minutos). No pide sesión: la llave es el secreto de la URL. Reglas de
+// minutos). También la PC de la impresora (`imprimir`) y la página aparte de
+// etiquetas de precio (`precio`). No pide sesión: la llave es el secreto de
+// la URL. Reglas de
 // quién entra en lib/enlaceLote.js; lo que la sesión puede hacer, en
 // firestore.rules (`esEnlace`) y storage.rules (`esEnlaceDeFotos`).
 const enlaceLote = require("./lib/enlaceLote");
@@ -2416,6 +2418,8 @@ exports.canjearEnlaceLote = onCall(
         extra = {letra: r.enlace.letra};
       } else if (r.enlace.tipo === "imprimir") {
         extra = r.enlace.sucursalId ? {sucursalId: r.enlace.sucursalId} : {};
+      } else if (r.enlace.tipo === "precio") {
+        extra = {};
       } else {
         extra = {
           resurtidoId: r.enlace.resurtidoId,

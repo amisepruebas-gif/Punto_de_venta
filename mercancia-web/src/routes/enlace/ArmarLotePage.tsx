@@ -12,7 +12,7 @@ import {
 } from "@shared";
 import { Button } from "@/components/ui/button";
 import { ErrorEnlace, mensajeDeError, type SesionEnlace } from "@/firebase/enlaceApp";
-import { useEnlace, usePantalla, useVolver } from "@/features/enlace/EnlaceContext";
+import { rutaDeSesion, useEnlace, usePantalla, useVolver } from "@/features/enlace/EnlaceContext";
 import { EscanerCodigo, type MensajeEscaner } from "@/features/enlace/EscanerCodigo";
 import {
   articuloEnMemoria,
@@ -105,7 +105,9 @@ export function ArmarLotePage() {
   const { loteId = "" } = useParams();
   const { base, sesion } = useEnlace();
   if (!sesion) return <Navigate to={base} replace />;
-  if (sesion.tipo !== "armar") return <Navigate to={`${base}/fotos`} replace />;
+  if (sesion.tipo !== "armar") {
+    return <Navigate to={rutaDeSesion(sesion.negocioId, sesion.enlaceId, sesion.tipo)} replace />;
+  }
   return <ArmarLote sesion={sesion} loteId={loteId} />;
 }
 

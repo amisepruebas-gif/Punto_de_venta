@@ -836,7 +836,7 @@ export type LoteSesion = {
   nota?: string;
 };
 
-export type EnlaceLoteTipo = "armar" | "recibir" | "imprimir";
+export type EnlaceLoteTipo = "armar" | "recibir" | "imprimir" | "precio";
 
 /**
  * Acceso por URL para un teléfono sin cuenta. `armar`: lo crea admin, sin
@@ -844,7 +844,9 @@ export type EnlaceLoteTipo = "armar" | "recibir" | "imprimir";
  * de UN lote; hay 5 minutos para entrar y la sesión dura 30. `imprimir`:
  * lo crea admin para vincular UNA PC con el programa "AMISE Impresora"
  * (con un código para pegar, no una URL); sin vencimiento, con apagador.
- * Del secreto solo se guarda su sha256.
+ * `precio`: lo crea admin para la página aparte de etiquetas de precio
+ * (código + precio, como la app "codigos"), en UN equipo; sin vencimiento,
+ * con apagador. Del secreto solo se guarda su sha256.
  */
 export type EnlaceLote = {
   tipo: EnlaceLoteTipo;

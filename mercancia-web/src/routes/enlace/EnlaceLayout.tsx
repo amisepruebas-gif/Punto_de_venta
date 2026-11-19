@@ -28,11 +28,12 @@ function useEnLinea(): boolean {
 }
 
 /**
- * Marco de todo `/enlace/:negocioId/:enlaceId/*`: lee (y borra de la barra)
- * el secreto, recupera la sesión que ya hubiera en este teléfono y se la
- * pasa a las pantallas. Va FUERA de `Protected`: aquí no hay PIN.
+ * Marco de todo `/enlace/:negocioId/:enlaceId/*` (y de la página aparte de
+ * etiquetas de precio, `/precio/:negocioId/:enlaceId`): lee (y borra de la
+ * barra) el secreto, recupera la sesión que ya hubiera en este equipo y se
+ * la pasa a las pantallas. Va FUERA de `Protected`: aquí no hay PIN.
  */
-export function EnlaceLayout() {
+export function EnlaceLayout({ prefijo = "enlace" }: { prefijo?: "enlace" | "precio" }) {
   const { negocioId = "", enlaceId = "" } = useParams();
   // El secreto se toma al primer render, antes de que nada lea la barra.
   const [secreto] = useState(() => (enlaceId ? tomarSecretoDeLaBarra(enlaceId) : null));
@@ -60,12 +61,12 @@ export function EnlaceLayout() {
     () => ({
       negocioId,
       enlaceId,
-      base: `/enlace/${encodeURIComponent(negocioId)}/${encodeURIComponent(enlaceId)}`,
+      base: `/${prefijo}/${encodeURIComponent(negocioId)}/${encodeURIComponent(enlaceId)}`,
       sesion,
       setSesion,
       secreto,
     }),
-    [negocioId, enlaceId, sesion, secreto],
+    [prefijo, negocioId, enlaceId, sesion, secreto],
   );
 
   return (
@@ -76,7 +77,10 @@ export function EnlaceLayout() {
           role="alert"
           className="mx-auto flex w-full max-w-md items-center justify-center gap-2 bg-amber-400 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-base font-medium text-black"
         >
-          <WifiOff className="h-5 w-5 shrink-0" /> Sin internet: no se puede guardar hasta que vuelva la señal.
+          <WifiOff className="h-5 w-5 shrink-0" />{" "}
+          {prefijo === "precio"
+            ? "Sin internet: no se pueden mandar etiquetas hasta que vuelva la señal."
+            : "Sin internet: no se puede guardar hasta que vuelva la señal."}
         </p>
       )}
       {cargando ? (

@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { Copy, LogIn, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { entrarConEnlace, urlCompletaEnMemoria } from "@/firebase/enlaceApp";
-import { useEnlace } from "@/features/enlace/EnlaceContext";
+import { rutaDeSesion, useEnlace } from "@/features/enlace/EnlaceContext";
 import { Aviso, AvisoError, BotonGrande } from "@/features/enlace/ui";
 
 /** Navegadores dentro de otras apps (WhatsApp, Facebook, Instagram…) o
@@ -21,14 +21,14 @@ function camaraDudosa(): boolean {
  */
 export function EntrarPage() {
   const navigate = useNavigate();
-  const { negocioId, enlaceId, base, sesion, setSesion, secreto } = useEnlace();
+  const { negocioId, enlaceId, sesion, setSesion, secreto } = useEnlace();
   const [entrando, setEntrando] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [copiado, setCopiado] = useState<"si" | "no" | null>(null);
   const [dudosa] = useState(camaraDudosa);
 
   if (sesion) {
-    return <Navigate to={`${base}/${sesion.tipo === "armar" ? "lotes" : "fotos"}`} replace />;
+    return <Navigate to={rutaDeSesion(negocioId, enlaceId, sesion.tipo)} replace />;
   }
 
   async function entrar() {
@@ -38,7 +38,7 @@ export function EntrarPage() {
     try {
       const s = await entrarConEnlace(negocioId, enlaceId, secreto);
       setSesion(s);
-      navigate(`${base}/${s.tipo === "armar" ? "lotes" : "fotos"}`, { replace: true });
+      navigate(rutaDeSesion(negocioId, enlaceId, s.tipo), { replace: true });
     } catch (e) {
       setError(e);
       setEntrando(false);

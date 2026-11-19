@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { Camera, CheckCircle2, Clock, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { tiempoRestanteMs, type SesionEnlace } from "@/firebase/enlaceApp";
-import { useEnlace } from "@/features/enlace/EnlaceContext";
+import { rutaDeSesion, useEnlace } from "@/features/enlace/EnlaceContext";
 import {
   NOTA_MAX,
   fotosRestantes,
@@ -25,7 +25,9 @@ function textoRestante(ms: number): string {
 export function FotosPage() {
   const { base, sesion } = useEnlace();
   if (!sesion) return <Navigate to={base} replace />;
-  if (sesion.tipo !== "recibir") return <Navigate to={`${base}/lotes`} replace />;
+  if (sesion.tipo !== "recibir") {
+    return <Navigate to={rutaDeSesion(sesion.negocioId, sesion.enlaceId, sesion.tipo)} replace />;
+  }
   return <Fotos sesion={sesion} />;
 }
 

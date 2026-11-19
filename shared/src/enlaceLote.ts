@@ -19,6 +19,7 @@ export const ENLACE_MAX_CANJES: Record<EnlaceLoteTipo, number> = {
   armar: 1,
   recibir: 3,
   imprimir: 1,
+  precio: 1,
 };
 /** Un enlace de fotos se debe canjear en este tiempo desde que se creó. */
 export const ENLACE_RECIBIR_VENTANA_MS = 5 * 60_000;
@@ -68,6 +69,18 @@ export function urlEnlaceLote(
   secreto: string,
 ): string {
   return `${base.replace(/\/+$/, "")}/enlace/${encodeURIComponent(negocioId)}/${encodeURIComponent(enlaceId)}#${secreto}`;
+}
+
+/** URL de la página aparte de etiquetas de precio (acceso `precio`): misma
+ *  forma que la del teléfono pero en `/precio`, para que la pantalla de
+ *  entrada diga de qué es antes de canjear el enlace. */
+export function urlEnlacePrecio(
+  base: string,
+  negocioId: string,
+  enlaceId: string,
+  secreto: string,
+): string {
+  return `${base.replace(/\/+$/, "")}/precio/${encodeURIComponent(negocioId)}/${encodeURIComponent(enlaceId)}#${secreto}`;
 }
 
 /** El secreto que viene en `location.hash`, o `null` si no lo es. */

@@ -65,11 +65,17 @@ const NO_SE_ENVIA =
 /**
  * Tras un "sin permiso" al leer un artículo: ¿el acceso sigue sirviendo? Se
  * pregunta por un código de lote que no puede existir (la regla lo deja si
- * el acceso está prendido). Si sirve, el problema es ESE artículo.
+ * el acceso está prendido). Si sirve, el problema es ESE artículo. La página
+ * de etiquetas de precio no lee lotes: pregunta por una impresora que no
+ * puede existir.
  */
 export async function accesoSigueVivo(s: SesionEnlace): Promise<boolean> {
   try {
-    await getDocFromServer(doc(s.db, paths.resurtido(s.negocioId, `L000000-${s.letra ?? "A"}0`)));
+    await getDocFromServer(
+      s.tipo === "precio"
+        ? doc(s.db, paths.impresora(s.negocioId, "_no_existe_"))
+        : doc(s.db, paths.resurtido(s.negocioId, `L000000-${s.letra ?? "A"}0`)),
+    );
     return true;
   } catch {
     return false;

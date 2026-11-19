@@ -33,6 +33,7 @@ import {
   planearNoLlegoLote,
   siguienteLetraEnlace,
   urlEnlaceLote,
+  urlEnlacePrecio,
   validarLote,
   type Articulo,
   type EnlaceLote,
@@ -309,9 +310,37 @@ export async function crearEnlaceArmar(
 }
 
 /**
+ * Crea un acceso para la página aparte de etiquetas de precio (código +
+ * precio, como la app "codigos"). Entra UN equipo, sin vencimiento, con
+ * apagador. Como en `crearEnlaceArmar`, la URL completa solo existe aquí.
+ */
+export async function crearEnlacePrecio(
+  negocioId: string,
+  nombre: string,
+): Promise<{ enlaceId: string; url: string }> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error("Vuelve a iniciar sesión");
+  const limpio = limpiarNombre(nombre);
+  const secreto = generarSecretoEnlace();
+  const secretoHash = await hashSecretoEnlace(secreto);
+  const ref = doc(enlacesCol(negocioId));
+  await setDoc(ref, {
+    tipo: "precio",
+    activo: true,
+    gen: 0,
+    nombre: limpio,
+    secretoHash,
+    creadoPor: uid,
+    creadoEn: serverTimestamp(),
+  });
+  return { enlaceId: ref.id, url: urlEnlacePrecio(BASE_MERCANCIA, negocioId, ref.id, secreto) };
+}
+
+/**
  * Enlace nuevo para el mismo acceso (misma letra, mismos lotes): sube `gen`,
  * con eso las sesiones abiertas dejan de servir, y reinicia los canjes para
- * que pueda entrar otro teléfono.
+ * que pueda entrar otro teléfono. Sirve para los de armar y los de
+ * etiquetas de precio.
  */
 export async function renovarEnlace(
   negocioId: string,
@@ -320,14 +349,18 @@ export async function renovarEnlace(
   const secreto = generarSecretoEnlace();
   const secretoHash = await hashSecretoEnlace(secreto);
   const ref = refEnlace(negocioId, enlaceId);
-  await runTransaction(db, async (tx) => {
+  const tipo = await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("Ese acceso ya no existe");
     const e = snap.data() as EnlaceLote;
-    if (e.tipo !== "armar") throw new Error("Solo se renuevan los accesos para armar");
+    if (e.tipo !== "armar" && e.tipo !== "precio") {
+      throw new Error("Solo se renuevan los accesos para armar y los de etiquetas de precio");
+    }
     tx.update(ref, { secretoHash, gen: (Number(e.gen) || 0) + 1, canjes: 0 });
+    return e.tipo;
   });
-  return { url: urlEnlaceLote(BASE_MERCANCIA, negocioId, enlaceId, secreto) };
+  const url = tipo === "precio" ? urlEnlacePrecio : urlEnlaceLote;
+  return { url: url(BASE_MERCANCIA, negocioId, enlaceId, secreto) };
 }
 
 /** El apagador: las reglas lo leen en cada operación del teléfono, así que
@@ -353,7 +386,8 @@ export async function borrarEnlace(negocioId: string, enlaceId: string): Promise
   await deleteDoc(refEnlace(negocioId, enlaceId));
 }
 
-/** Apaga todos los accesos prendidos, de armar y de fotos. Devuelve cuántos. */
+/** Apaga todos los accesos prendidos (armar, fotos, impresoras y etiquetas
+ *  de precio). Devuelve cuántos. */
 export async function apagarTodosLosEnlaces(negocioId: string): Promise<number> {
   const snap = await getDocs(query(enlacesCol(negocioId), where("activo", "==", true)));
   const docs = snap.docs;

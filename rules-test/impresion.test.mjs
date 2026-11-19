@@ -284,6 +284,87 @@ await check("sin contador NO lo crea sin decir de qué orden", "fail", (() => {
 await check("sin contador NO empieza en otro número que 1", "fail", tomarCreando(pc3, "enl_I3_pc03", "T8", { desde: 2, hasta: 6 }, 6));
 await check("sin contador el programa lo crea y aparta 1 a 5", "ok", tomarCreando(pc3, "enl_I3_pc03", "T8", { desde: 1, hasta: 5 }, 5));
 
+// ============ Página aparte de etiquetas de precio (acceso `precio`) ============
+// Un código de 8 dígitos con su precio y cuántas, como la app "codigos".
+await env.withSecurityRulesDisabled(async (c) => {
+  const db = c.firestore();
+  const e = (extra) => ({ activo: true, gen: 0, secretoHash: HASH, creadoPor: "a1", tipo: "precio", ...extra });
+  await setDoc(doc(db, acceso("P1")), e({ nombre: "Mostrador" }));
+  await setDoc(doc(db, acceso("P2")), e({ nombre: "Apagado", activo: false }));
+  await setDoc(doc(db, acceso("P3")), e({ nombre: "Otro mostrador" }));
+  await setDoc(doc(db, acceso("PG")), e({ nombre: "Renovado", gen: 1 }));
+});
+const UID_PRECIO = "enl_P1_pppp";
+const precio = ctx(UID_PRECIO, enlace("P1", "precio"));
+const precioB = ctx("enl_P3_qqqq", enlace("P3", "precio"));
+const precioApagado = ctx("enl_P2_xxxx", enlace("P2", "precio"));
+const precioGenVieja = ctx("enl_PG_yyyy", enlace("PG", "precio"));
+const dePagina = (renglon, extra = {}) =>
+  orden({ tipo: "etiquetas_precio", impresoraId: "I3", origen: "enlace", creadoPor: UID_PRECIO, enlaceId: "P1",
+    quien: "Mostrador", renglones: [renglon], ...extra });
+const R = { codigo: "12345678", precio: "150", piezas: 3 };
+
+await check("admin crea un acceso de etiquetas de precio", "ok", setDoc(doc(admin, acceso("P9")), accesoNuevo({ tipo: "precio", nombre: "Mostrador 2" })));
+await check("caja NO crea un acceso de etiquetas de precio", "fail", setDoc(doc(nodo1, acceso("P8")), accesoNuevo({ tipo: "precio", creadoPor: "n1", sucursalId: S1 })));
+await check("mercancia NO crea un acceso de etiquetas de precio", "fail", setDoc(doc(merc, acceso("P8")), accesoNuevo({ tipo: "precio", creadoPor: "m1" })));
+await check("la página de precio lee las impresoras", "ok", getDocs(collection(precio, `${N}/impresoras_web_new_version`)));
+await check("la página de precio apagada NO lee impresoras", "fail", getDoc(doc(precioApagado, impresora("I3"))));
+await check("la página de precio de un acceso renovado NO lee impresoras", "fail", getDoc(doc(precioGenVieja, impresora("I3"))));
+
+await check("la página manda un código con su precio", "ok", setDoc(doc(precio, trabajo("TP1")), dePagina(R)));
+await check("la página manda precio con centavos y 100 piezas", "ok", setDoc(doc(precio, trabajo("TP2")), dePagina({ codigo: "00000001", precio: "99.50", piezas: 100 })));
+await check("la página NO manda sin código", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ precio: "150", piezas: 1 })));
+await check("la página NO manda un código de 7 dígitos", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, codigo: "1234567" })));
+await check("la página NO manda un código de 9 dígitos", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, codigo: "123456789" })));
+await check("la página NO manda un código con letras", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, codigo: "1234567A" })));
+await check("la página NO manda un precio con coma", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, precio: "1,500" })));
+await check("la página NO manda un precio con 3 decimales", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, precio: "1.505" })));
+await check("la página NO manda un precio vacío", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, precio: "" })));
+await check("la página NO manda el precio como número", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, precio: 150 })));
+await check("la página NO manda 0 piezas", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, piezas: 0 })));
+await check("la página NO manda más de 100 piezas", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, piezas: 101 })));
+await check("la página NO manda piezas como texto", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, piezas: "3" })));
+await check("la página NO manda otros campos en el renglón", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina({ ...R, nombre: "Blusa" })));
+await check("la página NO manda dos renglones", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { renglones: [R, R] })));
+await check("la página NO manda sin renglones", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { renglones: [] })));
+await check("la página NO manda a una impresora apagada", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { impresoraId: "I2" })));
+await check("la página NO manda a una impresora que no existe", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { impresoraId: "NADA" })));
+await check("la página NO manda a nombre de otro acceso", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { enlaceId: "P3" })));
+await check("la página NO manda a nombre de otra sesión", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { creadoPor: "otro" })));
+await check("la página NO dice que viene de la caja", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { origen: "nodo" })));
+await check("la página NO la crea ya impresa", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { estado: "impreso" })));
+await check("la página NO falsea la hora", "fail", setDoc(doc(precio, trabajo("TP9")), dePagina(R, { creadoEn: new Date(2020, 0, 1) })));
+await check("la página NO pide etiquetas de lote", "fail", setDoc(doc(precio, trabajo("TP9")),
+  orden({ tipo: "etiquetas_lote", impresoraId: "I3", origen: "enlace", creadoPor: UID_PRECIO, cantidad: 5, enlaceId: "P1" })));
+await check("la página apagada NO manda", "fail", setDoc(doc(precioApagado, trabajo("TP9")),
+  dePagina(R, { creadoPor: "enl_P2_xxxx", enlaceId: "P2" })));
+await check("la página de un acceso renovado NO manda", "fail", setDoc(doc(precioGenVieja, trabajo("TP9")),
+  dePagina(R, { creadoPor: "enl_PG_yyyy", enlaceId: "PG" })));
+await check("el teléfono de armar NO usa la orden de la página", "fail", setDoc(doc(armar, trabajo("TP9")),
+  dePagina(R, { creadoPor: UID_ARMAR, enlaceId: "E1" })));
+
+await check("la página ve su orden", "ok", getDoc(doc(precio, trabajo("TP1"))));
+await check("la página lista sus órdenes abiertas", "ok", getDocs(query(collection(precio, COLA), where("enlaceId", "==", "P1"),
+  where("estado", "in", ["pendiente", "imprimiendo", "error"]))));
+await check("la página pregunta por una orden que no existe", "ok", getDoc(doc(precio, trabajo("NO_EXISTE"))));
+await check("la página NO lista toda la cola", "fail", getDocs(collection(precio, COLA)));
+await check("la página NO ve la orden del teléfono", "fail", getDoc(doc(precio, trabajo("T10"))));
+await check("otra página NO ve la orden", "fail", getDoc(doc(precioB, trabajo("TP1"))));
+await check("el teléfono de armar NO ve la orden de la página", "fail", getDoc(doc(armar, trabajo("TP1"))));
+await check("la página apagada NO ve su orden", "fail", getDoc(doc(precioApagado, trabajo("TP1"))));
+
+await check("la página NO toma su orden", "fail", tomar(precio, UID_PRECIO, "TP1", {}));
+await check("el programa toma la orden de la página (sin números)", "ok", tomar(pc3, "enl_I3_pc03", "TP1", {}));
+await check("el programa la marca con error", "ok", updateDoc(doc(pc3, trabajo("TP1")), { estado: "error", terminadoEn: serverTimestamp(), error: "Sin papel" }));
+await check("otra página NO la reimprime", "fail", updateDoc(doc(precioB, trabajo("TP1")), { estado: "pendiente", error: deleteField() }));
+await check("la página NO cambia el renglón al reimprimir", "fail", updateDoc(doc(precio, trabajo("TP1")), { estado: "pendiente", error: deleteField(), renglones: [{ ...R, piezas: 100 }] }));
+await check("la página la manda a reimprimir", "ok", updateDoc(doc(precio, trabajo("TP1")), { estado: "pendiente", error: deleteField() }));
+await check("la página NO reimprime la orden del teléfono", "fail", updateDoc(doc(precio, trabajo("T10")), { estado: "pendiente", error: deleteField() }));
+await check("la página NO cancela una orden en cola", "fail", updateDoc(doc(precio, trabajo("TP2")), { estado: "error", error: "x" }));
+await check("la página NO borra órdenes", "fail", deleteDoc(doc(precio, trabajo("TP2"))));
+await check("la página NO lee el contador", "fail", getDoc(doc(precio, CONTADOR)));
+await check("la página NO lee los accesos", "fail", getDoc(doc(precio, acceso("P1"))));
+
 // Lo de antes sigue igual.
 await check("caja sigue escribiendo su huella", "ok", setDoc(doc(nodo1, `${N}/datos_web_new_version/articulos_ac`), { huella: "h2" }));
 await check("caja NO avanza el contador de etiquetas", "fail", updateDoc(doc(nodo1, CONTADOR), { ultimo: 6 }));

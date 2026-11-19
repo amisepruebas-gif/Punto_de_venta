@@ -11,6 +11,7 @@ import {
   Plus,
   Power,
   RefreshCw,
+  Tag,
   Trash2,
   X,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import {
   apagarTodosLosEnlaces,
   borrarEnlace,
   crearEnlaceArmar,
+  crearEnlacePrecio,
   prenderApagarEnlace,
   renombrarEnlace,
   renovarEnlace,
@@ -77,23 +79,30 @@ function telefonosDentro(e: EnlaceLoteConId): number {
   return Math.max(sesiones, Number(e.canjes) || 0);
 }
 
+/** Los accesos que se crean y renuevan aquí con un enlace para abrir. */
+type TipoConEnlace = "armar" | "precio";
+type Mostrado = { titulo: string; url: string; tipo: TipoConEnlace };
+
 /**
  * Accesos por enlace: una URL que deja entrar a un teléfono sin cuenta para
- * armar lotes de envío. Quien tenga la URL entra, así que solo se muestra al
- * crearla (se guarda su huella, no la URL) y cada acceso tiene su apagador.
- * Abajo, los accesos de fotos que abre la caja al recibir un lote.
+ * armar lotes de envío o a un equipo para imprimir etiquetas de precio. Quien
+ * tenga la URL entra, así que solo se muestra al crearla (se guarda su
+ * huella, no la URL) y cada acceso tiene su apagador. Abajo, los accesos de
+ * fotos que abre la caja al recibir un lote y las impresoras.
  */
 export function EnlacesLotePage() {
   const { negocioId } = useNegocio();
   const { enlaces, loading, error: errorLista } = useEnlacesLote();
   const ahora = useAhora(30_000);
   const [nombre, setNombre] = useState("");
+  const [tipoNuevo, setTipoNuevo] = useState<TipoConEnlace>("armar");
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [mostrado, setMostrado] = useState<{ titulo: string; url: string } | null>(null);
+  const [mostrado, setMostrado] = useState<Mostrado | null>(null);
 
   const armar = enlaces.filter((e) => e.tipo === "armar");
+  const precios = enlaces.filter((e) => e.tipo === "precio");
   const impresoras = enlaces.filter((e) => e.tipo === "imprimir");
   const fotos = enlaces.filter((e) => {
     if (e.tipo !== "recibir" || !e.activo) return false;
@@ -118,9 +127,14 @@ export function EnlacesLotePage() {
   function crear() {
     if (!negocioId) return;
     void correr(async () => {
-      const letras = armar.map((e) => e.letra ?? "").filter(Boolean);
-      const { url } = await crearEnlaceArmar(negocioId, nombre, letras);
-      setMostrado({ titulo: `Enlace de «${nombre.trim()}»`, url });
+      if (tipoNuevo === "precio") {
+        const { url } = await crearEnlacePrecio(negocioId, nombre);
+        setMostrado({ titulo: `Etiquetas de precio: enlace de «${nombre.trim()}»`, url, tipo: "precio" });
+      } else {
+        const letras = armar.map((e) => e.letra ?? "").filter(Boolean);
+        const { url } = await crearEnlaceArmar(negocioId, nombre, letras);
+        setMostrado({ titulo: `Enlace de «${nombre.trim()}»`, url, tipo: "armar" });
+      }
       setNombre("");
     });
   }
@@ -129,7 +143,7 @@ export function EnlacesLotePage() {
     if (!negocioId) return;
     if (
       !confirm(
-        "¿Apagar todos los accesos?\n\nTodos los teléfonos pierden la entrada al instante y las impresoras dejan de imprimir. Luego los puedes prender uno por uno.",
+        "¿Apagar todos los accesos?\n\nTodos los teléfonos y equipos pierden la entrada al instante y las impresoras dejan de imprimir. Luego los puedes prender uno por uno.",
       )
     ) {
       return;
@@ -146,8 +160,9 @@ export function EnlacesLotePage() {
         <div>
           <h1 className="text-xl font-semibold">Accesos por enlace</h1>
           <p className="text-xs text-muted-foreground">
-            Un enlace deja entrar a un teléfono sin cuenta para armar lotes de envío. Quien tenga el
-            enlace entra: compártelo solo con quien arma.
+            Un enlace deja entrar sin cuenta: un teléfono para armar lotes de envío, o un equipo para
+            imprimir etiquetas de precio. Quien tenga el enlace entra: compártelo solo con quien lo va a
+            usar.
           </p>
         </div>
         <Button
@@ -174,13 +189,25 @@ export function EnlacesLotePage() {
             crear();
           }}
         >
+          <div className="space-y-1.5">
+            <Label htmlFor="enl-tipo">Para</Label>
+            <select
+              id="enl-tipo"
+              value={tipoNuevo}
+              onChange={(e) => setTipoNuevo(e.target.value === "precio" ? "precio" : "armar")}
+              className="flex h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="armar">Armar lotes</option>
+              <option value="precio">Etiquetas de precio</option>
+            </select>
+          </div>
           <div className="min-w-[200px] flex-1 space-y-1.5">
             <Label htmlFor="enl-nombre">Nombre</Label>
             <Input
               id="enl-nombre"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
-              placeholder="Ej. Teléfono del taller"
+              placeholder={tipoNuevo === "precio" ? "Ej. Mostrador" : "Ej. Teléfono del taller"}
               maxLength={60}
             />
           </div>
@@ -230,7 +257,39 @@ export function EnlacesLotePage() {
               key={e.id}
               enlace={e}
               negocioId={negocioId}
-              onEnlace={(url) => setMostrado({ titulo: `Enlace nuevo de «${e.nombre ?? e.letra}»`, url })}
+              onEnlace={(url) =>
+                setMostrado({ titulo: `Enlace nuevo de «${e.nombre ?? e.letra}»`, url, tipo: "armar" })
+              }
+            />
+          ))}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-base font-semibold">
+          <Tag className="h-4 w-4 text-muted-foreground" /> Para etiquetas de precio ({precios.length})
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Una página aparte: se escribe el código y el precio, y la etiqueta sale en la impresora como
+          en la app codigos. Para crear uno, arriba elige «Etiquetas de precio».
+        </p>
+        {!loading && precios.length === 0 && (
+          <p className="rounded-md border bg-muted py-4 text-center text-sm text-muted-foreground">
+            Aún no hay accesos de etiquetas de precio.
+          </p>
+        )}
+        {negocioId &&
+          precios.map((e) => (
+            <TarjetaEnlace
+              key={e.id}
+              enlace={e}
+              negocioId={negocioId}
+              onEnlace={(url) =>
+                setMostrado({
+                  titulo: `Etiquetas de precio: enlace nuevo de «${e.nombre ?? "sin nombre"}»`,
+                  url,
+                  tipo: "precio",
+                })
+              }
             />
           ))}
       </section>
@@ -262,10 +321,9 @@ export function EnlacesLotePage() {
 function EnlaceMostrado({
   titulo,
   url,
+  tipo,
   onCerrar,
-}: {
-  titulo: string;
-  url: string;
+}: Mostrado & {
   onCerrar: () => void;
 }) {
   const [svg, setSvg] = useState<string | null>(null);
@@ -331,7 +389,9 @@ function EnlaceMostrado({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Entra un solo teléfono por enlace. Ábrelo en el teléfono de quien va a armar.
+            {tipo === "precio"
+              ? "Entra un solo equipo por enlace. Ábrelo en el teléfono o la computadora donde se van a pedir las etiquetas."
+              : "Entra un solo teléfono por enlace. Ábrelo en el teléfono de quien va a armar."}
           </p>
         </div>
       </div>
@@ -339,7 +399,7 @@ function EnlaceMostrado({
   );
 }
 
-// ---------- Un acceso para armar ----------
+// ---------- Un acceso para armar o de etiquetas de precio ----------
 
 function TarjetaEnlace({
   enlace,
@@ -355,10 +415,13 @@ function TarjetaEnlace({
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(enlace.nombre ?? "");
 
+  const esPrecio = enlace.tipo === "precio";
+  // Lo de armar se abre en un teléfono; lo de precio también en una computadora.
+  const aparato = esPrecio ? "equipo" : "teléfono";
   const dentro = telefonosDentro(enlace);
-  const max = ENLACE_MAX_CANJES.armar;
+  const max = ENLACE_MAX_CANJES[esPrecio ? "precio" : "armar"];
   const ultimoUso = horaDeMs(ultimoUsoMs(enlace));
-  const nombreVisible = enlace.nombre || `Acceso ${enlace.letra ?? ""}`;
+  const nombreVisible = enlace.nombre || (esPrecio ? "Etiquetas de precio" : `Acceso ${enlace.letra ?? ""}`);
 
   async function correr(fn: () => Promise<void>) {
     setTrabajando(true);
@@ -375,7 +438,7 @@ function TarjetaEnlace({
   function renovar() {
     if (
       !confirm(
-        `¿Renovar el enlace de «${nombreVisible}»?\n\nEl enlace de ahora deja de servir y el teléfono que ya entró se queda fuera. Sus lotes se quedan igual.`,
+        `¿Renovar el enlace de «${nombreVisible}»?\n\nEl enlace de ahora deja de servir y el ${aparato} que ya entró se queda fuera.${esPrecio ? "" : " Sus lotes se quedan igual."}`,
       )
     ) {
       return;
@@ -389,7 +452,7 @@ function TarjetaEnlace({
   function borrar() {
     if (
       !confirm(
-        `¿Borrar el acceso «${nombreVisible}»?\n\nEl teléfono pierde la entrada. Sus lotes se quedan.`,
+        `¿Borrar el acceso «${nombreVisible}»?\n\nEl ${aparato} pierde la entrada.${esPrecio ? "" : " Sus lotes se quedan."}`,
       )
     ) {
       return;
@@ -407,12 +470,21 @@ function TarjetaEnlace({
   return (
     <div className={`space-y-2 rounded-lg border bg-card p-4 ${enlace.activo ? "" : "opacity-70"}`}>
       <div className="flex flex-wrap items-center gap-3">
-        <span
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-lg font-bold text-primary"
-          title="Letra del acceso: va en el código de sus lotes"
-        >
-          {enlace.letra ?? "?"}
-        </span>
+        {esPrecio ? (
+          <span
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
+            title="Acceso de etiquetas de precio"
+          >
+            <Tag className="h-5 w-5" />
+          </span>
+        ) : (
+          <span
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-lg font-bold text-primary"
+            title="Letra del acceso: va en el código de sus lotes"
+          >
+            {enlace.letra ?? "?"}
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           {editando ? (
             <form
@@ -450,12 +522,12 @@ function TarjetaEnlace({
           <p className="text-xs text-muted-foreground">
             {dentro === 0
               ? "Nadie ha entrado con este enlace"
-              : `${dentro === 1 ? "Entró 1 teléfono" : `Entraron ${dentro} teléfonos`} (de ${max})`}
+              : `${dentro === 1 ? `Entró 1 ${aparato}` : `Entraron ${dentro} ${aparato}s`} (de ${max})`}
             {ultimoUso ? ` · Último uso: ${ultimoUso}` : ""}
           </p>
           {dentro >= max && (
             <p className="text-xs text-muted-foreground">
-              Para que entre otro teléfono, renueva el enlace.
+              Para que entre otro {aparato}, renueva el enlace.
             </p>
           )}
         </div>

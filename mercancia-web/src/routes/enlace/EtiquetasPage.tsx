@@ -7,7 +7,7 @@ import {
   textoEstadoTrabajo,
 } from "@shared";
 import { Button } from "@/components/ui/button";
-import { useEnlace } from "@/features/enlace/EnlaceContext";
+import { rutaDeSesion, useEnlace } from "@/features/enlace/EnlaceContext";
 import {
   escucharMisOrdenesAbiertas,
   escucharTrabajo,
@@ -51,7 +51,9 @@ function useAhora(cada: number): number {
 export function EtiquetasPage() {
   const { base, sesion } = useEnlace();
   if (!sesion) return <Navigate to={base} replace />;
-  if (sesion.tipo !== "armar") return <Navigate to={`${base}/fotos`} replace />;
+  if (sesion.tipo !== "armar") {
+    return <Navigate to={rutaDeSesion(sesion.negocioId, sesion.enlaceId, sesion.tipo)} replace />;
+  }
   return <Etiquetas sesion={sesion} />;
 }
 

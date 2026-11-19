@@ -16,8 +16,9 @@ rules_version = '2';
 // Claims: role (nodo|admin|superadmin|mercancia|colaborador|enlace), negocioId, sucursalId, nodoId,
 //   colaboradorId. OJO: superadmin NO trae negocioId (por eso esAdmin lo incluye aparte).
 //   Rol `enlace` (teléfono que entra por una URL, ver functions canjearEnlaceLote): trae
-//   enlaceId, tipo (armar|recibir|imprimir), gen, vence (ms) y, según el tipo, letra o
+//   enlaceId, tipo (armar|recibir|imprimir|precio), gen, vence (ms) y, según el tipo, letra o
 //   resurtidoId. `imprimir` es la PC del programa "AMISE Impresora" (sucursalId opcional).
+//   `precio` es la página aparte de etiquetas de precio (código + precio, como "codigos").
 //   NO es `miembro`: solo puede lo que diga una regla con `esEnlace`.
 // ============================================================
 service cloud.firestore {
@@ -284,7 +285,7 @@ service cloud.firestore {
         allow create: if (esAdmin(nid) || esNodo(nid))
           && request.resource.data.keys().hasOnly(['tipo', 'activo', 'nombre', 'letra', 'secretoHash',
                                                    'gen', 'creadoPor', 'creadoEn', 'sucursalId', 'resurtidoId'])
-          && request.resource.data.tipo in ['armar', 'recibir', 'imprimir']
+          && request.resource.data.tipo in ['armar', 'recibir', 'imprimir', 'precio']
           && request.resource.data.activo == true
           && request.resource.data.gen == 0
           && request.resource.data.secretoHash is string
@@ -330,15 +331,16 @@ service cloud.firestore {
       }
 
       // Impresoras de etiquetas: una por PC con el programa "AMISE Impresora";
-      // el id es el de su acceso `imprimir`. Las ven las apps del negocio y el
-      // teléfono de armar (para elegir dónde imprimir). Admin las crea y
+      // el id es el de su acceso `imprimir`. Las ven las apps del negocio, el
+      // teléfono de armar y la página de etiquetas de precio (para elegir
+      // dónde imprimir). Admin las crea y
       // renombra; el programa solo escribe su aviso de vida (`latidoEn`, hora
       // del servidor), la impresora de Windows, la pausa y su versión.
       match /impresoras_web_new_version/{iid} {
         function cambiaImpresora() {
           return request.resource.data.diff(resource.data).affectedKeys();
         }
-        allow read: if miembro(nid) || esEnlace(nid, 'armar')
+        allow read: if miembro(nid) || esEnlace(nid, 'armar') || esEnlace(nid, 'precio')
           || (esEnlace(nid, 'imprimir') && iid == request.auth.token.enlaceId);
         allow create: if esAdmin(nid)
           && request.resource.data.keys().hasOnly(['nombre', 'sucursalId', 'creadoEn'])
@@ -362,9 +364,10 @@ service cloud.firestore {
 
       // Cola de impresión de etiquetas (ver shared/src/impresion.ts).
       //  - La crean: el teléfono de armar (etiquetas de lote, hasta 60), admin
-      //    (etiquetas de lote, hasta 300) y la caja (etiquetas de precio, a la
-      //    impresora de SU sucursal). Siempre a una impresora con su acceso
-      //    prendido y siempre "pendiente".
+      //    (etiquetas de lote, hasta 300), la caja (etiquetas de precio, a la
+      //    impresora de SU sucursal) y la página de etiquetas de precio (UN
+      //    código de 8 dígitos con su precio, hasta 100 piezas). Siempre a una
+      //    impresora con su acceso prendido y siempre "pendiente".
       //  - Solo el programa de esa impresora la toma y la termina. Al tomar una
       //    de etiquetas de lote aparta sus números EN LA MISMA ESCRITURA en que
       //    sube el contador (getAfter): no hay números repetidos ni sueltos.
@@ -400,6 +403,14 @@ service cloud.firestore {
         function cantidadHasta(n) {
           return nueva().cantidad is int && nueva().cantidad >= 1 && nueva().cantidad <= n;
         }
+        // El renglón de la página de etiquetas de precio: código de 8 dígitos,
+        // precio (como RE_PRECIO_ETIQUETA) y de 1 a 100 piezas. Nada más.
+        function renglonPrecioValido(r) {
+          return r is map && r.keys().hasOnly(['codigo', 'precio', 'piezas'])
+            && r.codigo is string && r.codigo.matches('^[0-9]{8}$')
+            && r.precio is string && r.precio.matches('^[0-9]{1,7}([.][0-9]{1,2})?$')
+            && r.piezas is int && r.piezas >= 1 && r.piezas <= 100;
+        }
         // Los números que aparta el programa: tantos como pide la orden, justo
         // después de lo que marcaba el contador, y el contador queda en `hasta`
         // con el id de ESTA orden (una sola orden por escritura: dos no se
@@ -421,7 +432,7 @@ service cloud.firestore {
         // orden que aún no existe (al reintentar saben si ya quedó), y el
         // programa por una que admin acaba de borrar (no es "apagada").
         allow read: if esAdmin(nid)
-          || (esEnlace(nid, 'armar')
+          || ((esEnlace(nid, 'armar') || esEnlace(nid, 'precio'))
               && (resource == null || resource.data.enlaceId == request.auth.token.enlaceId))
           || (esNodo(nid)
               && (resource == null || resource.data.sucursalId == request.auth.token.sucursalId))
@@ -446,7 +457,14 @@ service cloud.firestore {
             && nueva().sucursalId == request.auth.token.sucursalId
             && get(rutaImpresora(nueva().impresoraId)).data.get('sucursalId', '') == request.auth.token.sucursalId
             && nueva().renglones is list
-            && nueva().renglones.size() >= 1 && nueva().renglones.size() <= 20);
+            && nueva().renglones.size() >= 1 && nueva().renglones.size() <= 20)
+          || (esEnlace(nid, 'precio')
+            && nuevaValida(['tipo', 'impresoraId', 'estado', 'origen', 'creadoPor', 'quien', 'creadoEn',
+                            'renglones', 'enlaceId'])
+            && nueva().tipo == 'etiquetas_precio' && nueva().origen == 'enlace'
+            && nueva().enlaceId == request.auth.token.enlaceId
+            && nueva().renglones is list && nueva().renglones.size() == 1
+            && renglonPrecioValido(nueva().renglones[0]));
 
         allow update: if
           // El programa de esa impresora.
@@ -478,7 +496,8 @@ service cloud.firestore {
           // impresora sigue existiendo y prendida (si no, se quedaría en la
           // cola para siempre).
           || ((esAdmin(nid)
-                || (esEnlace(nid, 'armar') && resource.data.enlaceId == request.auth.token.enlaceId)
+                || ((esEnlace(nid, 'armar') || esEnlace(nid, 'precio'))
+                    && resource.data.enlaceId == request.auth.token.enlaceId)
                 || (esNodo(nid) && resource.data.sucursalId == request.auth.token.sucursalId))
               && resource.data.estado in ['impreso', 'error'] && nueva().estado == 'pendiente'
               && cambiaTrabajo().hasOnly(['estado', 'error'])

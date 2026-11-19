@@ -1,11 +1,13 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import type { EnlaceLoteTipo } from "@shared";
 import type { SesionEnlace } from "@/firebase/enlaceApp";
 
 export type EnlaceCtx = {
   negocioId: string;
   enlaceId: string;
-  /** `/enlace/{negocioId}/{enlaceId}` */
+  /** `/enlace/{negocioId}/{enlaceId}` (o `/precio/…` en la página de
+   *  etiquetas de precio). */
   base: string;
   sesion: SesionEnlace | null;
   setSesion: (s: SesionEnlace | null) => void;
@@ -19,6 +21,16 @@ export function useEnlace(): EnlaceCtx {
   const c = useContext(EnlaceContext);
   if (!c) throw new Error("useEnlace fuera de /enlace");
   return c;
+}
+
+/** La pantalla de cada tipo de sesión: armar → sus lotes, fotos → las
+ *  fotos, etiquetas de precio → su página aparte (`/precio`). Cada pantalla
+ *  manda aquí a una sesión que no es la suya (sin dar vueltas entre ellas). */
+export function rutaDeSesion(negocioId: string, enlaceId: string, tipo: EnlaceLoteTipo): string {
+  const n = encodeURIComponent(negocioId);
+  const e = encodeURIComponent(enlaceId);
+  if (tipo === "precio") return `/precio/${n}/${e}`;
+  return `/enlace/${n}/${e}/${tipo === "armar" ? "lotes" : "fotos"}`;
 }
 
 type EstadoHistorial = { pantallaEnlace?: true } | null;

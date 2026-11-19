@@ -151,6 +151,43 @@ test("imprimir: los mensajes hablan de la computadora y de admin", () => {
   assert.match(enlace.mensajeDeMotivo("tarde", "imprimir"), /venció/);
 });
 
+const precio = (extra = {}) => ({tipo: "precio", activo: true, gen: 0, nombre: "Mostrador", ...extra});
+
+test("precio: entra UN equipo, sin vencimiento; el mismo reintenta sin gastar", () => {
+  assert.deepEqual(enlace.decidirCanje(precio(), AHORA, DISP), {
+    ok: true, venceMs: enlace.SIN_VENCIMIENTO_MS,
+  });
+  assert.deepEqual(enlace.decidirCanje(conSesion(precio()), AHORA, DISP), {
+    ok: true, venceMs: enlace.SIN_VENCIMIENTO_MS, uid: "enl_E1_aaaa",
+  });
+  assert.deepEqual(enlace.decidirCanje(conSesion(precio()), AHORA, OTRO), {
+    ok: false, motivo: "agotado",
+  });
+  assert.deepEqual(enlace.decidirCanje(precio({canjes: 1}), AHORA, OTRO), {
+    ok: false, motivo: "agotado",
+  });
+  assert.deepEqual(enlace.decidirCanje(precio({activo: false}), AHORA, DISP), {
+    ok: false, motivo: "apagado",
+  });
+  // Renovado (gen nueva, canjes 0): entra como nuevo.
+  assert.deepEqual(enlace.decidirCanje({...conSesion(precio()), gen: 1, canjes: 0}, AHORA, DISP), {
+    ok: true, venceMs: enlace.SIN_VENCIMIENTO_MS,
+  });
+});
+
+test("precio: no necesita letra, lote ni sucursal; sus claims solo dicen el tipo", () => {
+  assert.equal(enlace.decidirCanje(precio({creadoEnMs: 0}), AHORA).ok, true);
+  assert.deepEqual(enlace.claimsDeEnlace("amise", "P1", precio({letra: "Z", sucursalId: "S1"}), 99), {
+    role: "enlace", negocioId: "amise", enlaceId: "P1", tipo: "precio", gen: 0, vence: 99,
+  });
+});
+
+test("precio: los mensajes hablan de un equipo (teléfono o computadora)", () => {
+  assert.match(enlace.mensajeDeMotivo("agotado", "precio"), /otro equipo/);
+  assert.match(enlace.mensajeDeMotivo("apagado", "precio"), /apagado/);
+  assert.match(enlace.mensajeDeMotivo("no_sirve", "precio"), /no sirve/);
+});
+
 test("claims: solo lo que las reglas leen, según el tipo", () => {
   assert.deepEqual(enlace.claimsDeEnlace("amise", "E1", armar({gen: 2}), 99), {
     role: "enlace", negocioId: "amise", enlaceId: "E1", tipo: "armar", gen: 2, vence: 99, letra: "A",

@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { ChevronRight, Loader2, Plus, Printer, RefreshCw } from "lucide-react";
 import { totalesLote, type ResurtidoEstado, type Sucursal } from "@shared";
 import { Button } from "@/components/ui/button";
-import { useEnlace, usePantalla } from "@/features/enlace/EnlaceContext";
+import { rutaDeSesion, useEnlace, usePantalla } from "@/features/enlace/EnlaceContext";
 import { crearLote, listarMisLotes, seArma, type Lote } from "@/features/enlace/lotesService";
 import { sucursalesDestino } from "@/features/enlace/catalogoService";
 import {
@@ -121,7 +121,9 @@ export function MisLotesPage() {
   useEffect(cargar, [cargar]);
 
   if (!sesion) return <Navigate to={base} replace />;
-  if (sesion.tipo !== "armar") return <Navigate to={`${base}/fotos`} replace />;
+  if (sesion.tipo !== "armar") {
+    return <Navigate to={rutaDeSesion(sesion.negocioId, sesion.enlaceId, sesion.tipo)} replace />;
+  }
   const s = sesion;
 
   async function nuevo(destino: Sucursal) {

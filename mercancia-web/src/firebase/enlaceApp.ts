@@ -54,9 +54,9 @@ const servicios = new Map<string, ServiciosEnlace>();
  * Los cuatro servicios de la app del enlace, creados juntos en un solo lugar
  * (aquí se conecta después el banco de pruebas con emuladores).
  *
- * Persistencia de la sesión: `armar` en IndexedDB (dura hasta que admin
- * apague el acceso) y `recibir` en sessionStorage (son 30 minutos: se va al
- * cerrar la pestaña). Al crear la app todavía no se sabe el tipo, así que se
+ * Persistencia de la sesión: `armar` y `precio` en IndexedDB (dura hasta que
+ * admin apague el acceso) y `recibir` en sessionStorage (son 30 minutos: se
+ * va al cerrar la pestaña). Al crear la app todavía no se sabe el tipo, así que se
  * buscan las dos; al canjear se fija la que toca con `setPersistence`. La
  * de sesión no permite "migrar", así que una sesión de fotos nunca pasa a
  * IndexedDB.
@@ -142,10 +142,16 @@ type MetaSesion = Pick<
 const claveMeta = (negocioId: string, enlaceId: string) =>
   `enlace.sesion.v1:${negocioId}:${enlaceId}`;
 
-/** armar → localStorage (como su sesión); recibir → sessionStorage. */
+/** Las sesiones que duran (armar, precio) se guardan donde no se borran al
+ *  cerrar la pestaña. */
+function sesionQueDura(tipo: EnlaceLoteTipo): boolean {
+  return tipo !== "recibir";
+}
+
+/** armar y precio → localStorage (como su sesión); recibir → sessionStorage. */
 function almacen(tipo: EnlaceLoteTipo): Storage | null {
   try {
-    return tipo === "armar" ? window.localStorage : window.sessionStorage;
+    return sesionQueDura(tipo) ? window.localStorage : window.sessionStorage;
   } catch {
     return null; // almacenamiento bloqueado: la sesión vive solo en memoria
   }
@@ -309,7 +315,7 @@ export async function entrarConEnlace(
   try {
     await setPersistence(
       sv.auth,
-      d.tipo === "armar" ? indexedDBLocalPersistence : browserSessionPersistence,
+      sesionQueDura(d.tipo) ? indexedDBLocalPersistence : browserSessionPersistence,
     );
   } catch {
     // Navegador sin IndexedDB (modo privado…): se queda con la que haya; lo
@@ -352,7 +358,7 @@ export async function recuperarSesion(
     claims.role !== "enlace" ||
     claims.enlaceId !== enlaceId ||
     claims.negocioId !== negocioId ||
-    (claims.tipo !== "armar" && claims.tipo !== "recibir")
+    (claims.tipo !== "armar" && claims.tipo !== "recibir" && claims.tipo !== "precio")
   ) {
     await signOut(sv.auth).catch(() => undefined);
     borrarMeta(negocioId, enlaceId);

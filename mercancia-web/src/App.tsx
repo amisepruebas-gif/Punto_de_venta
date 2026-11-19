@@ -16,6 +16,7 @@ import { MisLotesPage } from "@/routes/enlace/MisLotesPage";
 import { ArmarLotePage } from "@/routes/enlace/ArmarLotePage";
 import { FotosPage } from "@/routes/enlace/FotosPage";
 import { EtiquetasPage } from "@/routes/enlace/EtiquetasPage";
+import { PrecioPage } from "@/routes/precio/PrecioPage";
 import { AuthWatcher } from "@/features/auth/AuthWatcher";
 import { useSession } from "@/hooks/useSession";
 
@@ -138,6 +139,12 @@ export default function App() {
         <Route path="fotos" element={<FotosPage />} />
         <Route path="etiquetas" element={<EtiquetasPage />} />
         <Route path="*" element={<EntrarPage />} />
+      </Route>
+      {/* Página aparte de etiquetas de precio (código + precio, como la app
+          "codigos"): entra un equipo con un enlace `precio` de admin, sin PIN. */}
+      <Route path="/precio/:negocioId/:enlaceId" element={<EnlaceLayout prefijo="precio" />}>
+        <Route index element={<PrecioPage />} />
+        <Route path="*" element={<PrecioPage />} />
       </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
