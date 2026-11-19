@@ -1,20 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Loader2, LogIn, Printer, RefreshCw, RotateCcw, Tag } from "lucide-react";
 import { estadoImpresoraParaOrden, textoEstadoTrabajo } from "@shared";
 import { Button } from "@/components/ui/button";
 import { rutaDeSesion, useEnlace } from "@/features/enlace/EnlaceContext";
 import {
-  escucharMisOrdenesAbiertas,
   escucharTrabajo,
   idNuevaOrden,
-  listarImpresoras,
   mandarEtiquetaPrecio,
   problemasEtiquetaPrecio,
   reimprimir,
-  type ImpresoraVista,
   type TrabajoVista,
 } from "@/features/enlace/etiquetasService";
+import { useAhora, useImpresorasDelEnlace } from "@/features/enlace/useImpresoras";
 import {
   Aviso,
   AvisoError,
@@ -27,23 +25,6 @@ import {
 import { entrarConEnlace, type SesionEnlace } from "@/firebase/enlaceApp";
 
 const claveImpresora = (enlaceId: string) => `precio.impresora.v1:${enlaceId}`;
-
-function leerElegida(enlaceId: string): string {
-  try {
-    return localStorage.getItem(claveImpresora(enlaceId)) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function useAhora(cada: number): number {
-  const [ahora, setAhora] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setAhora(Date.now()), cada);
-    return () => clearInterval(t);
-  }, [cada]);
-  return ahora;
-}
 
 const CLASE_CAMPO =
   "h-14 w-full min-w-0 rounded-md border bg-background px-3 text-2xl font-semibold tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -111,41 +92,32 @@ function EntrarPrecio() {
 
 function EtiquetasPrecio({ s }: { s: SesionEnlace }) {
   const ahora = useAhora(15_000);
-  const [impresoras, setImpresoras] = useState<ImpresoraVista[] | null>(null);
-  const [errorLista, setErrorLista] = useState<unknown>(null);
-  const [elegida, setElegida] = useState(() => leerElegida(s.enlaceId));
+  const { impresoras, errorLista, elegida, setElegida, abiertas, errorAbiertas, actualizar, recordarElegida } =
+    useImpresorasDelEnlace(s, claveImpresora(s.enlaceId));
   const [codigo, setCodigo] = useState("");
   const [precio, setPrecio] = useState("");
   const [cantidad, setCantidad] = useState("1");
   const [salioDelCodigo, setSalioDelCodigo] = useState(false);
+  // Mientras se manda, los campos son de solo lectura: un escaneo rápido no
+  // se mezcla con el precio que se está mandando.
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [trabajoId, setTrabajoId] = useState<string | null>(null);
   const [trabajo, setTrabajo] = useState<TrabajoVista | null>(null);
-  const [abiertas, setAbiertas] = useState<TrabajoVista[]>([]);
   // La orden que se intentó mandar y con qué: si salió "Sin internet" pero sí
   // llegó, reintentar lo MISMO usa el mismo id y no sale doble.
   const intento = useRef<{ id: string; firma: string } | null>(null);
   const refCodigo = useRef<HTMLInputElement>(null);
   const refPrecio = useRef<HTMLInputElement>(null);
 
-  const cargar = useCallback(() => {
-    setErrorLista(null);
-    listarImpresoras(s)
-      .then((lista) => {
-        setImpresoras(lista);
-        // Si solo hay una (o la recordada ya no existe), la primera.
-        setElegida((x) => (lista.some((i) => i.id === x) ? x : lista.length === 1 ? lista[0]!.id : ""));
-      })
-      .catch(setErrorLista);
-  }, [s]);
-  useEffect(cargar, [cargar]);
+  // Sesión nueva (se volvió a entrar con el enlace, aquí o en otra pestaña):
+  // el error de la anterior ya no aplica.
+  useEffect(() => setError(null), [s]);
 
   useEffect(() => {
     if (!trabajoId) return;
     return escucharTrabajo(s, trabajoId, setTrabajo, setError);
   }, [s, trabajoId]);
-  useEffect(() => escucharMisOrdenesAbiertas(s, setAbiertas, () => undefined), [s]);
 
   const etiqueta = { codigo: codigo.trim(), precio: precio.trim(), piezas: Number(cantidad) };
   const problemas = problemasEtiquetaPrecio(etiqueta);
@@ -164,11 +136,7 @@ function EtiquetasPrecio({ s }: { s: SesionEnlace }) {
     const id = intento.current.id;
     if (id !== trabajoId) setTrabajo(null);
     try {
-      try {
-        localStorage.setItem(claveImpresora(s.enlaceId), impresora.id);
-      } catch {
-        /* sin almacenamiento */
-      }
+      recordarElegida(impresora.id);
       await mandarEtiquetaPrecio(s, impresora.id, etiqueta, id);
       intento.current = null;
       setTrabajoId(id);
@@ -194,13 +162,13 @@ function EtiquetasPrecio({ s }: { s: SesionEnlace }) {
       titulo="Etiquetas de precio"
       subtitulo={s.nombre || undefined}
       derecha={
-        <Button variant="ghost" size="icon" className="h-12 w-12" onClick={cargar} aria-label="Actualizar">
+        <Button variant="ghost" size="icon" className="h-12 w-12" onClick={actualizar} aria-label="Actualizar">
           <RefreshCw className="h-6 w-6" />
         </Button>
       }
     >
       {errorLista ? (
-        <AvisoError error={errorLista} onReintentar={cargar} />
+        <AvisoError error={errorLista} onReintentar={actualizar} />
       ) : !impresoras ? (
         <Cargando />
       ) : impresoras.length === 0 ? (
@@ -253,6 +221,7 @@ function EtiquetasPrecio({ s }: { s: SesionEnlace }) {
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus
+                readOnly={enviando}
                 value={codigo}
                 placeholder="8 dígitos"
                 onChange={(e) => setCodigo(e.target.value.replace(/\s/g, "").slice(0, 20))}
@@ -280,6 +249,7 @@ function EtiquetasPrecio({ s }: { s: SesionEnlace }) {
                   type="text"
                   inputMode="decimal"
                   autoComplete="off"
+                  readOnly={enviando}
                   value={precio}
                   placeholder="0"
                   onChange={(e) => setPrecio(e.target.value.replace(/[$\s]/g, "").replace(",", ".").slice(0, 10))}
@@ -292,7 +262,7 @@ function EtiquetasPrecio({ s }: { s: SesionEnlace }) {
 
             <div className="space-y-2">
               <span className="block text-base font-semibold">Cuántas</span>
-              <CampoPiezas valor={cantidad} onCambio={setCantidad} etiqueta="Cuántas etiquetas" />
+              <CampoPiezas valor={cantidad} onCambio={setCantidad} etiqueta="Cuántas etiquetas" disabled={enviando} />
               {errPiezas && <p className="text-sm text-destructive">{errPiezas}</p>}
             </div>
 
@@ -308,6 +278,8 @@ function EtiquetasPrecio({ s }: { s: SesionEnlace }) {
           </form>
 
           {trabajo && <EstadoOrden s={s} trabajo={trabajo} onError={setError} />}
+
+          {!!errorAbiertas && <AvisoError error={errorAbiertas} onReintentar={actualizar} />}
 
           {otrasAbiertas.length > 0 && (
             <section className="space-y-2">

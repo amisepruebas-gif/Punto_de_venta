@@ -219,6 +219,7 @@ await check("el programa NO cambia la cantidad", "fail", updateDoc(doc(pc3, trab
 await check("el programa NO cambia sus números al terminar", "fail", updateDoc(doc(pc3, trabajo("T1")), { estado: "impreso", terminadoEn: serverTimestamp(), impresiones: 1, desde: 1 }));
 await check("el programa la marca impresa", "ok", updateDoc(doc(pc3, trabajo("T1")), { estado: "impreso", terminadoEn: serverTimestamp(), impresiones: 1 }));
 await check("el teléfono NO marca su orden impresa", "fail", updateDoc(doc(armar, trabajo("T1")), { estado: "error", error: "x" }));
+await check("el teléfono NO deja texto en el error al reimprimir", "fail", updateDoc(doc(armar, trabajo("T1")), { estado: "pendiente", error: "x" }));
 await check("el teléfono la manda a reimprimir", "ok", updateDoc(doc(armar, trabajo("T1")), { estado: "pendiente" }));
 await check("al reimprimir NO se apartan números nuevos", "fail", tomar(pc3, "enl_I3_pc03", "T1", { desde: 121, hasta: 140 }, 140));
 await check("al reimprimir el programa la toma con sus mismos números", "ok", tomar(pc3, "enl_I3_pc03", "T1", {}));
@@ -240,6 +241,7 @@ await env.withSecurityRulesDisabled(async (c) => {
 });
 await check("el programa NO termina una que tomó otra sesión", "fail", updateDoc(doc(pc3, trabajo("T7")), { estado: "impreso", terminadoEn: serverTimestamp(), impresiones: 1 }));
 await check("admin libera una que se quedó imprimiendo", "ok", updateDoc(doc(admin, trabajo("T7")), { estado: "error", error: "Se interrumpió" }));
+await check("admin NO la reimprime dejando su error", "fail", updateDoc(doc(admin, trabajo("T7")), { estado: "pendiente" }));
 await check("admin la manda a reimprimir", "ok", updateDoc(doc(admin, trabajo("T7")), { estado: "pendiente", error: deleteField() }));
 await check("el teléfono NO cancela una orden en cola", "fail", updateDoc(doc(armar, trabajo("T7")), { estado: "error", error: "x" }));
 await check("admin cancela una orden en cola", "ok", updateDoc(doc(admin, trabajo("T7")), { estado: "error", error: "Se canceló en admin" }));
@@ -358,6 +360,8 @@ await check("el programa toma la orden de la página (sin números)", "ok", toma
 await check("el programa la marca con error", "ok", updateDoc(doc(pc3, trabajo("TP1")), { estado: "error", terminadoEn: serverTimestamp(), error: "Sin papel" }));
 await check("otra página NO la reimprime", "fail", updateDoc(doc(precioB, trabajo("TP1")), { estado: "pendiente", error: deleteField() }));
 await check("la página NO cambia el renglón al reimprimir", "fail", updateDoc(doc(precio, trabajo("TP1")), { estado: "pendiente", error: deleteField(), renglones: [{ ...R, piezas: 100 }] }));
+await check("la página NO deja un error enorme al reimprimir", "fail", updateDoc(doc(precio, trabajo("TP1")), { estado: "pendiente", error: "x".repeat(5000) }));
+await check("la página NO deja un mapa en el error al reimprimir", "fail", updateDoc(doc(precio, trabajo("TP1")), { estado: "pendiente", error: { a: 1 } }));
 await check("la página la manda a reimprimir", "ok", updateDoc(doc(precio, trabajo("TP1")), { estado: "pendiente", error: deleteField() }));
 await check("la página NO reimprime la orden del teléfono", "fail", updateDoc(doc(precio, trabajo("T10")), { estado: "pendiente", error: deleteField() }));
 await check("la página NO cancela una orden en cola", "fail", updateDoc(doc(precio, trabajo("TP2")), { estado: "error", error: "x" }));

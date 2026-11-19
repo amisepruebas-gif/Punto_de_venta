@@ -93,7 +93,8 @@ export function ImpresorasSeccion({
       </h2>
       <p className="text-xs text-muted-foreground">
         Una PC con el programa <b>AMISE Impresora</b> y una impresora de etiquetas por USB. Le llegan las
-        etiquetas que piden el teléfono, admin y la caja de su sucursal.
+        etiquetas que piden el teléfono, admin, la caja de su sucursal y la página de etiquetas de
+        precio (esa elige entre todas las impresoras).
       </p>
 
       {mostrado && <CodigoMostrado {...mostrado} onCerrar={() => setMostrado(null)} />}

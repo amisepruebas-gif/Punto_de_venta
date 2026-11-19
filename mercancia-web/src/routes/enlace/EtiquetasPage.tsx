@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2, Printer, RefreshCw, RotateCcw } from "lucide-react";
 import {
@@ -9,14 +9,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { rutaDeSesion, useEnlace } from "@/features/enlace/EnlaceContext";
 import {
-  escucharMisOrdenesAbiertas,
   escucharTrabajo,
-  listarImpresoras,
   pedirEtiquetas,
   reimprimir,
-  type ImpresoraVista,
   type TrabajoVista,
 } from "@/features/enlace/etiquetasService";
+import { useAhora, useImpresorasDelEnlace } from "@/features/enlace/useImpresoras";
 import {
   Aviso,
   AvisoError,
@@ -29,23 +27,6 @@ import {
 import type { SesionEnlace } from "@/firebase/enlaceApp";
 
 const claveImpresora = (enlaceId: string) => `enlace.impresora.v1:${enlaceId}`;
-
-function leerElegida(enlaceId: string): string {
-  try {
-    return localStorage.getItem(claveImpresora(enlaceId)) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function useAhora(cada: number): number {
-  const [ahora, setAhora] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setAhora(Date.now()), cada);
-    return () => clearInterval(t);
-  }, [cada]);
-  return ahora;
-}
 
 /** Pedir etiquetas numeradas a una impresora de etiquetas (teléfono). */
 export function EtiquetasPage() {
@@ -65,33 +46,22 @@ function Etiquetas({ sesion: s }: { sesion: SesionEnlace }) {
   const volverA = volver && volver.startsWith(base) ? volver : `${base}/lotes`;
   const ahora = useAhora(15_000);
 
-  const [impresoras, setImpresoras] = useState<ImpresoraVista[] | null>(null);
-  const [errorLista, setErrorLista] = useState<unknown>(null);
-  const [elegida, setElegida] = useState(() => leerElegida(s.enlaceId));
+  const { impresoras, errorLista, elegida, setElegida, abiertas, errorAbiertas, actualizar, recordarElegida } =
+    useImpresorasDelEnlace(s, claveImpresora(s.enlaceId));
   const [cantidad, setCantidad] = useState("10");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [trabajoId, setTrabajoId] = useState<string | null>(null);
   const [trabajo, setTrabajo] = useState<TrabajoVista | null>(null);
-  const [abiertas, setAbiertas] = useState<TrabajoVista[]>([]);
 
-  const cargar = useCallback(() => {
-    setErrorLista(null);
-    listarImpresoras(s)
-      .then((lista) => {
-        setImpresoras(lista);
-        // Si solo hay una (o la recordada ya no existe), la primera.
-        setElegida((x) => (lista.some((i) => i.id === x) ? x : lista.length === 1 ? lista[0]!.id : ""));
-      })
-      .catch(setErrorLista);
-  }, [s]);
-  useEffect(cargar, [cargar]);
+  // Sesión nueva (se volvió a entrar con el enlace): el error de la anterior
+  // ya no aplica.
+  useEffect(() => setError(null), [s]);
 
   useEffect(() => {
     if (!trabajoId) return;
     return escucharTrabajo(s, trabajoId, setTrabajo, setError);
   }, [s, trabajoId]);
-  useEffect(() => escucharMisOrdenesAbiertas(s, setAbiertas, () => undefined), [s]);
 
   const n = Number(cantidad);
   const valida = Number.isInteger(n) && n >= 1 && n <= IMPRESION_TOPE_ENLACE;
@@ -103,11 +73,7 @@ function Etiquetas({ sesion: s }: { sesion: SesionEnlace }) {
     setError(null);
     setTrabajo(null);
     try {
-      try {
-        localStorage.setItem(claveImpresora(s.enlaceId), impresora.id);
-      } catch {
-        /* sin almacenamiento */
-      }
+      recordarElegida(impresora.id);
       setTrabajoId(await pedirEtiquetas(s, impresora.id, n));
     } catch (e) {
       setError(e);
@@ -124,13 +90,13 @@ function Etiquetas({ sesion: s }: { sesion: SesionEnlace }) {
       subtitulo="Etiquetas numeradas para cajas y paquetes"
       onVolver={() => navigate(volverA)}
       derecha={
-        <Button variant="ghost" size="icon" className="h-12 w-12" onClick={cargar} aria-label="Actualizar">
+        <Button variant="ghost" size="icon" className="h-12 w-12" onClick={actualizar} aria-label="Actualizar">
           <RefreshCw className="h-6 w-6" />
         </Button>
       }
     >
       {errorLista ? (
-        <AvisoError error={errorLista} onReintentar={cargar} />
+        <AvisoError error={errorLista} onReintentar={actualizar} />
       ) : !impresoras ? (
         <Cargando />
       ) : impresoras.length === 0 ? (
@@ -183,6 +149,8 @@ function Etiquetas({ sesion: s }: { sesion: SesionEnlace }) {
             {enviando ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Printer className="mr-2 h-6 w-6" />}
             {valida ? `Imprimir ${plural(n, "etiqueta", "etiquetas")}` : "Imprimir"}
           </BotonGrande>
+
+          {!!errorAbiertas && <AvisoError error={errorAbiertas} onReintentar={actualizar} />}
 
           {otrasAbiertas.length > 0 && (
             <section className="space-y-2">

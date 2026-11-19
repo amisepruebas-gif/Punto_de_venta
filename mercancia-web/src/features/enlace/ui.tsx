@@ -225,11 +225,14 @@ export function CampoPiezas({
   onCambio,
   etiqueta = "Piezas",
   autoFocus,
+  disabled,
 }: {
   valor: string;
   onCambio: (v: string) => void;
   etiqueta?: string;
   autoFocus?: boolean;
+  /** Mientras se manda: no se puede cambiar. */
+  disabled?: boolean;
 }) {
   const n = Number(valor) || 0;
   return (
@@ -240,6 +243,7 @@ export function CampoPiezas({
         className="h-14 w-14 shrink-0 text-2xl"
         onClick={() => onCambio(String(Math.max(1, n - 1)))}
         aria-label={`Una menos (${etiqueta})`}
+        disabled={disabled}
       >
         −
       </Button>
@@ -252,6 +256,7 @@ export function CampoPiezas({
         aria-label={etiqueta}
         placeholder="0"
         autoFocus={autoFocus}
+        readOnly={disabled}
         className="h-14 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-center text-2xl font-semibold tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <Button
@@ -260,6 +265,7 @@ export function CampoPiezas({
         className="h-14 w-14 shrink-0 text-2xl"
         onClick={() => onCambio(String(n + 1))}
         aria-label={`Una más (${etiqueta})`}
+        disabled={disabled}
       >
         +
       </Button>

@@ -14,7 +14,6 @@ import {
   collection,
   deleteField,
   doc,
-  getDocsFromServer,
   onSnapshot,
   query,
   runTransaction,
@@ -37,12 +36,26 @@ import { accesoSigueVivo } from "./catalogoService";
 export type ImpresoraVista = Impresora & { id: string };
 export type TrabajoVista = TrabajoImpresion & { id: string };
 
-/** Las impresoras de etiquetas del negocio, por nombre. Del servidor. */
-export async function listarImpresoras(s: SesionEnlace): Promise<ImpresoraVista[]> {
-  const snap = await getDocsFromServer(collection(s.db, paths.impresorasCol(s.negocioId)));
-  return snap.docs
-    .map((d) => ({ ...(d.data() as Impresora), id: d.id }))
-    .sort((a, b) => (a.nombre ?? "").localeCompare(b.nombre ?? "", "es"));
+/**
+ * Las impresoras de etiquetas del negocio, por nombre, EN VIVO: el programa
+ * avisa que sigue vivo cada minuto y "Conectada" se pone al día sola (leídas
+ * una sola vez, a los 2.5 min todas salían "Sin conexión").
+ */
+export function escucharImpresoras(
+  s: SesionEnlace,
+  cb: (lista: ImpresoraVista[]) => void,
+  onError: (e: unknown) => void,
+): Unsubscribe {
+  return onSnapshot(
+    collection(s.db, paths.impresorasCol(s.negocioId)),
+    (snap) =>
+      cb(
+        snap.docs
+          .map((d) => ({ ...(d.data() as Impresora), id: d.id }))
+          .sort((a, b) => (a.nombre ?? "").localeCompare(b.nombre ?? "", "es")),
+      ),
+    onError,
+  );
 }
 
 /** Pide `cantidad` etiquetas a una impresora. Devuelve el id de la orden. */

@@ -945,7 +945,8 @@ export type TrabajoImpresion = {
   hasta?: number;
   /** `etiquetas_precio`. */
   renglones?: RenglonEtiquetaPrecio[];
-  /** La mandó un teléfono (acceso `armar`). */
+  /** La mandó un enlace: el teléfono de armar o la página de etiquetas de
+   *  precio (accesos `armar` y `precio`). */
   enlaceId?: string;
   /** La mandó una caja. */
   nodoId?: string;

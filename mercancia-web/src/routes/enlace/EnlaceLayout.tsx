@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useParams } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
 import { WifiOff } from "lucide-react";
 import {
   recuperarSesion,
@@ -68,6 +69,29 @@ export function EnlaceLayout({ prefijo = "enlace" }: { prefijo?: "enlace" | "pre
   }, [negocioId, enlaceId]);
 
   useEffect(recuperar, [recuperar]);
+
+  // La sesión de Firebase de un enlace es UNA para todas las pestañas de este
+  // navegador. Si en otra se entró con el enlace renovado (es otro usuario),
+  // esta pestaña se pone al día: si no, mandaría a nombre del de antes y las
+  // reglas lo rechazarían. Salir no se sigue aquí (lo atiende quien salió).
+  const authSesion = sesion?.auth;
+  const uidSesion = sesion?.uid;
+  useEffect(() => {
+    if (!authSesion || !uidSesion) return;
+    let vigente = true;
+    const quitar = onAuthStateChanged(authSesion, (u) => {
+      if (!u || u.uid === uidSesion) return;
+      recuperarSesion(negocioId, enlaceId)
+        .then((nueva) => {
+          if (vigente) setSesion(nueva);
+        })
+        .catch(() => undefined);
+    });
+    return () => {
+      vigente = false;
+      quitar();
+    };
+  }, [authSesion, uidSesion, negocioId, enlaceId]);
 
   const ctx = useMemo<EnlaceCtx>(
     () => ({

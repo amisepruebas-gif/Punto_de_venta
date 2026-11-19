@@ -165,10 +165,24 @@ function guardarMeta(negocioId: string, enlaceId: string, meta: MetaSesion) {
   }
 }
 
-function leerMeta(negocioId: string, enlaceId: string): MetaSesion | null {
-  for (const tipo of ["armar", "recibir"] as const) {
+/** Donde puede estar guardada la sesión de un enlace: la que dura y la de
+ *  esta pestaña (no depende de la lista de tipos). */
+function almacenesDeMeta(): Storage[] {
+  const lista: Storage[] = [];
+  for (const tomar of [() => window.localStorage, () => window.sessionStorage]) {
     try {
-      const raw = almacen(tipo)?.getItem(claveMeta(negocioId, enlaceId));
+      lista.push(tomar());
+    } catch {
+      /* bloqueado */
+    }
+  }
+  return lista;
+}
+
+function leerMeta(negocioId: string, enlaceId: string): MetaSesion | null {
+  for (const a of almacenesDeMeta()) {
+    try {
+      const raw = a.getItem(claveMeta(negocioId, enlaceId));
       if (raw) return JSON.parse(raw) as MetaSesion;
     } catch {
       /* dato corrupto: se arma con los claims */
@@ -178,13 +192,19 @@ function leerMeta(negocioId: string, enlaceId: string): MetaSesion | null {
 }
 
 function borrarMeta(negocioId: string, enlaceId: string) {
-  for (const tipo of ["armar", "recibir"] as const) {
+  for (const a of almacenesDeMeta()) {
     try {
-      almacen(tipo)?.removeItem(claveMeta(negocioId, enlaceId));
+      a.removeItem(claveMeta(negocioId, enlaceId));
     } catch {
       /* nada */
     }
   }
+}
+
+/** Los accesos que se usan en esta app (el de `imprimir` se pega en el
+ *  programa de la PC). */
+function esTipoDeEstaApp(tipo: unknown): tipo is EnlaceLoteTipo {
+  return tipo === "armar" || tipo === "recibir" || tipo === "precio";
 }
 
 /** Hora del servidor (aprox.) según el desfase medido al entrar. */
@@ -309,6 +329,9 @@ export async function entrarConEnlace(
     dispositivo: dispositivoDelTelefono(),
   });
   const d = r.data;
+  // Otro tipo de acceso (el código de una impresora pegado en una URL) no se
+  // usa aquí: sin esto, la página brincaría de una pantalla a otra sin parar.
+  if (!esTipoDeEstaApp(d.tipo)) throw new ErrorEnlace("Este enlace no es para esta página.");
   // El desfase se mide contra la mitad del viaje: la hora del servidor es
   // de cuando procesó la llamada, no de cuando llegó la respuesta.
   const medio = antes + (Date.now() - antes) / 2;
@@ -358,7 +381,7 @@ export async function recuperarSesion(
     claims.role !== "enlace" ||
     claims.enlaceId !== enlaceId ||
     claims.negocioId !== negocioId ||
-    (claims.tipo !== "armar" && claims.tipo !== "recibir" && claims.tipo !== "precio")
+    !esTipoDeEstaApp(claims.tipo)
   ) {
     await signOut(sv.auth).catch(() => undefined);
     borrarMeta(negocioId, enlaceId);
