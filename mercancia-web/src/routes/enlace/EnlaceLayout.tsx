@@ -36,7 +36,19 @@ function useEnLinea(): boolean {
 export function EnlaceLayout({ prefijo = "enlace" }: { prefijo?: "enlace" | "precio" }) {
   const { negocioId = "", enlaceId = "" } = useParams();
   // El secreto se toma al primer render, antes de que nada lea la barra.
-  const [secreto] = useState(() => (enlaceId ? tomarSecretoDeLaBarra(enlaceId) : null));
+  const [secreto, setSecreto] = useState(() => (enlaceId ? tomarSecretoDeLaBarra(enlaceId) : null));
+  // Un enlace nuevo (renovado) abierto en la MISMA pestaña: en `/precio` la
+  // dirección es la misma de la página y solo cambia lo de después del #, así
+  // que el navegador no recarga. Se toma el secreto nuevo al cambiar el #.
+  useEffect(() => {
+    if (!enlaceId) return;
+    const alCambiarFragmento = () => {
+      const s = tomarSecretoDeLaBarra(enlaceId);
+      if (s) setSecreto(s);
+    };
+    window.addEventListener("hashchange", alCambiarFragmento);
+    return () => window.removeEventListener("hashchange", alCambiarFragmento);
+  }, [enlaceId]);
   const [sesion, setSesion] = useState<SesionEnlace | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<unknown>(null);
