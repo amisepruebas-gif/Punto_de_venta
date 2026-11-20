@@ -18,6 +18,7 @@ const api: ApiAmise = {
     puertosUsb: () => ipcRenderer.invoke("impresoras:puertos"),
     revisarPuerto: (impresora) => ipcRenderer.invoke("impresoras:revisarPuerto", impresora),
     preparar: (puerto) => ipcRenderer.invoke("impresoras:preparar", puerto),
+    ponerEnLinea: (impresora) => ipcRenderer.invoke("impresoras:ponerEnLinea", impresora),
     imprimir: (p) => ipcRenderer.invoke("impresoras:imprimir", p),
   },
   ventana: {

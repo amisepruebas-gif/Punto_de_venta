@@ -8,7 +8,6 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { DiagnosticoPuerto, ImpresoraWindows, PuertoUsb, ResultadoImpresion } from "../compartido/api";
 import {
-  DRIVER_GENERICO,
   NOMBRE_IMPRESORA_GENERICA,
   RAW_NO_RESPONDE,
   RE_PUERTO_USB,
@@ -16,10 +15,13 @@ import {
   conDiagnostico,
   diagnosticarPuerto,
   limpiarNombreArchivo,
+  lineasPonerEnLinea,
+  lineasPreparar,
   mensajeErrorRaw,
   parsearPuertos,
   psq,
   resultadoRaw,
+  scriptAdministrador,
 } from "./puertos";
 
 const ejecutar = promisify(execFile);
@@ -69,47 +71,47 @@ export async function revisarPuerto(impresora: string): Promise<DiagnosticoPuert
   return diagnosticarPuerto(impresora, await puertosUsb());
 }
 
-/** "Preparar" en modo de prueba: mueve "Etiquetas AMISE" en el JSON, sin Windows. */
-export function prepararDePrueba(puerto: string): ResultadoImpresion {
+type JsonDePrueba = { impresoras?: Array<{ nombre?: string; puerto?: string; sinConexion?: boolean }> };
+function cambiarPuertosDePrueba(cambio: (d: JsonDePrueba) => ResultadoImpresion): ResultadoImpresion {
   if (!puertosDePrueba) return { ok: false, error: "Modo de prueba: no se cambia nada en Windows." };
+  const d = JSON.parse(readFileSync(puertosDePrueba, "utf8").replace(/^﻿/, "")) as JsonDePrueba;
+  const r = cambio(d);
+  if (r.ok) writeFileSync(puertosDePrueba, JSON.stringify(d, null, 2), "utf8");
+  return r;
+}
+
+/** "Preparar" en modo de prueba: mueve "Etiquetas AMISE" en el JSON (y
+ *  queda en línea, como con Windows), sin tocar Windows. */
+export function prepararDePrueba(puerto: string): ResultadoImpresion {
   if (!RE_PUERTO_USB.test(puerto)) return { ok: false, error: "Ese puerto no es un puerto USB de impresora." };
-  const d = JSON.parse(readFileSync(puertosDePrueba, "utf8").replace(/^﻿/, "")) as {
-    impresoras?: Array<{ nombre?: string; puerto?: string }>;
-  };
-  const otras = (Array.isArray(d.impresoras) ? d.impresoras : []).filter((i) => i?.nombre !== NOMBRE_IMPRESORA_GENERICA);
-  d.impresoras = [...otras, { nombre: NOMBRE_IMPRESORA_GENERICA, puerto }];
-  writeFileSync(puertosDePrueba, JSON.stringify(d, null, 2), "utf8");
-  return { ok: true };
+  return cambiarPuertosDePrueba((d) => {
+    const otras = (Array.isArray(d.impresoras) ? d.impresoras : []).filter((i) => i?.nombre !== NOMBRE_IMPRESORA_GENERICA);
+    d.impresoras = [...otras, { nombre: NOMBRE_IMPRESORA_GENERICA, puerto }];
+    return { ok: true };
+  });
+}
+
+/** "Ponerla en línea" en modo de prueba: solo cambia el JSON. */
+export function ponerEnLineaDePrueba(nombre: string): ResultadoImpresion {
+  return cambiarPuertosDePrueba((d) => {
+    const imp = (Array.isArray(d.impresoras) ? d.impresoras : []).find((i) => i?.nombre === nombre);
+    if (!imp) return { ok: false, error: `No encuentro la impresora "${nombre}" en Windows.` };
+    imp.sinConexion = false;
+    return { ok: true };
+  });
 }
 
 /**
- * Crea (o mueve de puerto) la impresora "Etiquetas AMISE" con el driver
- * genérico de Windows en el puerto USB elegido. Pide permiso de
- * administrador (UAC) una vez. No toca ninguna otra impresora.
+ * Corre estas líneas de PowerShell con permiso de administrador (Windows lo
+ * pide con su ventana, UAC). `queHace` completa "Sin él no se puede …".
  */
-export async function prepararImpresora(puerto: string): Promise<ResultadoImpresion> {
-  if (!RE_PUERTO_USB.test(puerto)) return { ok: false, error: "Ese puerto no es un puerto USB de impresora." };
+async function comoAdministrador(lineas: string[], queHace: string, sinRespuesta: string): Promise<ResultadoImpresion> {
   const dir = mkdtempSync(path.join(os.tmpdir(), "amise-impresora-"));
   const resultado = path.join(dir, "resultado.txt");
-  const script = path.join(dir, "preparar.ps1");
-  writeFileSync(
-    script,
-    [
-      "$ErrorActionPreference = 'Stop'",
-      "try {",
-      `  if (-not (Get-PrinterDriver -Name ${psq(DRIVER_GENERICO)} -ErrorAction SilentlyContinue)) { Add-PrinterDriver -Name ${psq(DRIVER_GENERICO)} }`,
-      `  if (Get-Printer -Name ${psq(NOMBRE_IMPRESORA_GENERICA)} -ErrorAction SilentlyContinue) {`,
-      `    Set-Printer -Name ${psq(NOMBRE_IMPRESORA_GENERICA)} -PortName ${psq(puerto)}`,
-      "  } else {",
-      `    Add-Printer -Name ${psq(NOMBRE_IMPRESORA_GENERICA)} -DriverName ${psq(DRIVER_GENERICO)} -PortName ${psq(puerto)}`,
-      "  }",
-      `  Set-Content -LiteralPath ${psq(resultado)} -Value 'OK' -Encoding UTF8`,
-      "} catch {",
-      `  Set-Content -LiteralPath ${psq(resultado)} -Value ('ERROR ' + $_.Exception.Message) -Encoding UTF8`,
-      "}",
-    ].join("\r\n"),
-    "utf8",
-  );
+  const script = path.join(dir, "admin.ps1");
+  // Con la marca UTF-8 al inicio: sin ella, Windows PowerShell lee el .ps1
+  // como ANSI y los acentos (nombres de impresora, mensajes) salen mal.
+  writeFileSync(script, String.fromCharCode(0xfeff) + scriptAdministrador(lineas, resultado), "utf8");
   try {
     await powershell(
       `Start-Process -FilePath powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',${psq(`"${script}"`)}`,
@@ -119,14 +121,32 @@ export async function prepararImpresora(puerto: string): Promise<ResultadoImpres
     rmSync(dir, { recursive: true, force: true });
     const msg = String((e as { stderr?: string; message?: string })?.stderr || (e as Error)?.message || e);
     if (/cancel/i.test(msg)) {
-      return { ok: false, error: "Se canceló el permiso de administrador. Sin él no se puede crear la impresora." };
+      return { ok: false, error: `Se canceló el permiso de administrador. Sin él no se puede ${queHace}.` };
     }
     return { ok: false, error: `No se pudo pedir el permiso de administrador: ${msg.slice(0, 200)}` };
   }
   const r = existsSync(resultado) ? readFileSync(resultado, "utf8").replace(/^﻿/, "").trim() : "";
   rmSync(dir, { recursive: true, force: true });
   if (r === "OK") return { ok: true };
-  return { ok: false, error: r ? r.replace(/^ERROR\s*/, "") : "Windows no creó la impresora." };
+  return { ok: false, error: r ? r.replace(/^ERROR\s*/, "") : sinRespuesta };
+}
+
+/**
+ * Crea (o mueve de puerto) la impresora "Etiquetas AMISE" con el driver
+ * genérico de Windows en el puerto USB elegido, y le quita "Usar impresora
+ * sin conexión" (Windows se lo pone al quitar el cable y cambiar el puerto
+ * no lo quita). Pide permiso de administrador (UAC) una vez. No toca
+ * ninguna otra impresora.
+ */
+export async function prepararImpresora(puerto: string): Promise<ResultadoImpresion> {
+  if (!RE_PUERTO_USB.test(puerto)) return { ok: false, error: "Ese puerto no es un puerto USB de impresora." };
+  return comoAdministrador(lineasPreparar(puerto), "crear la impresora", "Windows no creó la impresora.");
+}
+
+/** Le quita "Usar impresora sin conexión" a la impresora de Windows elegida
+ *  (pide permiso de administrador). */
+export async function ponerEnLinea(nombre: string): Promise<ResultadoImpresion> {
+  return comoAdministrador(lineasPonerEnLinea(nombre), "ponerla en línea", "Windows no la puso en línea.");
 }
 
 function rutaAyudante(): string {

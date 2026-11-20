@@ -30,11 +30,13 @@ import {
 } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AccionBandeja, DiagnosticoPuerto, OpcionesPrograma } from "../compartido/api";
+import type { AccionBandeja, DiagnosticoPuerto, OpcionesPrograma, ResultadoImpresion } from "../compartido/api";
 import { Almacen } from "./almacen";
 import {
   imprimirRaw,
   listarImpresoras,
+  ponerEnLinea,
+  ponerEnLineaDePrueba,
   prepararDePrueba,
   prepararImpresora,
   puertosUsb,
@@ -239,6 +241,21 @@ function registrarPuente(): void {
     // En pruebas nunca se toca Windows (ni se pide permiso de administrador).
     const r = OPCIONES.aArchivo ? prepararDePrueba(String(puerto)) : await prepararImpresora(String(puerto));
     registrar(r.ok ? "info" : "error", `Preparar impresora en ${String(puerto)}: ${r.ok ? "OK" : r.error}`);
+    return r;
+  });
+  handle("impresoras:ponerEnLinea", async (_e, impresora: unknown): Promise<ResultadoImpresion> => {
+    const nombre = typeof impresora === "string" ? impresora : "";
+    let r: ResultadoImpresion;
+    if (OPCIONES.aArchivo) {
+      // En pruebas nunca se toca Windows (ni se pide permiso de administrador).
+      r = ponerEnLineaDePrueba(nombre);
+    } else {
+      // El nombre va a un script con permiso de administrador: solo una
+      // impresora que de verdad existe en Windows.
+      const existe = !!nombre && !!ventana && (await listarImpresoras(ventana)).some((i) => i.nombre === nombre);
+      r = existe ? await ponerEnLinea(nombre) : { ok: false, error: `No encuentro la impresora "${nombre}" en Windows.` };
+    }
+    registrar(r.ok ? "info" : "error", `Poner en línea "${nombre}": ${r.ok ? "OK" : r.error}`);
     return r;
   });
   handle("impresoras:imprimir", async (_e, p: unknown) => {

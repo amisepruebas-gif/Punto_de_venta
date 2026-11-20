@@ -5,6 +5,7 @@ import {
   conDiagnostico,
   diagnosticarPuerto,
   limpiarNombreArchivo,
+  lineasPonerEnLinea,
   mensajeErrorRaw,
   mensajeOrdenPuerto,
   modeloDe,
@@ -20,6 +21,20 @@ const PC_TALLER = JSON.stringify({
   impresoras: [
     { nombre: "Etiquetas AMISE", puerto: "USB005" },
     { nombre: "Microsoft Print to PDF", puerto: "PORTPROMPT:" },
+  ],
+  dispositivos: [
+    { puerto: "USB006", descripcion: "UnknownPrinter", conectada: true, instancia: "USB\\VID_1FC9&PID_2016\\5&6096c15&0&2" },
+    { puerto: "USB005", descripcion: "UnknownPrinter", conectada: false, instancia: "USB\\VID_1FC9&PID_2016\\6&33c77d33&1&2" },
+  ],
+});
+
+// La misma PC a las 3 pm: ya con "Usar USB006", pero Windows dejó "Etiquetas
+// AMISE" en "Usar impresora sin conexión" (y así guarda las órdenes).
+const PC_TALLER_3PM = JSON.stringify({
+  puertos: ["USB001", "USB002", "USB005", "USB006"],
+  impresoras: [
+    { nombre: "Etiquetas AMISE", puerto: "USB006", sinConexion: true },
+    { nombre: "Microsoft Print to PDF", puerto: "PORTPROMPT:", sinConexion: false },
   ],
   dispositivos: [
     { puerto: "USB006", descripcion: "UnknownPrinter", conectada: true, instancia: "USB\\VID_1FC9&PID_2016\\5&6096c15&0&2" },
@@ -114,6 +129,38 @@ describe("la impresora cambió de puerto USB", () => {
     expect(diagnosticarPuerto("Etiquetas AMISE", grupo)).toEqual({ tipo: "sin_usb", puerto: "USB006" });
   });
 
+  it('como en la PC del taller a las 3 pm: ya en USB006, pero Windows la tiene "sin conexión"', () => {
+    const p = parsearPuertos(PC_TALLER_3PM);
+    expect(p.find((x) => x.puerto === "USB006")).toEqual({
+      puerto: "USB006",
+      dispositivo: "UnknownPrinter",
+      modelo: ETIQ,
+      modelos: [ETIQ],
+      conectada: true,
+      impresoras: ["Etiquetas AMISE"],
+      sinConexion: ["Etiquetas AMISE"],
+    });
+    expect(diagnosticarPuerto("Etiquetas AMISE", p)).toEqual({ tipo: "sin_conexion", puerto: "USB006" });
+    // En línea: bien.
+    const enLinea = PC_TALLER_3PM.replace('"sinConexion":true', '"sinConexion":false');
+    expect(diagnosticarPuerto("Etiquetas AMISE", parsearPuertos(enLinea))).toEqual({ tipo: "bien" });
+  });
+
+  it('fuera de su puerto, primero se arregla el puerto ("Usar USB006" también la pone en línea)', () => {
+    const p = parsearPuertos(PC_TALLER.replace('"puerto":"USB005"}', '"puerto":"USB005","sinConexion":true}'));
+    expect(p.find((x) => x.puerto === "USB005")?.sinConexion).toEqual(["Etiquetas AMISE"]);
+    expect(diagnosticarPuerto("Etiquetas AMISE", p)).toEqual({ tipo: "otro_puerto", puerto: "USB005", conectado: "USB006" });
+  });
+
+  it("ponerla en línea: busca por nombre exacto, con comillas seguras, y revisa que sí quedó", () => {
+    const l = lineasPonerEnLinea("Etiquetas de O'Brien").join("\n");
+    expect(l).toContain("$_.Name -eq 'Etiquetas de O''Brien'");
+    expect(l).toContain("Set-CimInstance -InputObject $imp -Property @{ WorkOffline = $false }");
+    expect(l).toContain("$wmi.WorkOffline = $false; $null = $wmi.Put()");
+    expect(l).toContain("throw 'Windows la dejó sin conexión.'");
+    expect(l).toContain(`throw 'No encuentro la impresora "Etiquetas de O''Brien" en Windows.'`);
+  });
+
   it("como en la PC del taller: la ve en USB006 y la impresora de Windows sigue en USB005", () => {
     expect(diagnosticarPuerto("Etiquetas AMISE", parsearPuertos(PC_TALLER))).toEqual({
       tipo: "otro_puerto",
@@ -184,7 +231,11 @@ describe("la impresora cambió de puerto USB", () => {
       { tipo: "otro_puerto", puerto: "USB005", conectado: "USB006" },
       { tipo: "varios_puertos", puerto: "USB005", conectados: ["USB006", "USB007"] },
       { tipo: "sin_usb", puerto: "USB005" },
+      { tipo: "sin_conexion", puerto: "USB006" },
     ];
+    expect(mensajeOrdenPuerto(casos[3]!)).toBe(
+      'Windows tiene la impresora en "Usar impresora sin conexión" y no le manda nada. En la PC abre AMISE Impresora y toca "Ponerla en línea"; luego toca "Reimprimir".',
+    );
     expect(mensajeOrdenPuerto(casos[0]!)).toBe(
       'La impresora se conectó en otro puerto USB de la PC (USB006) y Windows la sigue buscando en USB005. En la PC abre AMISE Impresora y toca "Usar USB006"; luego toca "Reimprimir".',
     );

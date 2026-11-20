@@ -202,6 +202,19 @@ function AvisoPuerto({ agente, estado }: { agente: Agente; estado: EstadoAgente 
     await agente.revisarPuerto();
     setTrabajando(null);
   }
+  async function enLinea() {
+    setTrabajando("en_linea");
+    setError(null);
+    setHecho(null);
+    const e = await agente.ponerEnLinea();
+    setTrabajando(null);
+    if (e) setError(e);
+    else {
+      setHecho(
+        `Listo: "${impresora}" ya está en línea. Da "Imprimir prueba". Las órdenes que quedaron con error: si no salieron solas, pídelas otra vez con "Reimprimir".`,
+      );
+    }
+  }
   const botonUsar = (puerto: string) => (
     <button key={puerto} type="button" disabled={!!trabajando} onClick={() => void usar(puerto)}>
       {trabajando === puerto ? "Cambiando…" : `Usar ${puerto}`}
@@ -260,6 +273,23 @@ function AvisoPuerto({ agente, estado }: { agente: Agente; estado: EstadoAgente 
             </button>
           </div>
           <p className="sutil">Si la conectaste en otro puerto USB, elígelo abajo en "Preparar impresora USB…".</p>
+        </>
+      )}
+      {d.tipo === "sin_conexion" && (
+        <>
+          <h2>Windows tiene la impresora "sin conexión"</h2>
+          <p>
+            "{impresora}" está conectada en <b>{d.puerto}</b>, pero Windows la tiene en <b>Usar impresora sin conexión</b>{" "}
+            (lo pone solo cuando se quita el cable). Así guarda las órdenes y no se las manda.
+          </p>
+          <div className="fila">
+            <button type="button" disabled={!!trabajando} onClick={() => void enLinea()}>
+              {trabajando === "en_linea" ? "Poniéndola en línea…" : "Ponerla en línea"}
+            </button>
+          </div>
+          <p className="sutil">
+            Windows pide permiso de administrador. O desconecta y vuelve a conectar el cable en el mismo puerto.
+          </p>
         </>
       )}
       {error && <p className="error">{error}</p>}
@@ -387,7 +417,11 @@ function PrepararImpresora({ alTerminar }: { alTerminar: (nombre: string) => Pro
               <b>{p.puerto}</b> {p.dispositivo ? `· ${p.dispositivo}` : ""}
               <div className={p.conectada ? "bien-texto" : "sutil"}>
                 {p.conectada ? "Conectada ahora: aquí está tu impresora" : "Nada conectado ahora"}
-                {p.impresoras.length > 0 ? ` · Ya lo usa: ${p.impresoras.join(", ")}` : ""}
+                {p.impresoras.length > 0
+                  ? ` · Ya lo usa: ${p.impresoras
+                      .map((n) => (p.sinConexion?.includes(n) ? `${n} (sin conexión en Windows)` : n))
+                      .join(", ")}`
+                  : ""}
               </div>
             </div>
             <button

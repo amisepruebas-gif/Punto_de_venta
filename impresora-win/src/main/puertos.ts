@@ -23,7 +23,10 @@ export const DRIVER_GENERICO = "Generic / Text Only";
 export const SCRIPT_PUERTOS = [
   "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
   "$puertos = @(Get-PrinterPort -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'USB*' } | ForEach-Object { $_.Name })",
-  "$impresoras = @(Get-Printer -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ nombre = $_.Name; puerto = $_.PortName } })",
+  // "Usar impresora sin conexión" solo se ve en Win32_Printer (Get-Printer no lo trae).
+  "$sinConexion = @{}",
+  "Get-CimInstance -ClassName Win32_Printer -ErrorAction SilentlyContinue | ForEach-Object { $sinConexion[$_.Name] = [bool]$_.WorkOffline }",
+  "$impresoras = @(Get-Printer -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ nombre = $_.Name; puerto = $_.PortName; sinConexion = [bool]$sinConexion[$_.Name] } })",
   "$rapido = $false",
   `try { Add-Type -Namespace AmiseImpresora -Name CfgMgr -MemberDefinition '[DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)] public static extern int CM_Locate_DevNodeW(out int devInst, string id, int flags);' -ErrorAction Stop; $rapido = $true } catch { }`,
   "$clase = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceClasses\\{28d78fad-5a12-11d1-ae5b-0000f803a8c2}'",
@@ -76,9 +79,10 @@ export function modeloDe(instancia: unknown): string | undefined {
  * imprime).
  */
 export function parsearPuertos(json: string): PuertoUsb[] {
+  type ImpresoraCruda = { nombre?: string; puerto?: string; sinConexion?: boolean };
   let d: {
     puertos?: string | string[];
-    impresoras?: { nombre?: string; puerto?: string } | Array<{ nombre?: string; puerto?: string }>;
+    impresoras?: ImpresoraCruda | ImpresoraCruda[];
     dispositivos?: DispositivoCrudo | DispositivoCrudo[];
   };
   try {
@@ -99,16 +103,17 @@ export function parsearPuertos(json: string): PuertoUsb[] {
       const conectada = aparato?.conectada === true;
       const modelo = conectada ? modeloDe(aparato?.instancia) : undefined;
       const modelos = [...new Set(aparatos.map((x) => modeloDe(x?.instancia)).filter((m): m is string => !!m))].sort();
+      // Una impresora en grupo ("USB003,USB004") usa todos esos puertos.
+      const suyas = impresoras.filter((i) => typeof i?.nombre === "string" && puertosDe(i?.puerto).includes(puerto));
+      const sinConexion = suyas.filter((i) => i.sinConexion === true).map((i) => i.nombre as string);
       return {
         puerto,
         ...(desc ? { dispositivo: desc } : {}),
         ...(modelo ? { modelo } : {}),
         ...(modelos.length > 0 ? { modelos } : {}),
         ...(conectada ? { conectada: true } : {}),
-        // Una impresora en grupo ("USB003,USB004") usa todos esos puertos.
-        impresoras: impresoras
-          .filter((i) => typeof i?.nombre === "string" && puertosDe(i?.puerto).includes(puerto))
-          .map((i) => i.nombre as string),
+        impresoras: suyas.map((i) => i.nombre as string),
+        ...(sinConexion.length > 0 ? { sinConexion } : {}),
       };
     })
     .sort((a, b) => Number(b.conectada === true) - Number(a.conectada === true));
@@ -129,7 +134,10 @@ export function diagnosticarPuerto(impresora: string, puertos: PuertoUsb[]): Dia
   // varios a la vez (grupo de impresoras): no hay qué revisar.
   if (suyos.length !== 1) return { tipo: "bien" };
   const suyo = suyos[0]!;
-  if (suyo.conectada === true) return { tipo: "bien" };
+  if (suyo.conectada === true) {
+    // Conectada, pero Windows la tiene en "Usar impresora sin conexión".
+    return suyo.sinConexion?.includes(impresora) ? { tipo: "sin_conexion", puerto: suyo.puerto } : { tipo: "bien" };
+  }
   const modelos = suyo.modelos ?? [];
   const conectados = puertos
     .filter(
@@ -152,9 +160,57 @@ export function mensajeOrdenPuerto(d: DiagnosticoPuerto): string | null {
       return `La impresora no está en su puerto USB (${d.puerto}). En la PC abre AMISE Impresora y elige el puerto donde está conectada; luego toca "Reimprimir".`;
     case "sin_usb":
       return 'La PC no ve la impresora por USB: revisa que esté prendida y que el cable esté bien conectado a la PC, y toca "Reimprimir".';
+    case "sin_conexion":
+      return 'Windows tiene la impresora en "Usar impresora sin conexión" y no le manda nada. En la PC abre AMISE Impresora y toca "Ponerla en línea"; luego toca "Reimprimir".';
     default:
       return null;
   }
+}
+
+/** El script que corre con permiso de administrador: deja "OK" o "ERROR …"
+ *  en `resultado` (el programa no ve la salida de la ventana elevada). */
+export function scriptAdministrador(lineas: string[], resultado: string): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "try {",
+    ...lineas.map((l) => `  ${l}`),
+    `  Set-Content -LiteralPath ${psq(resultado)} -Value 'OK' -Encoding UTF8`,
+    "} catch {",
+    `  Set-Content -LiteralPath ${psq(resultado)} -Value ('ERROR ' + $_.Exception.Message) -Encoding UTF8`,
+    "}",
+  ].join("\r\n");
+}
+
+/** Crea (o mueve) "Etiquetas AMISE" con el driver genérico en ese puerto y la
+ *  deja en línea. */
+export function lineasPreparar(puerto: string): string[] {
+  return [
+    `if (-not (Get-PrinterDriver -Name ${psq(DRIVER_GENERICO)} -ErrorAction SilentlyContinue)) { Add-PrinterDriver -Name ${psq(DRIVER_GENERICO)} }`,
+    `if (Get-Printer -Name ${psq(NOMBRE_IMPRESORA_GENERICA)} -ErrorAction SilentlyContinue) {`,
+    `  Set-Printer -Name ${psq(NOMBRE_IMPRESORA_GENERICA)} -PortName ${psq(puerto)}`,
+    "} else {",
+    `  Add-Printer -Name ${psq(NOMBRE_IMPRESORA_GENERICA)} -DriverName ${psq(DRIVER_GENERICO)} -PortName ${psq(puerto)}`,
+    "}",
+    ...lineasPonerEnLinea(NOMBRE_IMPRESORA_GENERICA),
+  ];
+}
+
+/**
+ * Líneas de PowerShell (con permiso de administrador) que le quitan a una
+ * impresora "Usar impresora sin conexión" y revisan que sí quedó. Primero
+ * con CIM; si Windows no lo deja así, con WMI (`Put`).
+ */
+export function lineasPonerEnLinea(nombre: string): string[] {
+  const buscar = `Where-Object { $_.Name -eq ${psq(nombre)} }`;
+  return [
+    `$imp = Get-CimInstance -ClassName Win32_Printer | ${buscar}`,
+    `if (-not $imp) { throw ${psq(`No encuentro la impresora "${nombre}" en Windows.`)} }`,
+    "if ($imp.WorkOffline) {",
+    "  try { Set-CimInstance -InputObject $imp -Property @{ WorkOffline = $false } }",
+    `  catch { $wmi = Get-WmiObject -Class Win32_Printer | ${buscar}; $wmi.WorkOffline = $false; $null = $wmi.Put() }`,
+    `  if ((Get-CimInstance -ClassName Win32_Printer | ${buscar}).WorkOffline) { throw 'Windows la dejó sin conexión.' }`,
+    "}",
+  ];
 }
 
 /** Si la impresora no respondió, el error dice lo que de verdad pasó con su

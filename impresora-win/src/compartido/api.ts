@@ -25,6 +25,10 @@ export type PuertoUsb = {
   conectada?: boolean;
   /** Impresoras de Windows que ya usan ese puerto. */
   impresoras: string[];
+  /** De esas, las que Windows tiene en "Usar impresora sin conexión": les
+   *  guarda las órdenes y no se las manda. Windows lo pone solo al quitar el
+   *  cable, y cambiarla de puerto no lo quita. */
+  sinConexion?: string[];
 };
 
 /**
@@ -41,7 +45,10 @@ export type DiagnosticoPuerto =
   /** No está en su puerto y hay varias conectadas: no se sabe cuál es. */
   | { tipo: "varios_puertos"; puerto: string; conectados: string[] }
   /** La PC no la ve por USB (apagada o sin cable). */
-  | { tipo: "sin_usb"; puerto: string };
+  | { tipo: "sin_usb"; puerto: string }
+  /** Está conectada en su puerto, pero Windows la tiene en "Usar impresora
+   *  sin conexión" (guarda las órdenes y no se las manda). */
+  | { tipo: "sin_conexion"; puerto: string };
 
 export type ResultadoImpresion =
   | { ok: true }
@@ -94,6 +101,8 @@ export interface ApiAmise {
      *  conectada. `null`: no se pudo revisar (se deja lo que se sabía). */
     revisarPuerto(impresora: string): Promise<DiagnosticoPuerto | null>;
     preparar(puerto: string): Promise<ResultadoImpresion>;
+    /** Le quita "Usar impresora sin conexión" (pide permiso de administrador). */
+    ponerEnLinea(impresora: string): Promise<ResultadoImpresion>;
     imprimir(p: { impresora: string; datos: string; nombre: string }): Promise<ResultadoImpresion>;
   };
   ventana: { mostrar(): void; ocultar(): void };

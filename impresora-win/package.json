@@ -1,7 +1,7 @@
 {
   "name": "amise-impresora",
   "productName": "AMISE Impresora",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Recibe las órdenes de impresión de etiquetas de AMISE y las imprime por USB.",
   "private": true,
   "main": "dist/main/main.js",

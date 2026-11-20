@@ -14,6 +14,7 @@ Programa que recibe las órdenes de impresión de etiquetas de AMISE (teléfono 
 5. Si cambian el cable de la impresora a **otro puerto USB**, Windows le da otro puerto (por ejemplo USB006) y "Etiquetas AMISE" se queda en el de antes, donde ya no hay nada: no imprime aunque esté prendida. El programa lo detecta al conectar o quitar el cable, cada 5 minutos y cuando una orden no sale:
    - Avisa junto al reloj y en su ventana, con el botón **Usar USB006** (Windows pide permiso de administrador).
    - La orden que no salió dice qué pasó y qué hacer; ya arreglado, se pide otra vez con **Reimprimir**.
+   - Al quitar el cable, Windows pone la impresora en **"Usar impresora sin conexión"** y cambiarla de puerto no lo quita: así guarda las órdenes y no las manda. **Usar USB006** también se lo quita. Si se queda así (conectada pero "sin conexión"), el programa lo dice y trae **Ponerla en línea**.
 
 ## Cómo funciona
 - Comandos TSPL en texto (etiqueta 29 × 14 mm), los mismos de la app Android "codigos". Están en `shared/src/tspl.ts`.

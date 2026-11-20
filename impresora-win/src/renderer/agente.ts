@@ -106,10 +106,13 @@ function textoBandejaPuerto(d: ProblemaPuerto): string {
       return "No está en su puerto USB: abre el programa";
     case "sin_usb":
       return "No veo la impresora por USB";
+    case "sin_conexion":
+      return 'Windows la tiene "sin conexión": abre el programa';
   }
 }
 
-/** Aviso de Windows: solo cuando la cambiaron de puerto (apagarla no avisa). */
+/** Aviso de Windows: solo cuando la cambiaron de puerto (apagarla no avisa, y
+ *  "sin conexión" puede durar un momento al volver a conectar el cable). */
 function avisoWindowsPuerto(d: ProblemaPuerto): { titulo: string; texto: string } | null {
   switch (d.tipo) {
     case "otro_puerto":
@@ -139,6 +142,9 @@ const REINTENTO_APAGADA_MS = 60_000;
 const REINTENTO_IMPRESORA_MS = 60_000;
 /** Además de al conectar o quitar un aparato, el puerto USB se revisa cada tanto. */
 const REVISION_PUERTO_MS = 5 * 60_000;
+/** Al volver a conectar el cable, Windows tarda un poco en quitarle "sin
+ *  conexión": se vuelve a revisar en este rato. */
+const REVISION_SIN_CONEXION_MS = 10_000;
 
 function codigoDe(e: unknown): string {
   return e instanceof FirebaseError ? e.code : typeof e === "object" && e && "code" in e ? String((e as { code: unknown }).code) : "";
@@ -771,6 +777,22 @@ export class Agente {
     this.log("error", `Puerto USB: ${textoBandejaPuerto(nuevo)} ${JSON.stringify(nuevo)}`);
     const aviso = avisoWindowsPuerto(nuevo);
     if (aviso) window.amise.avisar(aviso);
+    if (nuevo.tipo === "sin_conexion") setTimeout(() => void this.revisarPuerto(), REVISION_SIN_CONEXION_MS);
+  }
+
+  /** "Ponerla en línea": le quita "Usar impresora sin conexión" (Windows pide
+   *  permiso de administrador). Devuelve el error, o null si quedó. */
+  async ponerEnLinea(): Promise<string | null> {
+    const impresora = this.estado.impresoraWindows;
+    if (!impresora) return "Primero elige la impresora de Windows.";
+    const r = await window.amise.impresoras
+      .ponerEnLinea(impresora)
+      .catch((e: unknown): ResultadoImpresion => ({ ok: false, error: mensajeDe(e) }));
+    if (!r.ok) return r.error;
+    this.log("info", `Puerto USB: "${impresora}" en línea otra vez`);
+    await this.revisarPuerto();
+    void this.procesarCola();
+    return null;
   }
 
   /** "Usar USB006": deja "Etiquetas AMISE" en ese puerto (Windows pide permiso
