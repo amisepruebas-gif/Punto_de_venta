@@ -12,6 +12,10 @@
 //   4. Arma los comandos TSPL (shared/src/tspl.ts), los manda a la impresora
 //      de Windows y deja la orden "impreso" o "error".
 //   5. Cada minuto avisa que sigue vivo (así se ve "conectada").
+//   6. Revisa que la impresora de Windows siga en el puerto USB donde está
+//      conectada (al arrancar, al conectar o quitar un aparato, cada 5 min y
+//      cuando no responde). Si cambiaron el cable de puerto, lo dice en la
+//      ventana, en un aviso de Windows y en el error de la orden.
 //
 // Una orden que se quedó "imprimiendo" (se apagó la PC a media impresión)
 // NO se reimprime sola: queda con error para que la persona revise si salió
@@ -51,7 +55,12 @@ import {
   type RenglonEtiquetaPrecio,
   type TrabajoImpresion,
 } from "@shared";
-import type { ConfigLocal, ResultadoImpresion } from "../compartido/api";
+import {
+  NOMBRE_IMPRESORA_GENERICA,
+  type ConfigLocal,
+  type DiagnosticoPuerto,
+  type ResultadoImpresion,
+} from "../compartido/api";
 import type { ServiciosFirebase } from "./firebase";
 
 export type Fase = "cargando" | "sin_vincular" | "conectando" | "listo" | "apagada" | "sin_red";
@@ -82,7 +91,41 @@ export type EstadoAgente = {
   enCola: number;
   imprimiendo: string | null;
   ultimas: OrdenVista[];
+  /** Problema con el puerto USB de la impresora de Windows (null = ninguno). */
+  puerto: Exclude<DiagnosticoPuerto, { tipo: "bien" }> | null;
 };
+
+type ProblemaPuerto = NonNullable<EstadoAgente["puerto"]>;
+
+/** Lo que dice el icono junto al reloj cuando hay problema con el puerto. */
+function textoBandejaPuerto(d: ProblemaPuerto): string {
+  switch (d.tipo) {
+    case "otro_puerto":
+      return `Cambió de puerto USB: toca "Usar ${d.conectado}"`;
+    case "varios_puertos":
+      return "No está en su puerto USB: abre el programa";
+    case "sin_usb":
+      return "No veo la impresora por USB";
+  }
+}
+
+/** Aviso de Windows: solo cuando la cambiaron de puerto (apagarla no avisa). */
+function avisoWindowsPuerto(d: ProblemaPuerto): { titulo: string; texto: string } | null {
+  switch (d.tipo) {
+    case "otro_puerto":
+      return {
+        titulo: "La impresora cambió de puerto USB",
+        texto: `Toca aquí y luego "Usar ${d.conectado}" para que vuelva a imprimir.`,
+      };
+    case "varios_puertos":
+      return {
+        titulo: "La impresora no está en su puerto USB",
+        texto: "Toca aquí para elegir el puerto donde está conectada.",
+      };
+    default:
+      return null;
+  }
+}
 
 type Vinculo = { negocioId: string; enlaceId: string; secreto: string };
 
@@ -94,6 +137,8 @@ const REINTENTO_RED_MS = 30_000;
 const REINTENTO_APAGADA_MS = 60_000;
 /** Si la impresora no respondió, las demás órdenes esperan y se reintenta. */
 const REINTENTO_IMPRESORA_MS = 60_000;
+/** Además de al conectar o quitar un aparato, el puerto USB se revisa cada tanto. */
+const REVISION_PUERTO_MS = 5 * 60_000;
 
 function codigoDe(e: unknown): string {
   return e instanceof FirebaseError ? e.code : typeof e === "object" && e && "code" in e ? String((e as { code: unknown }).code) : "";
@@ -145,8 +190,12 @@ export class Agente {
     enCola: 0,
     imprimiendo: null,
     ultimas: [],
+    puerto: null,
   };
   private readonly oyentes = new Set<(e: EstadoAgente) => void>();
+  private revisandoPuerto = false;
+  private otraRevisionPuerto = false;
+  private vigilandoPuerto = false;
   private vinculo: Vinculo | null = null;
   private uid: string | null = null;
   private cancelar: Unsubscribe[] = [];
@@ -189,6 +238,7 @@ export class Agente {
     switch (e.fase) {
       case "listo":
         if (!e.impresoraWindows) return "Falta elegir la impresora";
+        if (e.puerto) return textoBandejaPuerto(e.puerto);
         if (e.pausada) return `En pausa (${e.enCola} en cola)`;
         return e.imprimiendo ? "Imprimiendo…" : "Lista: imprime al llegar";
       case "sin_red":
@@ -215,6 +265,7 @@ export class Agente {
       impresoraWindows: config.impresoraWindows ?? null,
       ultimas: leerHistorial(),
     });
+    this.vigilarPuerto();
     const guardado = await window.amise.vinculacion.leer();
     const v = guardado ? leerCodigoVinculacion(guardado) : null;
     if (!v) {
@@ -590,17 +641,11 @@ export class Agente {
 
     const n = etiquetasDeTrabajo(t);
     this.poner({ imprimiendo: id, mensaje: `Imprimiendo ${n} etiqueta${n === 1 ? "" : "s"}…` });
-    let r: ResultadoImpresion;
-    try {
-      r = await window.amise.impresoras.imprimir({
-        impresora: this.estado.impresoraWindows ?? "",
-        datos,
-        nombre: `AMISE ${t.tipo === "etiquetas_lote" ? "lote" : "precio"} ${id}`,
-      });
-    } catch (e) {
-      // Que nunca se quede "imprimiendo" (disco lleno, antivirus…).
-      r = { ok: false, error: `No se pudo mandar a Windows: ${mensajeDe(e)}` };
-    }
+    const r = await this.mandar({
+      impresora: this.estado.impresoraWindows ?? "",
+      datos,
+      nombre: `AMISE ${t.tipo === "etiquetas_lote" ? "lote" : "precio"} ${id}`,
+    });
     if (r.ok) {
       await this.terminar(ref, { estado: "impreso", impresiones: (t.impresiones ?? 0) + 1 });
       this.agregarHistorial(id, t, "impreso");
@@ -662,6 +707,84 @@ export class Agente {
     this.poner({ ultimas });
   }
 
+  /** Manda los comandos a la impresora de Windows. Nunca lanza (que una orden
+   *  no se quede "imprimiendo" por un disco lleno o un antivirus). Si no
+   *  respondió, trae cómo está su puerto USB. */
+  private async mandar(p: { impresora: string; datos: string; nombre: string }): Promise<ResultadoImpresion> {
+    const r = await window.amise.impresoras
+      .imprimir(p)
+      .catch((e: unknown): ResultadoImpresion => ({ ok: false, error: `No se pudo mandar a Windows: ${mensajeDe(e)}` }));
+    if (!r.ok && r.puerto) {
+      if (p.impresora === this.estado.impresoraWindows) this.ponerPuerto(r.puerto);
+    } else if (r.ok && this.estado.puerto) {
+      // Sí salió aunque se veía mal el puerto (ya lo arreglaron): se revisa otra vez.
+      void this.revisarPuerto();
+    }
+    return r;
+  }
+
+  // ---------- El puerto USB de la impresora ----------
+
+  /** Una vez por corrida: revisa el puerto ahora, al conectar o quitar un
+   *  aparato (aviso de Windows) y cada tanto. */
+  private vigilarPuerto(): void {
+    if (this.vigilandoPuerto) return;
+    this.vigilandoPuerto = true;
+    window.amise.alCambiarDispositivos(() => void this.revisarPuerto());
+    setInterval(() => void this.revisarPuerto(), REVISION_PUERTO_MS);
+    void this.revisarPuerto();
+  }
+
+  /** ¿La impresora de Windows elegida sigue en el puerto USB donde está conectada? */
+  async revisarPuerto(): Promise<void> {
+    if (this.revisandoPuerto) {
+      // Ya va una en camino: al terminar se hace otra (pudo cambiar algo).
+      this.otraRevisionPuerto = true;
+      return;
+    }
+    this.revisandoPuerto = true;
+    try {
+      const impresora = this.estado.impresoraWindows;
+      const d: DiagnosticoPuerto | null = impresora
+        ? await window.amise.impresoras.revisarPuerto(impresora).catch(() => null)
+        : { tipo: "bien" };
+      // Sin respuesta se deja lo que ya se sabía; y si mientras tanto eligieron
+      // otra impresora, esta respuesta ya no sirve.
+      if (d && impresora === this.estado.impresoraWindows) this.ponerPuerto(d);
+    } finally {
+      this.revisandoPuerto = false;
+      if (this.otraRevisionPuerto) {
+        this.otraRevisionPuerto = false;
+        void this.revisarPuerto();
+      }
+    }
+  }
+
+  private ponerPuerto(d: DiagnosticoPuerto): void {
+    const nuevo = d.tipo === "bien" ? null : d;
+    if (JSON.stringify(nuevo) === JSON.stringify(this.estado.puerto)) return;
+    this.poner({ puerto: nuevo });
+    if (!nuevo) {
+      this.log("info", "Puerto USB: la impresora ya está en su puerto");
+      return;
+    }
+    this.log("error", `Puerto USB: ${textoBandejaPuerto(nuevo)} ${JSON.stringify(nuevo)}`);
+    const aviso = avisoWindowsPuerto(nuevo);
+    if (aviso) window.amise.avisar(aviso);
+  }
+
+  /** "Usar USB006": deja "Etiquetas AMISE" en ese puerto (Windows pide permiso
+   *  de administrador) y la elige. Devuelve el error, o null si quedó. */
+  async usarPuerto(puerto: string): Promise<string | null> {
+    const r = await window.amise.impresoras
+      .preparar(puerto)
+      .catch((e: unknown): ResultadoImpresion => ({ ok: false, error: mensajeDe(e) }));
+    if (!r.ok) return r.error;
+    this.log("info", `Puerto USB: "${NOMBRE_IMPRESORA_GENERICA}" ahora usa ${puerto}`);
+    await this.elegirImpresora(NOMBRE_IMPRESORA_GENERICA);
+    return null;
+  }
+
   // ---------- Lo que hace la persona en la PC ----------
 
   async pausar(pausada: boolean): Promise<void> {
@@ -675,15 +798,14 @@ export class Agente {
     await window.amise.config.guardar({ impresoraWindows: nombre ?? "" });
     this.poner({ impresoraWindows: nombre });
     void this.avisarVida();
+    void this.revisarPuerto();
     void this.procesarCola();
   }
 
   async imprimirPrueba(): Promise<string | null> {
     const impresora = this.estado.impresoraWindows;
     if (!impresora) return "Primero elige la impresora de Windows.";
-    const r = await window.amise.impresoras
-      .imprimir({ impresora, datos: tsplPrueba(this.estado.nombre || "AMISE"), nombre: "AMISE prueba" })
-      .catch((e: unknown): ResultadoImpresion => ({ ok: false, error: `No se pudo mandar a Windows: ${mensajeDe(e)}` }));
+    const r = await this.mandar({ impresora, datos: tsplPrueba(this.estado.nombre || "AMISE"), nombre: "AMISE prueba" });
     return r.ok ? null : r.error;
   }
 
@@ -701,9 +823,7 @@ export class Agente {
     } catch (e) {
       return mensajeDe(e);
     }
-    const r = await window.amise.impresoras
-      .imprimir({ impresora, datos, nombre: `AMISE reimpresión ${o.id}` })
-      .catch((e: unknown): ResultadoImpresion => ({ ok: false, error: `No se pudo mandar a Windows: ${mensajeDe(e)}` }));
+    const r = await this.mandar({ impresora, datos, nombre: `AMISE reimpresión ${o.id}` });
     return r.ok ? null : r.error;
   }
 }

@@ -6,11 +6,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { ImpresoraWindows, PuertoUsb, ResultadoImpresion } from "../compartido/api";
+import type { DiagnosticoPuerto, ImpresoraWindows, PuertoUsb, ResultadoImpresion } from "../compartido/api";
 import {
   DRIVER_GENERICO,
   NOMBRE_IMPRESORA_GENERICA,
+  RAW_NO_RESPONDE,
   RE_PUERTO_USB,
+  SCRIPT_PUERTOS,
+  conDiagnostico,
+  diagnosticarPuerto,
   limpiarNombreArchivo,
   mensajeErrorRaw,
   parsearPuertos,
@@ -19,6 +23,17 @@ import {
 } from "./puertos";
 
 const ejecutar = promisify(execFile);
+
+/**
+ * Pruebas (solo con `--a-archivo`): los puertos USB y las impresoras de
+ * Windows salen de este archivo JSON (la misma forma que da el script de
+ * PowerShell), "Preparar" lo cambia y una impresora fuera de su puerto "no
+ * responde". Así se prueba el cambio de puerto sin tocar Windows.
+ */
+let puertosDePrueba: string | null = null;
+export function usarPuertosDePrueba(archivo: string | null): void {
+  puertosDePrueba = archivo;
+}
 
 async function powershell(script: string, timeoutMs = 30_000): Promise<string> {
   const { stdout } = await ejecutar(
@@ -43,31 +58,28 @@ export async function listarImpresoras(win: BrowserWindow): Promise<ImpresoraWin
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
 }
 
-// Puertos USB de impresora, qué impresora de Windows los usa y qué aparato
-// está detrás (Windows lo guarda en el registro al conectar una impresora USB).
-// Las claves del registro se llaman "##?#USB#VID_…": con -Path el "?" es
-// comodín y PowerShell no entra a la subclave, por eso todo va con
-// -LiteralPath. "conectada": el aparato está enchufado ahora (Windows guarda
-// puertos viejos).
-const SCRIPT_PUERTOS = [
-  "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
-  "$puertos = @(Get-PrinterPort -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'USB*' } | ForEach-Object { $_.Name })",
-  "$impresoras = @(Get-Printer -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ nombre = $_.Name; puerto = $_.PortName } })",
-  "$clase = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceClasses\\{28d78fad-5a12-11d1-ae5b-0000f803a8c2}'",
-  "$dispositivos = @(Get-ChildItem -LiteralPath $clase -ErrorAction SilentlyContinue | ForEach-Object {",
-  "  $instancia = [string](Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue).DeviceInstance",
-  "  $conectada = $false",
-  "  if ($instancia) { try { $conectada = [bool](Get-PnpDevice -InstanceId $instancia -ErrorAction Stop).Present } catch { } }",
-  "  Get-ChildItem -LiteralPath $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {",
-  "    $p = Get-ItemProperty -LiteralPath (Join-Path $_.PSPath 'Device Parameters') -ErrorAction SilentlyContinue",
-  "    if ($p -and $null -ne $p.'Port Number') { [pscustomobject]@{ puerto = ('{0}{1:000}' -f $p.'Base Name', [int]$p.'Port Number'); descripcion = [string]$p.'Port Description'; conectada = $conectada } }",
-  "  }",
-  "})",
-  "[pscustomobject]@{ puertos = $puertos; impresoras = $impresoras; dispositivos = $dispositivos } | ConvertTo-Json -Depth 4 -Compress",
-].join("\n");
-
 export async function puertosUsb(): Promise<PuertoUsb[]> {
+  if (puertosDePrueba) return parsearPuertos(readFileSync(puertosDePrueba, "utf8"));
   return parsearPuertos(await powershell(SCRIPT_PUERTOS));
+}
+
+/** ¿La impresora de Windows sigue en el puerto USB donde está conectada? */
+export async function revisarPuerto(impresora: string): Promise<DiagnosticoPuerto> {
+  if (!impresora) return { tipo: "bien" };
+  return diagnosticarPuerto(impresora, await puertosUsb());
+}
+
+/** "Preparar" en modo de prueba: mueve "Etiquetas AMISE" en el JSON, sin Windows. */
+export function prepararDePrueba(puerto: string): ResultadoImpresion {
+  if (!puertosDePrueba) return { ok: false, error: "Modo de prueba: no se cambia nada en Windows." };
+  if (!RE_PUERTO_USB.test(puerto)) return { ok: false, error: "Ese puerto no es un puerto USB de impresora." };
+  const d = JSON.parse(readFileSync(puertosDePrueba, "utf8").replace(/^﻿/, "")) as {
+    impresoras?: Array<{ nombre?: string; puerto?: string }>;
+  };
+  const otras = (Array.isArray(d.impresoras) ? d.impresoras : []).filter((i) => i?.nombre !== NOMBRE_IMPRESORA_GENERICA);
+  d.impresoras = [...otras, { nombre: NOMBRE_IMPRESORA_GENERICA, puerto }];
+  writeFileSync(puertosDePrueba, JSON.stringify(d, null, 2), "utf8");
+  return { ok: true };
 }
 
 /**
@@ -125,13 +137,30 @@ function rutaAyudante(): string {
 
 /**
  * Manda los comandos a la impresora de Windows, tal cual. En modo de prueba
- * (`aArchivo`) solo los guarda en esa carpeta.
+ * (`aArchivo`) solo los guarda en esa carpeta. Si la impresora no respondió,
+ * revisa su puerto USB: el error dice si se conectó en otro puerto o si la PC
+ * ya no la ve.
  */
 export async function imprimirRaw(
   p: { impresora: string; datos: string; nombre: string },
   aArchivo: string | null,
 ): Promise<ResultadoImpresion> {
+  const r = await mandarAWindows(p, aArchivo);
+  if (r.ok || !r.noResponde) return r;
+  const d = await revisarPuerto(p.impresora).catch(() => null);
+  return conDiagnostico(r, d);
+}
+
+async function mandarAWindows(
+  p: { impresora: string; datos: string; nombre: string },
+  aArchivo: string | null,
+): Promise<ResultadoImpresion> {
   if (aArchivo) {
+    // Con los puertos de prueba, una impresora fuera de su puerto no imprime
+    // (como el ayudante cuando Windows no la encuentra en 12 s).
+    if (puertosDePrueba && (await revisarPuerto(p.impresora)).tipo !== "bien") {
+      return resultadoRaw(`ERROR ${RAW_NO_RESPONDE} (prueba) la impresora no está en su puerto; se quitó de la cola de Windows`, p.impresora);
+    }
     try {
       mkdirSync(aArchivo, { recursive: true });
       const archivo = path.join(aArchivo, `${Date.now()}-${limpiarNombreArchivo(p.nombre)}.prn`);

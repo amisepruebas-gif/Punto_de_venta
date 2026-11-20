@@ -14,7 +14,9 @@
 //     vive aquí y la ventana lo pide por el puente (preload).
 //
 // Opciones de prueba: `--a-archivo=CARPETA` (guarda los comandos en vez de
-// imprimir) y `--emuladores` (se conecta a los emuladores locales).
+// imprimir) y `--emuladores` (se conecta a los emuladores locales). Con
+// `--a-archivo`, `AMISE_IMPRESORA_PUERTOS_PRUEBA=archivo.json` pone puertos
+// USB de mentira (para probar el cambio de puerto sin tocar Windows).
 
 import {
   app,
@@ -28,9 +30,17 @@ import {
 } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AccionBandeja, OpcionesPrograma } from "../compartido/api";
+import type { AccionBandeja, DiagnosticoPuerto, OpcionesPrograma } from "../compartido/api";
 import { Almacen } from "./almacen";
-import { imprimirRaw, listarImpresoras, prepararImpresora, puertosUsb } from "./impresoras";
+import {
+  imprimirRaw,
+  listarImpresoras,
+  prepararDePrueba,
+  prepararImpresora,
+  puertosUsb,
+  revisarPuerto,
+  usarPuertosDePrueba,
+} from "./impresoras";
 import { registrar } from "./registro";
 
 function valorOpcion(nombre: string): string | null {
@@ -47,6 +57,16 @@ const OCULTO = process.argv.includes("--oculto");
 // Pruebas: los datos del programa (código, sesión, bitácora) en otra carpeta,
 // sin tocar los de la instalación real de esta PC.
 if (process.env.AMISE_IMPRESORA_DATOS) app.setPath("userData", process.env.AMISE_IMPRESORA_DATOS);
+// Pruebas: puertos USB de mentira (nunca sin `--a-archivo`).
+usarPuertosDePrueba(OPCIONES.aArchivo ? process.env.AMISE_IMPRESORA_PUERTOS_PRUEBA || null : null);
+
+/** Windows avisa con este mensaje cuando se conecta o desconecta un aparato. */
+const WM_DEVICECHANGE = 0x0219;
+/** Llegan varios seguidos por cada cable: se espera a que se calmen. */
+const ESPERA_DISPOSITIVOS_MS = 2500;
+/** Un aparato que se reconecta solo cada pocos segundos (un hub que falla, un
+ *  teléfono cargando) no deja revisando sin parar: como mucho una vez en este tiempo. */
+const MIN_ENTRE_REVISIONES_MS = 15_000;
 
 let ventana: BrowserWindow | null = null;
 let bandeja: Tray | null = null;
@@ -116,6 +136,21 @@ function crearVentana(): void {
   ventana.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   ventana.webContents.on("will-navigate", (e) => e.preventDefault());
   ventana.webContents.on("will-redirect", (e) => e.preventDefault());
+  // Se conectó o desconectó algo (p. ej. el cable de la impresora en otro
+  // puerto USB): la ventana vuelve a revisar el puerto. Llega aunque esté oculta.
+  if (process.platform === "win32") {
+    let espera: ReturnType<typeof setTimeout> | null = null;
+    let ultima = 0;
+    ventana.hookWindowMessage(WM_DEVICECHANGE, () => {
+      if (espera) clearTimeout(espera);
+      const falta = Math.max(ESPERA_DISPOSITIVOS_MS, ultima + MIN_ENTRE_REVISIONES_MS - Date.now());
+      espera = setTimeout(() => {
+        espera = null;
+        ultima = Date.now();
+        ventana?.webContents.send("dispositivos:cambiaron");
+      }, falta);
+    });
+  }
 }
 
 const URL_VENTANA = pathToFileURL(path.join(__dirname, "../renderer/index.html")).href.toLowerCase();
@@ -188,8 +223,21 @@ function registrarPuente(): void {
   });
   handle("impresoras:listar", () => (ventana ? listarImpresoras(ventana) : []));
   handle("impresoras:puertos", () => puertosUsb());
+  handle("impresoras:revisarPuerto", async (_e, impresora: unknown): Promise<DiagnosticoPuerto | null> => {
+    // En pruebas sin puertos de mentira no se revisan los de esta PC.
+    if (OPCIONES.aArchivo && !process.env.AMISE_IMPRESORA_PUERTOS_PRUEBA) return { tipo: "bien" };
+    try {
+      return await revisarPuerto(typeof impresora === "string" ? impresora : "");
+    } catch (e) {
+      // No se pudo revisar: la ventana deja lo que ya sabía (ni quita un aviso
+      // que sí aplica ni inventa otro).
+      registrar("error", `Revisar el puerto USB: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  });
   handle("impresoras:preparar", async (_e, puerto: unknown) => {
-    const r = await prepararImpresora(String(puerto));
+    // En pruebas nunca se toca Windows (ni se pide permiso de administrador).
+    const r = OPCIONES.aArchivo ? prepararDePrueba(String(puerto)) : await prepararImpresora(String(puerto));
     registrar(r.ok ? "info" : "error", `Preparar impresora en ${String(puerto)}: ${r.ok ? "OK" : r.error}`);
     return r;
   });
@@ -222,6 +270,19 @@ function registrarPuente(): void {
   on("registro", (_e, nivel: unknown, mensaje: unknown) => {
     registrar(nivel === "error" ? "error" : "info", String(mensaje).slice(0, 2000));
   });
+  on("aviso:mostrar", (_e, a: unknown) => {
+    const x = (a ?? {}) as { titulo?: unknown; texto?: unknown };
+    if (typeof x.titulo !== "string" || typeof x.texto !== "string" || !bandeja) return;
+    // Windows corta el título a 63 letras y el texto a 255.
+    const titulo = x.titulo.slice(0, 63);
+    const texto = x.texto.slice(0, 255);
+    registrar("info", `Aviso de Windows: ${titulo} — ${texto}`);
+    try {
+      bandeja.displayBalloon({ iconType: "warning", title: titulo, content: texto });
+    } catch (e) {
+      registrar("error", `No salió el aviso de Windows: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  });
 }
 
 async function iniciar(): Promise<void> {
@@ -234,6 +295,7 @@ async function iniciar(): Promise<void> {
   registrarPuente();
   bandeja = new Tray(nativeImage.createFromPath(rutaRecurso("bandeja.png")));
   bandeja.on("click", () => mostrarVentana());
+  bandeja.on("balloon-click", () => mostrarVentana());
   actualizarBandeja();
   crearVentana();
 }

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ImpresoraWindows, OpcionesPrograma, PuertoUsb } from "../compartido/api";
+import {
+  NOMBRE_IMPRESORA_GENERICA,
+  type ImpresoraWindows,
+  type OpcionesPrograma,
+  type PuertoUsb,
+} from "../compartido/api";
 import { Agente, type EstadoAgente, type OrdenVista } from "./agente";
 import { crearFirebase } from "./firebase";
 
@@ -15,7 +20,7 @@ const TEXTO_FASE: Record<EstadoAgente["fase"], string> = {
 };
 
 function claseFase(e: EstadoAgente): string {
-  if (e.fase === "listo") return e.pausada || !e.impresoraWindows ? "chip aviso" : "chip bien";
+  if (e.fase === "listo") return e.pausada || !e.impresoraWindows || e.puerto ? "chip aviso" : "chip bien";
   if (e.fase === "apagada" || e.fase === "sin_vincular") return "chip mal";
   return "chip neutro";
 }
@@ -102,6 +107,7 @@ export function App() {
         <Vincular agente={agente} estado={estado} />
       ) : (
         <>
+          <AvisoPuerto agente={agente} estado={estado} />
           <Impresora agente={agente} estado={estado} />
           <Ordenes agente={agente} estado={estado} />
           <Ultimas agente={agente} estado={estado} />
@@ -160,6 +166,108 @@ function Vincular({ agente, estado }: { agente: Agente; estado: EstadoAgente }) 
   );
 }
 
+/** La impresora cambió de puerto USB (o la PC no la ve): qué pasó y cómo se
+ *  arregla, con un botón. */
+function AvisoPuerto({ agente, estado }: { agente: Agente; estado: EstadoAgente }) {
+  const [trabajando, setTrabajando] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [hecho, setHecho] = useState<string | null>(null);
+  const d = estado.puerto;
+  const impresora = estado.impresoraWindows ?? "";
+  // Otro problema (volvieron a cambiar el cable): lo de antes ya no aplica.
+  const clave = d ? JSON.stringify(d) : "";
+  useEffect(() => {
+    if (!clave) return;
+    setHecho(null);
+    setError(null);
+  }, [clave]);
+
+  async function usar(puerto: string) {
+    setTrabajando(puerto);
+    setError(null);
+    setHecho(null);
+    const e = await agente.usarPuerto(puerto);
+    setTrabajando(null);
+    if (e) setError(e);
+    else {
+      // Lo que Windows no dejó quitar de su cola sale solo en el puerto nuevo:
+      // reimprimir eso sacaría etiquetas repetidas.
+      setHecho(
+        `Listo: "${NOMBRE_IMPRESORA_GENERICA}" ya usa ${puerto}. Da "Imprimir prueba". Las órdenes que quedaron con error: si no salieron solas, pídelas otra vez con "Reimprimir".`,
+      );
+    }
+  }
+  async function revisar() {
+    setTrabajando("revisar");
+    await agente.revisarPuerto();
+    setTrabajando(null);
+  }
+  const botonUsar = (puerto: string) => (
+    <button key={puerto} type="button" disabled={!!trabajando} onClick={() => void usar(puerto)}>
+      {trabajando === puerto ? "Cambiando…" : `Usar ${puerto}`}
+    </button>
+  );
+  const listo = hecho && (
+    <div className="fila bien-texto" role="status">
+      <span>{hecho}</span>
+      <button type="button" className="secundario" onClick={() => setHecho(null)}>
+        Cerrar
+      </button>
+    </div>
+  );
+  if (!d) return listo || null;
+  // Con otra impresora de Windows (driver de la marca), el botón pone la genérica.
+  const nota =
+    impresora && impresora !== NOMBRE_IMPRESORA_GENERICA
+      ? ` Se usará "${NOMBRE_IMPRESORA_GENERICA}" (driver genérico de Windows) en ese puerto.`
+      : "";
+  return (
+    <section className="tarjeta aviso-puerto" role="alert" data-aviso-puerto={d.tipo}>
+      {d.tipo === "otro_puerto" && (
+        <>
+          <h2>La impresora cambió de puerto USB</h2>
+          <p>
+            Windows la ve ahora en <b>{d.conectado}</b>, pero "{impresora}" sigue en <b>{d.puerto}</b>, donde ya no hay
+            nada. Por eso no imprime.
+          </p>
+          <div className="fila">{botonUsar(d.conectado)}</div>
+          <p className="sutil">
+            Windows pide permiso de administrador.{nota} O conecta el cable en el puerto USB de antes.
+          </p>
+        </>
+      )}
+      {d.tipo === "varios_puertos" && (
+        <>
+          <h2>La impresora no está en su puerto USB</h2>
+          <p>
+            "{impresora}" usa <b>{d.puerto}</b>, donde ya no hay nada, y hay {d.conectados.length} impresoras conectadas
+            en otros puertos. Elige el puerto de la impresora de etiquetas:
+          </p>
+          <div className="fila">{d.conectados.map(botonUsar)}</div>
+          <p className="sutil">Windows pide permiso de administrador.{nota}</p>
+        </>
+      )}
+      {d.tipo === "sin_usb" && (
+        <>
+          <h2>La PC no ve la impresora por USB</h2>
+          <p>
+            "{impresora}" usa <b>{d.puerto}</b>, pero ahí no hay nada conectado. Revisa que la impresora esté prendida y
+            que el cable USB esté bien puesto en la PC.
+          </p>
+          <div className="fila">
+            <button type="button" className="secundario" disabled={!!trabajando} onClick={() => void revisar()}>
+              {trabajando === "revisar" ? "Revisando…" : "Revisar otra vez"}
+            </button>
+          </div>
+          <p className="sutil">Si la conectaste en otro puerto USB, elígelo abajo en "Preparar impresora USB…".</p>
+        </>
+      )}
+      {error && <p className="error">{error}</p>}
+      {listo}
+    </section>
+  );
+}
+
 function Impresora({ agente, estado }: { agente: Agente; estado: EstadoAgente }) {
   const [lista, setLista] = useState<ImpresoraWindows[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -167,9 +275,10 @@ function Impresora({ agente, estado }: { agente: Agente; estado: EstadoAgente })
   const cargar = useCallback(async () => {
     setLista(await window.amise.impresoras.listar());
   }, []);
+  // También al cambiar la elegida: "Usar USB006" puede crear "Etiquetas AMISE".
   useEffect(() => {
     void cargar();
-  }, [cargar]);
+  }, [cargar, estado.impresoraWindows]);
   async function prueba() {
     setAviso("Mandando la prueba…");
     const error = await agente.imprimirPrueba();
@@ -248,7 +357,7 @@ function PrepararImpresora({ alTerminar }: { alTerminar: (nombre: string) => Pro
     setError(null);
     const r = await window.amise.impresoras.preparar(puerto);
     setTrabajando(null);
-    if (r.ok) await alTerminar("Etiquetas AMISE");
+    if (r.ok) await alTerminar(NOMBRE_IMPRESORA_GENERICA);
     else setError(r.error);
   }
   return (

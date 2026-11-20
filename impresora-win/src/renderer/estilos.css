@@ -87,6 +87,17 @@ h2 {
   font-size: 14px;
   margin: 0;
 }
+/* La impresora cambió de puerto USB (o la PC no la ve): arriba y a la vista. */
+.tarjeta.aviso-puerto {
+  border: 2px solid var(--ambar);
+  background: var(--ambar-claro);
+}
+.tarjeta.aviso-puerto h2 {
+  color: var(--ambar);
+}
+.tarjeta.aviso-puerto p {
+  margin: 0;
+}
 .chip {
   border-radius: 999px;
   padding: 4px 12px;

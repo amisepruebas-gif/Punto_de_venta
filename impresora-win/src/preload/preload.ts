@@ -16,6 +16,7 @@ const api: ApiAmise = {
   impresoras: {
     listar: () => ipcRenderer.invoke("impresoras:listar"),
     puertosUsb: () => ipcRenderer.invoke("impresoras:puertos"),
+    revisarPuerto: (impresora) => ipcRenderer.invoke("impresoras:revisarPuerto", impresora),
     preparar: (puerto) => ipcRenderer.invoke("impresoras:preparar", puerto),
     imprimir: (p) => ipcRenderer.invoke("impresoras:imprimir", p),
   },
@@ -31,6 +32,14 @@ const api: ApiAmise = {
       ipcRenderer.removeListener("bandeja:accion", f);
     };
   },
+  alCambiarDispositivos: (cb) => {
+    const f = () => cb();
+    ipcRenderer.on("dispositivos:cambiaron", f);
+    return () => {
+      ipcRenderer.removeListener("dispositivos:cambiaron", f);
+    };
+  },
+  avisar: (a) => ipcRenderer.send("aviso:mostrar", { titulo: a.titulo, texto: a.texto }),
   registro: (nivel, mensaje) => ipcRenderer.send("registro", nivel, mensaje),
 };
 

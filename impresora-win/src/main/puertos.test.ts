@@ -1,5 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { limpiarNombreArchivo, mensajeErrorRaw, parsearPuertos, psq, resultadoRaw } from "./puertos";
+import { IMPRESION_MAX_ERROR } from "@shared";
+import type { DiagnosticoPuerto, PuertoUsb, ResultadoImpresion } from "../compartido/api";
+import {
+  conDiagnostico,
+  diagnosticarPuerto,
+  limpiarNombreArchivo,
+  mensajeErrorRaw,
+  mensajeOrdenPuerto,
+  modeloDe,
+  parsearPuertos,
+  psq,
+  resultadoRaw,
+} from "./puertos";
+
+// Lo que dio el script en la PC del taller el 20-nov: el cable se cambió de
+// puerto y Windows le dio USB006; "Etiquetas AMISE" se quedó en USB005.
+const PC_TALLER = JSON.stringify({
+  puertos: ["USB001", "USB002", "USB005", "USB006"],
+  impresoras: [
+    { nombre: "Etiquetas AMISE", puerto: "USB005" },
+    { nombre: "Microsoft Print to PDF", puerto: "PORTPROMPT:" },
+  ],
+  dispositivos: [
+    { puerto: "USB006", descripcion: "UnknownPrinter", conectada: true, instancia: "USB\\VID_1FC9&PID_2016\\5&6096c15&0&2" },
+    { puerto: "USB005", descripcion: "UnknownPrinter", conectada: false, instancia: "USB\\VID_1FC9&PID_2016\\6&33c77d33&1&2" },
+  ],
+});
+
+const usb = (puerto: string, x: Partial<PuertoUsb> = {}): PuertoUsb => ({ puerto, impresoras: [], ...x });
+const ETIQ = "VID_1FC9&PID_2016";
+const EPSON = "VID_04B8&PID_1234";
 
 describe("puertos USB de impresora", () => {
   it("junta cada puerto con su aparato y las impresoras que lo usan", () => {
@@ -50,6 +80,145 @@ describe("puertos USB de impresora", () => {
     expect(parsearPuertos(JSON.stringify({ puertos: ["USB001", "USB001"] }))).toEqual([
       { puerto: "USB001", impresoras: [] },
     ]);
+  });
+});
+
+describe("la impresora cambió de puerto USB", () => {
+  it("lee el modelo de cada puerto (VID/PID) sin el lugar", () => {
+    expect(modeloDe("USB\\VID_1fc9&PID_2016\\5&6096c15&0&2")).toBe(ETIQ);
+    expect(modeloDe("")).toBeUndefined();
+    expect(modeloDe(null)).toBeUndefined();
+    expect(modeloDe("ROOT\\algo")).toBeUndefined();
+    expect(parsearPuertos(PC_TALLER)).toEqual([
+      { puerto: "USB006", dispositivo: "UnknownPrinter", modelo: ETIQ, modelos: [ETIQ], conectada: true, impresoras: [] },
+      { puerto: "USB001", impresoras: [] },
+      { puerto: "USB002", impresoras: [] },
+      { puerto: "USB005", dispositivo: "UnknownPrinter", modelos: [ETIQ], impresoras: ["Etiquetas AMISE"] },
+    ]);
+  });
+
+  it("una impresora en grupo usa todos sus puertos y no se revisa", () => {
+    const grupo = parsearPuertos(
+      JSON.stringify({
+        puertos: ["USB003", "USB004", "USB006"],
+        impresoras: [{ nombre: "Grupo", puerto: "USB003, USB004" }, { nombre: "Etiquetas AMISE", puerto: "USB006" }],
+        dispositivos: [
+          { puerto: "USB003", conectada: true, instancia: `USB\\${ETIQ}\\1` },
+          { puerto: "USB006", conectada: false, instancia: `USB\\${ETIQ}\\2` },
+        ],
+      }),
+    );
+    expect(grupo.find((p) => p.puerto === "USB004")?.impresoras).toEqual(["Grupo"]);
+    expect(diagnosticarPuerto("Grupo", grupo)).toEqual({ tipo: "bien" });
+    // Y un puerto del grupo no está libre para "Etiquetas AMISE".
+    expect(diagnosticarPuerto("Etiquetas AMISE", grupo)).toEqual({ tipo: "sin_usb", puerto: "USB006" });
+  });
+
+  it("como en la PC del taller: la ve en USB006 y la impresora de Windows sigue en USB005", () => {
+    expect(diagnosticarPuerto("Etiquetas AMISE", parsearPuertos(PC_TALLER))).toEqual({
+      tipo: "otro_puerto",
+      puerto: "USB005",
+      conectado: "USB006",
+    });
+  });
+
+  it("en su puerto, sin impresora elegida o sin puerto USB: no hay nada que decir", () => {
+    const enSuPuerto = [usb("USB005", { modelo: ETIQ, conectada: true, impresoras: ["Etiquetas AMISE"] })];
+    expect(diagnosticarPuerto("Etiquetas AMISE", enSuPuerto)).toEqual({ tipo: "bien" });
+    const p = parsearPuertos(PC_TALLER);
+    expect(diagnosticarPuerto("", p)).toEqual({ tipo: "bien" });
+    expect(diagnosticarPuerto("Microsoft Print to PDF", p)).toEqual({ tipo: "bien" });
+    expect(diagnosticarPuerto("No existe", p)).toEqual({ tipo: "bien" });
+  });
+
+  it("nunca propone otra impresora: otro modelo, o un puerto que ya usa otra impresora de Windows", () => {
+    const suya = usb("USB005", { modelos: [ETIQ], impresoras: ["Etiquetas AMISE"] });
+    // La de etiquetas está apagada y la EPSON sí está conectada en USB001.
+    const conEpson = [usb("USB001", { modelo: EPSON, modelos: [EPSON], conectada: true, impresoras: ["EPSON L8160"] }), suya];
+    expect(diagnosticarPuerto("Etiquetas AMISE", conEpson)).toEqual({ tipo: "sin_usb", puerto: "USB005" });
+    // Otro modelo en un puerto sin impresora de Windows: tampoco es ella.
+    const otroModelo = [usb("USB006", { modelo: EPSON, modelos: [EPSON], conectada: true }), suya];
+    expect(diagnosticarPuerto("Etiquetas AMISE", otroModelo)).toEqual({ tipo: "sin_usb", puerto: "USB005" });
+    // El mismo modelo (mismo chip, otra marca) que ya usa la de tickets: no se toca.
+    const tickets = [usb("USB003", { modelo: ETIQ, modelos: [ETIQ], conectada: true, impresoras: ["POS-58"] }), suya];
+    expect(diagnosticarPuerto("Etiquetas AMISE", tickets)).toEqual({ tipo: "sin_usb", puerto: "USB005" });
+  });
+
+  it("sin saber el modelo de su puerto, no adivina", () => {
+    const libre = [usb("USB002", { impresoras: ["Etiquetas AMISE"] }), usb("USB004", { modelo: EPSON, modelos: [EPSON], conectada: true })];
+    expect(diagnosticarPuerto("Etiquetas AMISE", libre)).toEqual({ tipo: "sin_usb", puerto: "USB002" });
+  });
+
+  it("si su puerto recuerda un aparato viejo de otro modelo, igual encuentra la suya (y no la de tickets)", () => {
+    const p = parsearPuertos(
+      JSON.stringify({
+        puertos: ["USB003", "USB004", "USB006"],
+        impresoras: [{ nombre: "Etiquetas AMISE", puerto: "USB003" }, { nombre: "Tickets", puerto: "USB004" }],
+        dispositivos: [
+          { puerto: "USB003", conectada: false, instancia: `USB\\${EPSON}\\viejo` },
+          { puerto: "USB003", conectada: false, instancia: `USB\\${ETIQ}\\antes` },
+          { puerto: "USB004", conectada: true, instancia: `USB\\${EPSON}\\tickets` },
+          { puerto: "USB006", conectada: true, instancia: `USB\\${ETIQ}\\ahora` },
+        ],
+      }),
+    );
+    expect(p.find((x) => x.puerto === "USB003")?.modelos).toEqual([EPSON, ETIQ]);
+    expect(diagnosticarPuerto("Etiquetas AMISE", p)).toEqual({ tipo: "otro_puerto", puerto: "USB003", conectado: "USB006" });
+  });
+
+  it("dos iguales conectadas en otros puertos: no adivina cuál es", () => {
+    const dos = [
+      usb("USB007", { modelo: ETIQ, conectada: true }),
+      usb("USB006", { modelo: ETIQ, conectada: true }),
+      usb("USB005", { modelos: [ETIQ], impresoras: ["Etiquetas AMISE"] }),
+    ];
+    expect(diagnosticarPuerto("Etiquetas AMISE", dos)).toEqual({
+      tipo: "varios_puertos",
+      puerto: "USB005",
+      conectados: ["USB006", "USB007"],
+    });
+  });
+
+  it("el error de la orden dice qué pasó y qué hacer, y cabe en la orden", () => {
+    const casos: DiagnosticoPuerto[] = [
+      { tipo: "otro_puerto", puerto: "USB005", conectado: "USB006" },
+      { tipo: "varios_puertos", puerto: "USB005", conectados: ["USB006", "USB007"] },
+      { tipo: "sin_usb", puerto: "USB005" },
+    ];
+    expect(mensajeOrdenPuerto(casos[0]!)).toBe(
+      'La impresora se conectó en otro puerto USB de la PC (USB006) y Windows la sigue buscando en USB005. En la PC abre AMISE Impresora y toca "Usar USB006"; luego toca "Reimprimir".',
+    );
+    expect(mensajeOrdenPuerto(casos[1]!)).toMatch(/no está en su puerto USB \(USB005\).*elige el puerto/);
+    expect(mensajeOrdenPuerto(casos[2]!)).toMatch(/^La PC no ve la impresora por USB: revisa que esté prendida/);
+    expect(mensajeOrdenPuerto({ tipo: "bien" })).toBeNull();
+    const atorada: ResultadoImpresion = {
+      ok: false,
+      noResponde: true,
+      error: "x",
+      detalle: "ERROR 9001 … estado 0x2 (error); NO se pudo quitar de la cola de Windows",
+    };
+    for (const d of casos) {
+      const r = conDiagnostico(atorada, d);
+      expect(!r.ok && r.error.length).toBeLessThanOrEqual(IMPRESION_MAX_ERROR);
+      expect(!r.ok && r.error).toMatch(/Ojo: quedó esperando en Windows y puede salir sola\.$/);
+    }
+  });
+
+  it("solo cambia el error cuando la impresora no respondió y su puerto está mal", () => {
+    const noResponde = resultadoRaw("ERROR 9001 no respondió en 12 s; se quitó de la cola de Windows", "Etiquetas AMISE");
+    const otro: DiagnosticoPuerto = { tipo: "otro_puerto", puerto: "USB005", conectado: "USB006" };
+    expect(conDiagnostico(noResponde, otro)).toEqual({
+      ...noResponde,
+      error: mensajeOrdenPuerto(otro),
+      puerto: otro,
+    });
+    // Puerto bien: el mismo error ("revisa que esté prendida, con etiquetas…"), con el diagnóstico.
+    expect(conDiagnostico(noResponde, { tipo: "bien" })).toEqual({ ...noResponde, puerto: { tipo: "bien" } });
+    // No se pudo revisar, imprimió u otro error: igual que antes.
+    expect(conDiagnostico(noResponde, null)).toBe(noResponde);
+    expect(conDiagnostico({ ok: true }, otro)).toEqual({ ok: true });
+    const noExiste = resultadoRaw("ERROR 1801 OpenPrinter: no válido", "X");
+    expect(conDiagnostico(noExiste, otro)).toBe(noExiste);
   });
 });
 

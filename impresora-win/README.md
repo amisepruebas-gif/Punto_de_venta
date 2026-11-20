@@ -11,6 +11,9 @@ Programa que recibe las órdenes de impresión de etiquetas de AMISE (teléfono 
    - Se elige la impresora de Windows (o **Preparar impresora USB…**, que crea "Etiquetas AMISE" con el driver genérico de Windows).
    - Se toca **Imprimir prueba**.
 4. Desde ahí imprime cada orden en cuanto llega. "Pausar" deja las órdenes esperando en la cola.
+5. Si cambian el cable de la impresora a **otro puerto USB**, Windows le da otro puerto (por ejemplo USB006) y "Etiquetas AMISE" se queda en el de antes, donde ya no hay nada: no imprime aunque esté prendida. El programa lo detecta al conectar o quitar el cable, cada 5 minutos y cuando una orden no sale:
+   - Avisa junto al reloj y en su ventana, con el botón **Usar USB006** (Windows pide permiso de administrador).
+   - La orden que no salió dice qué pasó y qué hacer; ya arreglado, se pide otra vez con **Reimprimir**.
 
 ## Cómo funciona
 - Comandos TSPL en texto (etiqueta 29 × 14 mm), los mismos de la app Android "codigos". Están en `shared/src/tspl.ts`.
@@ -29,4 +32,5 @@ npm start            # abre el programa contra PRODUCCIÓN
 npx electron . --emuladores --a-archivo=C:\ruta\salida   # pruebas: emuladores y comandos a archivo
 npm run dist         # instalador en dist/instalador/
 ```
+Con `--a-archivo`, la variable `AMISE_IMPRESORA_PUERTOS_PRUEBA=C:\ruta\puertos.json` pone puertos USB de mentira (la misma forma que da el script de puertos). Así se prueba el cambio de puerto sin tocar Windows. En ese modo, "Preparar" solo cambia ese archivo.
 Los iconos se generan con `node scripts/icono.mjs` (ya están en `recursos/`).
