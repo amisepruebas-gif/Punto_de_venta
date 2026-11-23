@@ -27,6 +27,7 @@ import {
   type VentaArticulo,
   type MovimientoPago,
   type PagoClip,
+  type CashbackMayoreoVenta,
 } from "@shared";
 import {
   aplicarStockEnTx,
@@ -58,6 +59,11 @@ export type NuevaVentaInput = {
   puntosTelefono?: string;
   /** Crédito de regalo USADO (pesos) como descuento. NO es ingreso. Auditoría. */
   descuentoRegalo?: string;
+  /** Cashback de mayoreo USADO (pesos), ya descontado en el servidor. */
+  descuentoCashbackMayoreo?: string;
+  /** Cuenta de cashback de mayoreo de la venta: el servidor acredita lo
+   *  ganado al subir la venta (`acreditarCashbackMayoreo`). */
+  cashbackMayoreo?: CashbackMayoreoVenta;
   /**
    * Clave de idempotencia. Si se reintenta `crearVenta` con la MISMA key
    * (porque el primer intento falló con timeout y el cliente reintenta),
@@ -304,6 +310,10 @@ function buildVenta(p: NuevaVentaInput & {
   if (p.descuentoRegalo && Number(p.descuentoRegalo) > 0) {
     v.descuentoRegalo = p.descuentoRegalo;
   }
+  if (p.descuentoCashbackMayoreo && Number(p.descuentoCashbackMayoreo) > 0) {
+    v.descuentoCashbackMayoreo = p.descuentoCashbackMayoreo;
+  }
+  if (p.cashbackMayoreo?.telefono) v.cashbackMayoreo = p.cashbackMayoreo;
   if (p.sobreventa) v.sobreventa = true;
   return v;
 }

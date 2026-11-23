@@ -113,6 +113,8 @@ import {
   fnConsultarSaldoTarjetaRegalo,
   fnRedimirCreditoRegalo,
   fnCerrarCreditoRegalo,
+  fnUsarCashbackMayoreo,
+  fnDevolverCashbackMayoreo,
   type AcreditarPuntosOutput,
   type CerrarCanjeInput,
   type CerrarCreditoRegaloInput,
@@ -531,44 +533,83 @@ export function Ventas() {
     // si la venta ya existe → deferido); el residual es el huérfano raro (detectable).
     const cobroId = p.idempotencyKey;
 
+    // Cashback de mayoreo (propio, sin amise): el saldo se descuenta en el
+    // servidor ANTES de la terminal y de guardar la venta (idempotente por
+    // cobroId: un reintento no descuenta dos veces). Si luego el cobro falla
+    // del todo (la terminal lo rechaza o la venta no se guarda), se devuelve.
+    // Si la terminal queda "sin resolver", NO se devuelve: la venta se retoma.
+    const cbm = p.cashbackMayoreoPago;
+    const cbmUsar = cbm?.usarCentavos ?? 0;
+    const devolverCbm = async () => {
+      if (!cbm || cbmUsar <= 0) return;
+      await fnDevolverCashbackMayoreo({ telefono: cbm.telefono, ventaId: cobroId }).catch((e) =>
+        console.warn("No se pudo devolver el cashback de mayoreo:", e),
+      );
+    };
+    if (cbm && cbmUsar > 0) {
+      if (!cbm.qr && !cbm.tarjeta) {
+        throw new Error("Para usar el cashback escanea el QR o la tarjeta del cliente.");
+      }
+      if (!navigator.onLine) {
+        throw new Error("Sin internet no se puede usar el cashback. Quítalo (toca Cashback) o espera la red.");
+      }
+      try {
+        await fnUsarCashbackMayoreo({
+          ...(cbm.qr ? { qr: cbm.qr } : { tarjeta: cbm.tarjeta }),
+          centavos: cbmUsar,
+          ventaId: cobroId,
+        });
+      } catch (e) {
+        const msg = (e as { message?: string })?.message || "sin conexión";
+        throw new Error(`No se pudo usar el cashback: ${msg}. Quítalo o reintenta.`);
+      }
+    }
+
     // Terminal Clip: la tarjeta se cobra ANTES de descontar y de guardar la
     // venta (un rechazo es común; así no queda un débito sin venta). Antes se
     // revisan los saldos (solo consulta). El cobro se guarda en la tablet: si
     // la app se recarga a media espera, al abrir se retoma (RecuperarCobroClip).
     let pagoClip = op.pagoClip;
-    if (p.terminalClip && !pagoClip) {
-      const previo = useCobroClip.getState().cobro;
-      if (previo && previo.cobroId !== cobroId) {
-        setRecuperarClip(true);
-        throw new Error("Hay un cobro con tarjeta anterior sin terminar. Resuélvelo primero.");
-      }
-      await revisarSaldosAntesDeTerminal(
-        { codigo: p.puntosCodigo, phone: puntosTel },
-        cashbackUsar,
-        regaloUsar,
-        regaloIdent,
-      );
-      const st = useClientePuntos.getState();
-      useCobroClip.getState().iniciar({
-        cobroId,
-        venta: p,
-        tarjPend: op.pendientes ? op.pendientes.tarjPend : st.tarjetaPendiente,
-        giftPend: op.pendientes ? op.pendientes.giftPend : st.giftPendiente,
-      });
-      try {
-        const montoTarjeta = montoTarjetaDe(p);
-        pagoClip = await terminal.cobrar({
+    try {
+      if (p.terminalClip && !pagoClip) {
+        const previo = useCobroClip.getState().cobro;
+        if (previo && previo.cobroId !== cobroId) {
+          setRecuperarClip(true);
+          throw new Error("Hay un cobro con tarjeta anterior sin terminar. Resuélvelo primero.");
+        }
+        await revisarSaldosAntesDeTerminal(
+          { codigo: p.puntosCodigo, phone: puntosTel },
+          cashbackUsar,
+          regaloUsar,
+          regaloIdent,
+        );
+        const st = useClientePuntos.getState();
+        useCobroClip.getState().iniciar({
           cobroId,
-          monto: montoTarjeta,
-          montoPago: String(montoTarjeta),
+          venta: p,
+          tarjPend: op.pendientes ? op.pendientes.tarjPend : st.tarjetaPendiente,
+          giftPend: op.pendientes ? op.pendientes.giftPend : st.giftPendiente,
         });
-      } catch (e) {
-        // Sin pago: no queda nada en curso (el servidor ya cerró el cobro).
-        // Si el cajero salió sin red, el cobro sigue guardado para revisarlo.
-        if (!(e instanceof CobroSinResolver)) useCobroClip.getState().terminar();
-        throw e;
+        try {
+          const montoTarjeta = montoTarjetaDe(p);
+          pagoClip = await terminal.cobrar({
+            cobroId,
+            monto: montoTarjeta,
+            montoPago: String(montoTarjeta),
+          });
+        } catch (e) {
+          // Sin pago: no queda nada en curso (el servidor ya cerró el cobro).
+          // Si el cajero salió sin red, el cobro sigue guardado para revisarlo.
+          if (!(e instanceof CobroSinResolver)) useCobroClip.getState().terminar();
+          throw e;
+        }
+        useCobroClip.getState().avanzar("descuentos", { pagoClip });
       }
-      useCobroClip.getState().avanzar("descuentos", { pagoClip });
+    } catch (e) {
+      // Sin cobro en la terminal (rechazo, cancelación u otro cobro previo
+      // pendiente): regresa el cashback de mayoreo. "Sin resolver" no: se retoma.
+      if (!(e instanceof CobroSinResolver)) await devolverCbm();
+      throw e;
     }
 
     try {
@@ -703,7 +744,10 @@ export function Ventas() {
       // Con la tarjeta ya cobrada, un descuento que falla no aborta la venta:
       // se reintenta (los débitos son idempotentes por cobroId) o la diferencia
       // se cobra en efectivo. Nunca se guarda un descuento sin débito.
-      if (!pagoClip || !(e instanceof DescuentoFallido)) throw e;
+      if (!pagoClip || !(e instanceof DescuentoFallido)) {
+        await devolverCbm();
+        throw e;
+      }
       const tarjeta = etiquetaTarjetaClip(pagoClip);
       const decision = await terminal.preguntarDescuento({
         monto: montoTarjetaDe(p),
@@ -741,15 +785,34 @@ export function Ventas() {
       useCobroClip.getState().avanzar("guardando");
       terminal.guardando(montoTarjetaDe(p), etiquetaTarjetaClip(pagoClip));
     }
-    const result = await crearVenta({
-      negocioId,
-      sucursalId,
-      nodoId,
-      ...p,
-      idempotencyKey: cobroId, // venta ligada al MISMO id del débito
-      ...(pagoClip ? { pagoClip } : {}),
-      ...(op.sinOffline ? { permitirOffline: false } : {}),
-    });
+    let result: Awaited<ReturnType<typeof crearVenta>>;
+    try {
+      result = await crearVenta({
+        negocioId,
+        sucursalId,
+        nodoId,
+        ...p,
+        idempotencyKey: cobroId, // venta ligada al MISMO id del débito
+        ...(pagoClip ? { pagoClip } : {}),
+        ...(op.sinOffline ? { permitirOffline: false } : {}),
+        // Cuenta de cashback de mayoreo: el servidor acredita lo ganado al
+        // subir la venta. El QR o la tarjeta NO se guardan en la venta.
+        ...(cbm
+          ? {
+              cashbackMayoreo: {
+                telefono: cbm.telefono,
+                ...(cbmUsar > 0 ? { usadoCentavos: cbmUsar } : {}),
+                ganadoEstimadoCentavos: cbm.ganadoEstimadoCentavos,
+              },
+            }
+          : {}),
+      });
+    } catch (e) {
+      // La venta no se guardó: regresa el cashback de mayoreo (el servidor no
+      // lo devuelve si la venta sí llegó a subir).
+      await devolverCbm();
+      throw e;
+    }
     retomadoRef.current = null;
 
     // SNAPSHOT de los pendientes ANTES de limpiar() (que dispara el effect de
@@ -1419,17 +1482,21 @@ export function Ventas() {
                 onClick={() => setApartarOpen(true)}
                 ariaLabel="Crear apartado"
               />
-              <MenuPuntosRegalo
-                onPreRegistro={() => setPreRegOpen(true)}
-                onVenderRegalo={() => setGiftOpen(true)}
-                onRecargarRegalo={() => setRecargaOpen(true)}
-                pendienteCorreo={pendientePuntos?.correo ?? null}
-                onQuitarPendiente={() => {
-                  useClientePuntos.getState().limpiarPendiente();
-                  setToast("Se quitó al cliente en espera.");
-                  window.setTimeout(() => setToast(null), 3000);
-                }}
-              />
+              {/* Cashback de amise y tarjetas de regalo: no en las cajas de
+                  mayoreo (ahí el cashback es el propio, en el pie de pago). */}
+              {!sucursal?.modoMayoreo && (
+                <MenuPuntosRegalo
+                  onPreRegistro={() => setPreRegOpen(true)}
+                  onVenderRegalo={() => setGiftOpen(true)}
+                  onRecargarRegalo={() => setRecargaOpen(true)}
+                  pendienteCorreo={pendientePuntos?.correo ?? null}
+                  onQuitarPendiente={() => {
+                    useClientePuntos.getState().limpiarPendiente();
+                    setToast("Se quitó al cliente en espera.");
+                    window.setTimeout(() => setToast(null), 3000);
+                  }}
+                />
+              )}
               <BotonAccion
                 icono={MessageSquare}
                 etiqueta="Chat"

@@ -1,4 +1,11 @@
-import { desgloseVenta, etiquetaTarjetaClip, mostrarMetaTicket, subtotalLinea } from "@shared";
+import {
+  URL_CASHBACK_PRODUCCION,
+  desgloseVenta,
+  etiquetaTarjetaClip,
+  mostrarMetaTicket,
+  pesosDeCentavos,
+  subtotalLinea,
+} from "@shared";
 import type {
   Sucursal,
   Venta,
@@ -221,6 +228,20 @@ export function formatearTicketEscPos(
     } else {
       out.push("[C]<font size='small'>Consulta tu cashback en amise.mx</font>\n");
     }
+    out.push("[L]\n");
+  }
+
+  // Cashback de mayoreo (propio, sin amise): lo que ganó (se acredita al
+  // subir la venta) y dónde ver su saldo. Lo usado ya va en los totales.
+  const cbm = venta.cashbackMayoreo;
+  if (cbm?.telefono) {
+    out.push("[C]<b>* CASHBACK *</b>\n");
+    const gana = cbm.ganadoEstimadoCentavos ?? 0;
+    if (gana > 0) {
+      out.push(`[L]Cashback ganado[R]<b>+${pesosDeCentavos(gana)}</b>\n`);
+    }
+    out.push(`[C]<font size='small'>Cliente ***${s(cbm.telefono.slice(-4))}. Tu saldo y tu QR:</font>\n`);
+    out.push(`[C]<font size='small'>${s(URL_CASHBACK_PRODUCCION.replace(/^https?:\/\//, ""))}</font>\n`);
     out.push("[L]\n");
   }
 

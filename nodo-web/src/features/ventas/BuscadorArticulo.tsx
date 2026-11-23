@@ -18,10 +18,13 @@ import { avisoNoVisible, resolverCodigoExacto, useElegirArticulo } from "./elegi
 import { useTecladoFisico } from "@/hooks/useTecladoFisico";
 import { useUbicacionStock } from "@/features/sucursal/useUbicacionStock";
 import { useSucursal } from "@/features/sucursal/useSucursal";
+import { useCashbackMayoreo } from "@/features/cashbackMayoreo/cashbackMayoreoStore";
 import {
   articuloVisibleEnSucursal,
   coincidePalabras,
+  ean13Ok,
   hayFiltros,
+  leerQrCashback,
   leerStockTienda,
   normalizarTexto,
   palabrasDeConsulta,
@@ -195,6 +198,18 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
    *  coincidencia y hay que caer a la sugerencia resaltada. */
   function intentarExacto(texto: string): boolean {
     if (cargandoSucursal) return false;
+    // Caja de mayoreo: el QR de la página del cliente o su tarjeta (13
+    // dígitos) abren el cashback en vez de buscarse como artículo.
+    if (modoMayoreo) {
+      const t = texto.trim();
+      const d = t.replace(/\D/g, "");
+      if (leerQrCashback(t) || (d.length === 13 && d === t && ean13Ok(d))) {
+        setQ("");
+        setAbierto(false);
+        useCashbackMayoreo.getState().abrir(t);
+        return true;
+      }
+    }
     const r = resolverCodigoExacto(
       texto,
       byId,

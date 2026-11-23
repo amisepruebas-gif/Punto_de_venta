@@ -17,8 +17,14 @@ import { UsarPuntosModal } from "@/features/puntos/UsarPuntosModal";
 import { UsarRegaloModal } from "@/features/puntos/UsarRegaloModal";
 import { REGALO_HABILITADO } from "@/features/puntos/regalo";
 import { useTerminalClip } from "@/features/clip/useTerminalClip";
+import { CashbackMayoreoModal } from "@/features/cashbackMayoreo/CashbackMayoreoModal";
+import {
+  useCashbackMayoreo,
+  useConfigCashbackMayoreoCaja,
+} from "@/features/cashbackMayoreo/cashbackMayoreoStore";
 import {
   PIEZAS_MAYOREO,
+  ganadoCentavos,
   telefonosIguales,
   type MovimientoPago,
   type VentaArticulo,
@@ -82,6 +88,18 @@ export type CobrarPayload = {
   /** Con tarjeta: el cobro se manda a la terminal Clip de la caja. Sin esto
    *  (sin terminal, sin internet o "Cobrar sin terminal") se cobra a mano. */
   terminalClip?: boolean;
+  /** Cashback de mayoreo (solo cajas de mayoreo; sin amise): saldo usado en
+   *  pesos (ya restado de `montoCobro`) y la cuenta. `qr`/`tarjeta` solo si
+   *  usa saldo (el servidor los pide para descontar); no se guardan en la
+   *  venta. */
+  descuentoCashbackMayoreo?: string;
+  cashbackMayoreoPago?: {
+    telefono: string;
+    usarCentavos: number;
+    qr?: string;
+    tarjeta?: string;
+    ganadoEstimadoCentavos: number;
+  };
 };
 
 type Props = {
@@ -171,8 +189,18 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   const maxCashbackAplicable = Math.max(0, subtotalBruto - giftTotal - descuentoRegalo);
   const maxRegaloAplicable = Math.max(0, subtotalBruto - giftTotal - descuentoPuntos);
 
+  // Cashback de mayoreo (propio, sin amise): en las cajas de mayoreo
+  // reemplaza al de amise. El cliente y lo que usa viven en su store para que
+  // el buscador pueda abrir el modal al escanear un QR o una tarjeta.
+  const esMayoreo = !!sucursal?.modoMayoreo;
+  const cbmCliente = useCashbackMayoreo((s) => s.cliente);
+  const cbmUsarCent = useCashbackMayoreo((s) => s.usarCentavos);
+  const { config: cbmConfig, activo: cbmActivo } = useConfigCashbackMayoreoCaja();
+  const descuentoCbm = esMayoreo ? cbmUsarCent / 100 : 0;
+  const maxCbmPesos = Math.max(0, subtotalBruto - giftTotal);
+
   // Total a cobrar = bruto menos cashback menos crédito de regalo (ambos descuentos).
-  const total = Math.max(0, subtotalBruto - descuentoPuntos - descuentoRegalo);
+  const total = Math.max(0, subtotalBruto - descuentoPuntos - descuentoRegalo - descuentoCbm);
 
   // Si el carrito cambia (se edita), invalidar SOLO el DESCUENTO de cashback: se
   // calculó sobre el total anterior y podría exceder el nuevo (el cajero lo
@@ -183,11 +211,14 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     // `descuentoPuntos`/`descuentoRegalo` NO van en deps a propósito: el closure
     // trae el valor del render en que cambió el subtotal, es decir el descuento
     // que estaba aplicado justo antes de invalidarse.
-    if (descuentoPuntos > 0 || descuentoRegalo > 0) setDescuentoInvalidado(true);
+    const cbm = useCashbackMayoreo.getState();
+    if (descuentoPuntos > 0 || descuentoRegalo > 0 || cbm.usarCentavos > 0) setDescuentoInvalidado(true);
     setDescuentoPuntos(0);
     // El crédito de regalo también se recalcula sobre el nuevo subtotal.
     setDescuentoRegalo(0);
     setRegaloId(null);
+    // Cashback de mayoreo: se quita lo usado; el cliente se queda para acumular.
+    if (cbm.usarCentavos > 0) cbm.quitarUso();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtotalBruto]);
 
@@ -201,6 +232,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
     setRegaloId(null);
     setDescuentoInvalidado(false);
     setAvisoCliente(null);
+    useCashbackMayoreo.getState().limpiar();
   }, [resetSignal]);
 
   // Comisión — solo aplica con tarjeta y si la sucursal tiene cobrarComision=true
@@ -233,6 +265,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
       setRegaloId(null);
       setDescuentoInvalidado(false);
       setAvisoCliente(null);
+      useCashbackMayoreo.getState().limpiar();
     }
   }, [items.length]);
 
@@ -316,6 +349,23 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
             ...(regaloId.email ? { regaloEmail: regaloId.email } : {}),
           }
         : {}),
+      ...(esMayoreo && cbmCliente
+        ? {
+            ...(cbmUsarCent > 0 ? { descuentoCashbackMayoreo: String(cbmUsarCent / 100) } : {}),
+            cashbackMayoreoPago: {
+              telefono: cbmCliente.telefono,
+              usarCentavos: cbmUsarCent,
+              ...(cbmUsarCent > 0 && cbmCliente.qr
+                ? { qr: cbmCliente.qr }
+                : cbmUsarCent > 0 && cbmCliente.tarjeta
+                  ? { tarjeta: cbmCliente.tarjeta }
+                  : {}),
+              // Informativo para el ticket: el servidor recalcula al acreditar.
+              ganadoEstimadoCentavos:
+                cbmConfig && cbmActivo ? ganadoCentavos(Math.max(0, total - giftTotal), cbmConfig.pct) : 0,
+            },
+          }
+        : {}),
     });
   }
 
@@ -331,10 +381,11 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
 
   // Bajo el total: de dónde sale lo que se cobra.
   let desglose: string | null = null;
-  if (descuentoPuntos > 0 || descuentoRegalo > 0) {
+  if (descuentoPuntos > 0 || descuentoRegalo > 0 || descuentoCbm > 0) {
     desglose =
       `Artículos ${pesos(subtotalBruto)}` +
       (descuentoPuntos > 0 ? ` · cashback −${pesos(descuentoPuntos)}` : "") +
+      (descuentoCbm > 0 ? ` · cashback −${pesos(descuentoCbm)}` : "") +
       (descuentoRegalo > 0 ? ` · regalo −${pesos(descuentoRegalo)}` : "");
   } else if (comisionEnabled) {
     desglose = `Artículos ${pesos(total)} + comisión ${pesos(comision)}`;
@@ -369,7 +420,7 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   }
   if (error) avisos.push({ tono: "error", texto: error });
   if (avisoCliente) avisos.push({ tono: "lealtad", texto: avisoCliente });
-  if (descuentoInvalidado && descuentoPuntos === 0 && descuentoRegalo === 0) {
+  if (descuentoInvalidado && descuentoPuntos === 0 && descuentoRegalo === 0 && descuentoCbm === 0) {
     avisos.push({
       tono: "lealtad",
       texto: "El carrito cambió: el descuento se quitó y hay que volver a aplicarlo.",
@@ -397,8 +448,9 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
       aria-label="Cobro"
       className="flex shrink-0 flex-col gap-2 rounded-xl border bg-card p-3 min-[860px]:min-h-0 min-[860px]:w-[22rem] min-[860px]:p-4"
     >
+      {esMayoreo && <CashbackMayoreoModal maxPesos={maxCbmPesos} />}
       <UsarPuntosModal
-        open={usarPuntosOpen}
+        open={usarPuntosOpen && !esMayoreo}
         maxTotal={maxCashbackAplicable}
         onClose={() => setUsarPuntosOpen(false)}
         onAplicar={({ telefono, codigo, email, descuento, soloLigar }) => {
@@ -462,17 +514,41 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
               REGALO_HABILITADO ? "grid-rows-2 min-[860px]:grid-cols-2 min-[860px]:grid-rows-1" : ""
             }`}
           >
-            <BotonLealtad
-              activo={descuentoPuntos > 0}
-              Icono={descuentoPuntos > 0 || clientePuntos ? Check : Coins}
-              etiqueta={
-                descuentoPuntos > 0
-                  ? `Cashback −${pesos(descuentoPuntos)}`
-                  : "Cashback"
-              }
-              onClick={() => setUsarPuntosOpen(true)}
-            />
-            {REGALO_HABILITADO && (
+            {esMayoreo ? (
+              // Cashback de mayoreo (propio): sin el de amise ni crédito de regalo.
+              <BotonLealtad
+                activo={descuentoCbm > 0}
+                Icono={descuentoCbm > 0 || cbmCliente ? Check : Coins}
+                etiqueta={
+                  !cbmActivo
+                    ? "Cashback apagado"
+                    : descuentoCbm > 0
+                      ? `Cashback −${pesos(descuentoCbm)}`
+                      : cbmCliente
+                        ? `Cashback ${cbmCliente.nombre ? cbmCliente.nombre.split(" ")[0] : "✓"}`
+                        : "Cashback"
+                }
+                onClick={() => {
+                  if (!cbmActivo) {
+                    setError("El cashback de mayoreo está apagado: actívalo en admin → Cashback mayoreo.");
+                    return;
+                  }
+                  useCashbackMayoreo.getState().abrir();
+                }}
+              />
+            ) : (
+              <BotonLealtad
+                activo={descuentoPuntos > 0}
+                Icono={descuentoPuntos > 0 || clientePuntos ? Check : Coins}
+                etiqueta={
+                  descuentoPuntos > 0
+                    ? `Cashback −${pesos(descuentoPuntos)}`
+                    : "Cashback"
+                }
+                onClick={() => setUsarPuntosOpen(true)}
+              />
+            )}
+            {REGALO_HABILITADO && !esMayoreo && (
               <BotonLealtad
                 activo={descuentoRegalo > 0}
                 Icono={descuentoRegalo > 0 ? Check : Gift}

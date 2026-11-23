@@ -139,6 +139,8 @@ export type VentaDesglosable = {
   articulos?: LineaCobro[];
   montoCobro?: string | number;
   descuentoPuntos?: string | number;
+  /** Cashback de mayoreo (propio) usado: se muestra en la misma línea. */
+  descuentoCashbackMayoreo?: string | number;
   descuentoRegalo?: string | number;
   comicion?: string | number;
   statusComision?: string;
@@ -182,7 +184,8 @@ export function desgloseVenta(v: VentaDesglosable, sumaArticulos?: number): Desg
       : 0;
   return {
     articulos,
-    cashback: Math.max(0, num(v.descuentoPuntos)),
+    // Cashback de amise o el de mayoreo (una venta solo lleva uno).
+    cashback: Math.max(0, num(v.descuentoPuntos)) + Math.max(0, num(v.descuentoCashbackMayoreo)),
     regalo: Math.max(0, num(v.descuentoRegalo)),
     total,
     comision,

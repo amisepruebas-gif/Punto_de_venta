@@ -379,3 +379,49 @@ export type CancelarCobroClipInput = CobroClipInput & {
 export const fnCobrarConClip = callable<CobrarConClipInput, CobroClip>("cobrarConClip");
 export const fnConsultarCobroClip = callable<CobroClipInput, CobroClip>("consultarCobroClip");
 export const fnCancelarCobroClip = callable<CancelarCobroClipInput, CobroClip>("cancelarCobroClip");
+
+// ---------- Cashback de mayoreo (propio, sin amise) ----------
+/** Identifica la cuenta: QR o tarjeta (para gastar) o teléfono (acumular). */
+export type IdentCashbackMayoreo = { qr?: string; tarjeta?: string; telefono?: string };
+export type CuentaCashbackMayoreoCaja = {
+  telefono: string;
+  nombre: string;
+  saldoCentavos: number;
+  venceISO: string | null;
+  ultimaCompraISO: string | null;
+  tarjetaUltimos4: string | null;
+  /** Solo si se buscó con QR o tarjeta. */
+  puedeGastar: boolean;
+};
+export type ConfigCashbackCaja = {
+  pct: number;
+  vigencia: { cantidad: number; unidad: "dias" | "meses" | "anios" };
+};
+export type BuscarCuentaCashbackMayoreoOutput =
+  | ({ existe: true; config: ConfigCashbackCaja } & CuentaCashbackMayoreoCaja)
+  | { existe: false; telefono: string; config: ConfigCashbackCaja };
+
+export const fnAbrirCuentaCashbackMayoreo = callable<
+  { telefono: string; nombre?: string; tarjeta?: string; leido: true },
+  { pin: string; cuenta: CuentaCashbackMayoreoCaja }
+>("abrirCuentaCashbackMayoreo");
+export const fnBuscarCuentaCashbackMayoreo = callable<
+  IdentCashbackMayoreo,
+  BuscarCuentaCashbackMayoreoOutput
+>("buscarCuentaCashbackMayoreo");
+export const fnUsarCashbackMayoreo = callable<
+  { qr?: string; tarjeta?: string; centavos: number; ventaId: string },
+  { telefono: string; usadoCentavos: number; saldoCentavos: number; ya?: boolean }
+>("usarCashbackMayoreo");
+export const fnDevolverCashbackMayoreo = callable<
+  { telefono: string; ventaId: string },
+  { devueltoCentavos: number; saldoCentavos?: number; ya?: boolean }
+>("devolverCashbackMayoreo");
+export const fnVincularTarjetaCashbackMayoreo = callable<
+  { tarjeta: string; qr?: string; telefono?: string; verificado?: boolean },
+  { tarjetaUltimos4: string }
+>("vincularTarjetaCashbackMayoreo");
+export const fnReponerPinCashbackMayoreo = callable<
+  { telefono: string; verificado: true },
+  { pin: string }
+>("reponerPinCashbackMayoreo");
