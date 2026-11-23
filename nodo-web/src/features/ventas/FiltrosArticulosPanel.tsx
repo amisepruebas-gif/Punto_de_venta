@@ -11,7 +11,8 @@ import { Layers, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useArticulos, type SearchEntry } from "@/features/articulos/useArticulos";
+import { type SearchEntry } from "@/features/articulos/useArticulos";
+import { useArticulosCaja } from "@/features/articulos/useArticulosCaja";
 import { useCatalogoArticulos } from "@/features/articulos/useCatalogoArticulos";
 import { useSucursal } from "@/features/sucursal/useSucursal";
 import { useUbicacionStock } from "@/features/sucursal/useUbicacionStock";
@@ -62,8 +63,11 @@ type Opcion = { id: string; nombre: string; n: number };
  */
 export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
   function FiltrosArticulosPanel({ onCerrar, onPedirVariacion, onPedirSena }, ref) {
-    const { byId, bySigla, searchIndex, loading } = useArticulos();
     const catalogo = useCatalogoArticulos();
+    // Nombres de caja: la categoría antes del nombre ("Llavero vegueta").
+    const { byId, bySigla, searchIndex, loading } = useArticulosCaja(
+      catalogo.nombreCategoria,
+    );
     const { sucursal, loading: cargandoSucursal } = useSucursal();
     const modoMayoreo = !!sucursal?.modoMayoreo;
     const ubicacion = useUbicacionStock();

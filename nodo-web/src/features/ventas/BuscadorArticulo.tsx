@@ -9,7 +9,8 @@ import {
 import { Trash2, X, Layers, ScanBarcode, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useArticulos, type SearchEntry } from "@/features/articulos/useArticulos";
+import { type SearchEntry } from "@/features/articulos/useArticulos";
+import { useArticulosCaja } from "@/features/articulos/useArticulosCaja";
 import { useCatalogoArticulos } from "@/features/articulos/useCatalogoArticulos";
 import { useCarrito } from "./carritoStore";
 import { useFiltrosCaja } from "./filtrosCajaStore";
@@ -71,8 +72,11 @@ type Props = {
  */
 export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
   function BuscadorArticulo({ onPedirVariacion, onPedirSena, onAbrirFiltros }, ref) {
-  const { byId, bySigla, searchIndex, loading } = useArticulos();
   const catalogo = useCatalogoArticulos();
+  // Nombres de caja: la categoría antes del nombre ("Llavero vegueta").
+  const { byId, bySigla, searchIndex, loading } = useArticulosCaja(
+    catalogo.nombreCategoria,
+  );
   const { items, limpiar } = useCarrito();
   const { elegir: elegirArticulo, elegirVariacion } = useElegirArticulo({
     onPedirVariacion,
