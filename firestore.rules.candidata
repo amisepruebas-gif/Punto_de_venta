@@ -517,6 +517,39 @@ service cloud.firestore {
         allow read: if miembro(nid);
         allow write: if esAdmin(nid);
       }
+
+      // Cashback de mayoreo (propio, sin amise). La config (doc `config`) la
+      // lee la caja y la escribe admin. Cuentas y movimientos: solo los
+      // escribe el servidor (callables); admin los lee. El PIN y el QR
+      // (privado/), los índices de tarjeta y QR, las sesiones de la página y
+      // los intentos de PIN: nadie desde las apps.
+      match /cashback_mayoreo_web_new_version/{doc} {
+        allow read: if miembro(nid);
+        allow write: if esAdmin(nid);
+      }
+      match /clientes_mayoreo_web_new_version/{tel} {
+        allow read: if esAdmin(nid);
+        allow write: if false;
+        match /movimientos/{mid} {
+          allow read: if esAdmin(nid);
+          allow write: if false;
+        }
+        match /privado/{d} {
+          allow read, write: if false;
+        }
+      }
+      match /tarjetas_mayoreo_web_new_version/{codigo} {
+        allow read, write: if false;
+      }
+      match /qr_mayoreo_web_new_version/{token} {
+        allow read, write: if false;
+      }
+      match /cashback_sesiones_web_new_version/{s} {
+        allow read, write: if false;
+      }
+      match /cashback_intentos_web_new_version/{k} {
+        allow read, write: if false;
+      }
       // Fabricacion: lotes de produccion y reducciones con motivo. Inmutables
       // (sin update/delete): un error se corrige con otro registro.
       match /produccion_web_new_version/{loteId} {

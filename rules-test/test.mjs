@@ -263,6 +263,48 @@ await check("CLIP anon NO lee cobros", "fail", getDoc(doc(anon, cobroS1)));
 await check("CLIP nodo NO lee el candado de la terminal", "fail", getDoc(doc(nodo1, candadoT1)));
 await check("CLIP admin NO escribe el candado de la terminal", "fail", setDoc(doc(adminC, candadoT1), { cobroPath: "x" }));
 
+// --- Cashback de mayoreo (propio, sin amise): todo lo escribe el servidor ---
+const cbConfig = `${N}/cashback_mayoreo_web_new_version/config`;
+const cbCuenta = `${N}/clientes_mayoreo_web_new_version/5512345678`;
+const cbMov = `${cbCuenta}/movimientos/gan_V1`;
+const cbPriv = `${cbCuenta}/privado/acceso`;
+const cbTarjeta = `${N}/tarjetas_mayoreo_web_new_version/7501234567897`;
+const cbQr = `${N}/qr_mayoreo_web_new_version/CBM23456789ABCDEFGHJKMNPQ`;
+const cbSesion = `${N}/cashback_sesiones_web_new_version/HASH`;
+const cbIntento = `${N}/cashback_intentos_web_new_version/tel_HASH`;
+await env.withSecurityRulesDisabled(async (c) => {
+  const db = c.firestore();
+  await setDoc(doc(db, cbConfig), { activo: true, pct: 3, vigencia: { cantidad: 1, unidad: "meses" } });
+  await setDoc(doc(db, cbCuenta), { telefono: "5512345678", saldoCentavos: 500, gen: 1 });
+  await setDoc(doc(db, cbMov), { tipo: "ganado", centavos: 500 });
+  await setDoc(doc(db, cbPriv), { sal: "x", pinHash: "y", qr: "CBM23456789ABCDEFGHJKMNPQ" });
+  await setDoc(doc(db, cbTarjeta), { telefono: "5512345678" });
+  await setDoc(doc(db, cbQr), { telefono: "5512345678" });
+  await setDoc(doc(db, cbSesion), { telefono: "5512345678" });
+  await setDoc(doc(db, cbIntento), { fallos: 1 });
+});
+await check("CASHBACK la caja lee la config", "ok", getDoc(doc(nodo1, cbConfig)));
+await check("CASHBACK mercancía lee la config", "ok", getDoc(doc(merc, cbConfig)));
+await check("CASHBACK la caja NO cambia la config", "fail", updateDoc(doc(nodo1, cbConfig), { pct: 50 }));
+await check("CASHBACK admin cambia la config", "ok", updateDoc(doc(adminC, cbConfig), { pct: 4 }));
+await check("CASHBACK anon NO lee la config", "fail", getDoc(doc(anon, cbConfig)));
+await check("CASHBACK la caja NO lee cuentas", "fail", getDoc(doc(nodo1, cbCuenta)));
+await check("CASHBACK la caja NO escribe saldo", "fail", updateDoc(doc(nodo1, cbCuenta), { saldoCentavos: 999999 }));
+await check("CASHBACK la caja NO crea cuentas", "fail", setDoc(doc(nodo1, `${N}/clientes_mayoreo_web_new_version/5599999999`), { saldoCentavos: 1 }));
+await check("CASHBACK admin lee cuentas", "ok", getDoc(doc(adminC, cbCuenta)));
+await check("CASHBACK admin lee movimientos", "ok", getDoc(doc(adminC, cbMov)));
+await check("CASHBACK admin NO escribe saldo (solo con la function)", "fail", updateDoc(doc(adminC, cbCuenta), { saldoCentavos: 1 }));
+await check("CASHBACK admin NO escribe movimientos", "fail", setDoc(doc(adminC, `${cbCuenta}/movimientos/X`), { tipo: "ajuste" }));
+await check("CASHBACK admin NO lee el PIN ni el QR (privado)", "fail", getDoc(doc(adminC, cbPriv)));
+await check("CASHBACK superadmin NO lee privado", "fail", getDoc(doc(supera, cbPriv)));
+await check("CASHBACK nadie lee el índice de tarjetas", "fail", getDoc(doc(adminC, cbTarjeta)));
+await check("CASHBACK nadie lee el índice de QR", "fail", getDoc(doc(nodo1, cbQr)));
+await check("CASHBACK nadie lee sesiones", "fail", getDoc(doc(adminC, cbSesion)));
+await check("CASHBACK nadie lee intentos de PIN", "fail", getDoc(doc(adminC, cbIntento)));
+await check("CASHBACK nadie borra intentos de PIN", "fail", deleteDoc(doc(nodo1, cbIntento)));
+await check("CASHBACK anon NO lee cuentas", "fail", getDoc(doc(anon, cbCuenta)));
+await check("CASHBACK caja de otro negocio NO lee la config", "fail", getDoc(doc(otroNeg, cbConfig)));
+
 let ok = true;
 for (const [pass, name] of res) { console.log((pass ? "PASS" : "FALLA") + "  " + name); if (!pass) ok = false; }
 await env.cleanup();

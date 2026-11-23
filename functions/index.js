@@ -40,6 +40,12 @@ const puntosSeg = require("./lib/puntosSeguridad");
 const logger = require("firebase-functions/logger");
 // Alta de cajas: código de un solo uso y llave de la tablet (lib/accesoCaja.js).
 const acceso = require("./lib/accesoCaja");
+// Cashback de mayoreo (propio, sin amise): lógica pura en lib/cashbackMayoreo.js.
+const cm = require("./lib/cashbackMayoreo");
+// Pepper del PIN del cashback de mayoreo (HMAC). Con 10,000 PINs posibles,
+// sin este secreto un respaldo de la base se rompería al instante. Setear
+// una sola vez con: firebase functions:secrets:set CASHBACK_PIN_PEPPER
+const CASHBACK_PIN_PEPPER = defineSecret("CASHBACK_PIN_PEPPER");
 // Código nuevo: FieldValue/Timestamp modulares. En el emulador de functions
 // admin.firestore.FieldValue es undefined (el código viejo aún lo usa).
 const {FieldValue, Timestamp} = require("firebase-admin/firestore");
@@ -3622,3 +3628,608 @@ exports.webhookClip = onRequest(
       res.status(200).json({ok: true});
     },
 );
+
+// ============================================================
+// Cashback de mayoreo — propio de la tienda (sin amise.mx)
+// ============================================================
+// Solo cajas de sucursales con `modoMayoreo`. Una cuenta por teléfono, con
+// PIN de 4 dígitos para la página del cliente y QR o tarjeta para acumular y
+// gastar. Todo el estado lo escribe el servidor (reglas cerradas). Lo ganado
+// se acredita al subir la venta (`acreditarCashbackMayoreo`), así que también
+// funciona con ventas hechas sin internet. Lógica pura: lib/cashbackMayoreo.js.
+
+const COL_CASHBACK_MAYOREO = `cashback_mayoreo${SUFFIX}`;
+const COL_CLIENTES_MAYOREO = `clientes_mayoreo${SUFFIX}`;
+const COL_TARJETAS_MAYOREO = `tarjetas_mayoreo${SUFFIX}`;
+const COL_QR_MAYOREO = `qr_mayoreo${SUFFIX}`;
+const COL_CASHBACK_SESIONES = `cashback_sesiones${SUFFIX}`;
+const COL_CASHBACK_INTENTOS = `cashback_intentos${SUFFIX}`;
+const OPC_CB = {timeoutSeconds: 20, memory: "256MiB"};
+const OPC_CB_PIN = {...OPC_CB, secrets: [CASHBACK_PIN_PEPPER]};
+// La página del cliente es pública: pocas instancias frenan la fuerza bruta.
+const OPC_CB_CLIENTE = {...OPC_CB, maxInstances: 5};
+const OPC_CB_CLIENTE_PIN = {...OPC_CB_CLIENTE, secrets: [CASHBACK_PIN_PEPPER]};
+const RE_VENTA_ID = /^[A-Za-z0-9_-]{6,80}$/;
+
+const negRefCb = (nid) => db.collection(COL_NEGOCIOS).doc(nid);
+const cuentaRefCb = (nid, tel) => negRefCb(nid).collection(COL_CLIENTES_MAYOREO).doc(tel);
+const accesoRefCb = (nid, tel) => cuentaRefCb(nid, tel).collection("privado").doc("acceso");
+const movRefCb = (nid, tel, id) => cuentaRefCb(nid, tel).collection("movimientos").doc(id);
+const configRefCb = (nid) => negRefCb(nid).collection(COL_CASHBACK_MAYOREO).doc("config");
+const isoCb = (ms) => new Date(ms).toISOString();
+const pesosCb = (c) => `$${(Math.max(0, c) / 100).toFixed(2).replace(/\.00$/, "")}`;
+
+/** Si el saldo ya venció, lo deja en 0 con su movimiento. Va DENTRO de una
+ *  transacción, después de todas sus lecturas. Devuelve la cuenta al día. */
+function vencerCuentaEnTx(tx, nid, tel, cuenta, ahoraMs) {
+  if (!cm.vencioConSaldo(cuenta, ahoraMs)) return cuenta;
+  tx.set(movRefCb(nid, tel, `ven_${cuenta.venceISO.replace(/\D/g, "")}`), {
+    tipo: "vencido",
+    centavos: cuenta.saldoCentavos,
+    saldoDespuesCentavos: 0,
+    fechaISO: cuenta.venceISO,
+  });
+  tx.update(cuentaRefCb(nid, tel), {saldoCentavos: 0});
+  return {...cuenta, saldoCentavos: 0};
+}
+
+/** Caja de una sucursal de mayoreo con el programa activo. */
+async function cajaCashbackMayoreo(auth) {
+  const c = await requireCaja(auth);
+  const [suc, cfg] = await Promise.all([
+    negRefCb(c.negocioId).collection(COL_SUCURSALES).doc(c.sucursalId).get(),
+    configRefCb(c.negocioId).get(),
+  ]);
+  if (!suc.exists || suc.get("modoMayoreo") !== true) {
+    throw new HttpsError("failed-precondition", "Esta caja no es de una sucursal de mayoreo");
+  }
+  const config = cfg.exists ? cfg.data() : null;
+  if (!config || config.activo !== true || cm.validarConfig(config)) {
+    throw new HttpsError("failed-precondition",
+        "El cashback de mayoreo no está activo: actívalo en admin");
+  }
+  return {...c, config};
+}
+
+/** Teléfono de la cuenta a partir del QR, la tarjeta o (si se permite) el
+ *  teléfono tecleado. `via` dice cuál se usó: con teléfono no se gasta. */
+async function telDeIdentificadorCb(nid, d, {permitirTelefono}) {
+  const qr = cm.leerQr(d.qr);
+  if (qr) {
+    const s = await negRefCb(nid).collection(COL_QR_MAYOREO).doc(qr).get();
+    if (!s.exists) {
+      throw new HttpsError("not-found",
+          "Ese QR ya no sirve: pide al cliente el de su página (pudo haberlo cambiado)");
+    }
+    return {tel: s.get("telefono"), via: "qr"};
+  }
+  if (d.tarjeta) {
+    const t = String(d.tarjeta).replace(/\D/g, "");
+    if (!puntosSeg.esEan13(t)) {
+      throw new HttpsError("invalid-argument", "Código de tarjeta inválido (13 dígitos)");
+    }
+    const s = await negRefCb(nid).collection(COL_TARJETAS_MAYOREO).doc(t).get();
+    if (!s.exists) {
+      throw new HttpsError("not-found", "Esa tarjeta no está ligada a ninguna cuenta de cashback");
+    }
+    return {tel: s.get("telefono"), via: "tarjeta"};
+  }
+  if (permitirTelefono) {
+    const tel = cm.normalizarTelefono(d.telefono);
+    if (!tel) throw new HttpsError("invalid-argument", "Teléfono inválido (10 dígitos)");
+    return {tel, via: "telefono"};
+  }
+  throw new HttpsError("invalid-argument", "Escanea el QR o la tarjeta del cliente");
+}
+
+function resumenCuentaCb(cuenta, via, ahoraMs) {
+  return {
+    telefono: cuenta.telefono,
+    nombre: cuenta.nombre || "",
+    saldoCentavos: cm.saldoVigente(cuenta, ahoraMs),
+    venceISO: cuenta.venceISO || null,
+    ultimaCompraISO: cuenta.ultimaCompraISO || null,
+    tarjetaUltimos4: cuenta.tarjeta ? String(cuenta.tarjeta).slice(-4) : null,
+    puedeGastar: via === "qr" || via === "tarjeta",
+  };
+}
+
+/** Abre la cuenta y devuelve el PIN (una sola vez, para el ticket). */
+exports.abrirCuentaCashbackMayoreo = onCall(OPC_CB_PIN, async (request) => {
+  const c = await cajaCashbackMayoreo(request.auth);
+  const d = request.data || {};
+  const tel = cm.normalizarTelefono(d.telefono);
+  if (!tel) throw new HttpsError("invalid-argument", "Teléfono inválido (10 dígitos)");
+  if (d.leido !== true) {
+    throw new HttpsError("failed-precondition", "Primero léele al cliente las condiciones");
+  }
+  const nombre = typeof d.nombre === "string" ? d.nombre.trim().slice(0, 60) : "";
+  const tarjeta = d.tarjeta ? String(d.tarjeta).replace(/\D/g, "") : "";
+  if (tarjeta && !puntosSeg.esEan13(tarjeta)) {
+    throw new HttpsError("invalid-argument", "Código de tarjeta inválido (13 dígitos)");
+  }
+  const pin = cm.generarPin(tel);
+  const sal = cm.generarSal();
+  const qr = cm.generarTokenQr();
+  const ahora = isoCb(Date.now());
+  const neg = negRefCb(c.negocioId);
+  await db.runTransaction(async (tx) => {
+    const cuentaRef = cuentaRefCb(c.negocioId, tel);
+    const tarjetaRef = tarjeta ? neg.collection(COL_TARJETAS_MAYOREO).doc(tarjeta) : null;
+    const [cs, ts] = await Promise.all([
+      tx.get(cuentaRef),
+      tarjetaRef ? tx.get(tarjetaRef) : Promise.resolve(null),
+    ]);
+    if (cs.exists) throw new HttpsError("already-exists", "Ese teléfono ya tiene cuenta de cashback");
+    if (ts && ts.exists) throw new HttpsError("already-exists", "Esa tarjeta ya está ligada a otra cuenta");
+    tx.create(cuentaRef, {
+      telefono: tel,
+      ...(nombre ? {nombre} : {}),
+      saldoCentavos: 0,
+      fechaAltaISO: ahora,
+      sucursalAlta: c.sucursalId,
+      nodoAlta: c.nodoId,
+      gen: 1,
+      ...(tarjeta ? {tarjeta} : {}),
+    });
+    tx.create(accesoRefCb(c.negocioId, tel), {
+      sal,
+      pinHash: cm.hashPin(CASHBACK_PIN_PEPPER.value(), sal, pin),
+      qr,
+      actualizadoISO: ahora,
+    });
+    tx.create(neg.collection(COL_QR_MAYOREO).doc(qr), {telefono: tel, creadoISO: ahora});
+    if (tarjetaRef) {
+      tx.create(tarjetaRef, {telefono: tel, creadoISO: ahora, sucursalId: c.sucursalId});
+    }
+  });
+  logger.info("cashbackMayoreo_alta", {tel4: tel.slice(-4), sucursalId: c.sucursalId});
+  return {
+    pin,
+    cuenta: resumenCuentaCb({telefono: tel, nombre, saldoCentavos: 0, tarjeta}, "telefono", Date.now()),
+  };
+});
+
+/** Busca la cuenta por QR, tarjeta o teléfono (al día con el vencimiento). */
+exports.buscarCuentaCashbackMayoreo = onCall(OPC_CB, async (request) => {
+  const c = await cajaCashbackMayoreo(request.auth);
+  const {tel, via} = await telDeIdentificadorCb(c.negocioId, request.data || {}, {permitirTelefono: true});
+  const ahoraMs = Date.now();
+  const cuenta = await db.runTransaction(async (tx) => {
+    const s = await tx.get(cuentaRefCb(c.negocioId, tel));
+    if (!s.exists) return null;
+    return vencerCuentaEnTx(tx, c.negocioId, tel, s.data(), ahoraMs);
+  });
+  const config = {pct: c.config.pct, vigencia: c.config.vigencia};
+  if (!cuenta) {
+    if (via === "telefono") return {existe: false, telefono: tel, config};
+    throw new HttpsError("not-found", "La cuenta de ese QR o tarjeta ya no existe");
+  }
+  return {existe: true, ...resumenCuentaCb(cuenta, via, ahoraMs), config};
+});
+
+/** Descuenta saldo para una venta (antes de crearla). Idempotente por venta. */
+exports.usarCashbackMayoreo = onCall(OPC_CB, async (request) => {
+  const c = await cajaCashbackMayoreo(request.auth);
+  const d = request.data || {};
+  const centavos = Number(d.centavos);
+  if (!Number.isInteger(centavos) || centavos <= 0 || centavos > 100000000) {
+    throw new HttpsError("invalid-argument", "Monto de cashback inválido");
+  }
+  if (typeof d.ventaId !== "string" || !RE_VENTA_ID.test(d.ventaId)) {
+    throw new HttpsError("invalid-argument", "Falta el folio de la venta");
+  }
+  const ventaId = d.ventaId;
+  const {tel} = await telDeIdentificadorCb(c.negocioId, d, {permitirTelefono: false});
+  const ahoraMs = Date.now();
+  return db.runTransaction(async (tx) => {
+    const cuentaRef = cuentaRefCb(c.negocioId, tel);
+    const usoRef = movRefCb(c.negocioId, tel, `uso_${ventaId}`);
+    const [cs, us] = await Promise.all([tx.get(cuentaRef), tx.get(usoRef)]);
+    if (!cs.exists) throw new HttpsError("not-found", "La cuenta ya no existe");
+    if (us.exists) {
+      if (us.get("centavos") !== centavos) {
+        throw new HttpsError("failed-precondition", "Esa venta ya usó otro monto de cashback");
+      }
+      return {telefono: tel, usadoCentavos: centavos,
+        saldoCentavos: cm.saldoVigente(cs.data(), ahoraMs), ya: true};
+    }
+    const cuenta = vencerCuentaEnTx(tx, c.negocioId, tel, cs.data(), ahoraMs);
+    const saldo = cm.saldoVigente(cuenta, ahoraMs);
+    if (centavos > saldo) {
+      throw new HttpsError("failed-precondition", `Saldo insuficiente: el cliente tiene ${pesosCb(saldo)}`);
+    }
+    const despues = saldo - centavos;
+    tx.set(usoRef, {
+      tipo: "usado", centavos, saldoDespuesCentavos: despues, ventaId,
+      sucursalId: c.sucursalId, nodoId: c.nodoId, fechaISO: isoCb(ahoraMs),
+    });
+    tx.update(cuentaRef, {saldoCentavos: despues});
+    return {telefono: tel, usadoCentavos: centavos, saldoCentavos: despues};
+  });
+});
+
+/** Regresa lo usado si la venta no se completó (p. ej. falló la terminal).
+ *  No devuelve si la venta ya subió (`ventaConfirmada`). Una sola vez. */
+exports.devolverCashbackMayoreo = onCall(OPC_CB, async (request) => {
+  const c = await requireCaja(request.auth);
+  const d = request.data || {};
+  const tel = cm.normalizarTelefono(d.telefono);
+  if (!tel || typeof d.ventaId !== "string" || !RE_VENTA_ID.test(d.ventaId)) {
+    throw new HttpsError("invalid-argument", "Faltan el teléfono o el folio");
+  }
+  const ventaId = d.ventaId;
+  return db.runTransaction(async (tx) => {
+    const cuentaRef = cuentaRefCb(c.negocioId, tel);
+    const usoRef = movRefCb(c.negocioId, tel, `uso_${ventaId}`);
+    const devRef = movRefCb(c.negocioId, tel, `dev_${ventaId}`);
+    const [cs, us, ds] = await Promise.all([tx.get(cuentaRef), tx.get(usoRef), tx.get(devRef)]);
+    if (!cs.exists || !us.exists) return {devueltoCentavos: 0};
+    if (ds.exists) return {devueltoCentavos: ds.get("centavos"), ya: true};
+    if (us.get("ventaConfirmada") === true) {
+      throw new HttpsError("failed-precondition", "Esa venta ya se registró: no se devuelve el cashback");
+    }
+    if (us.get("sucursalId") !== c.sucursalId) {
+      throw new HttpsError("permission-denied", "Ese cashback se usó en otra sucursal");
+    }
+    const centavos = us.get("centavos");
+    const despues = (cs.get("saldoCentavos") || 0) + centavos;
+    tx.set(devRef, {
+      tipo: "devuelto", centavos, saldoDespuesCentavos: despues, ventaId,
+      sucursalId: c.sucursalId, nodoId: c.nodoId, fechaISO: isoCb(Date.now()),
+    });
+    tx.update(cuentaRef, {saldoCentavos: despues});
+    return {devueltoCentavos: centavos, saldoCentavos: despues};
+  });
+});
+
+/** Liga una tarjeta física (EAN-13) a la cuenta. Con el QR del cliente, o con
+ *  el teléfono si el cajero lo verificó en persona. Una por cuenta: la nueva
+ *  reemplaza a la anterior. */
+exports.vincularTarjetaCashbackMayoreo = onCall(OPC_CB, async (request) => {
+  const c = await cajaCashbackMayoreo(request.auth);
+  const d = request.data || {};
+  const tarjeta = String(d.tarjeta || "").replace(/\D/g, "");
+  if (!puntosSeg.esEan13(tarjeta)) {
+    throw new HttpsError("invalid-argument", "Código de tarjeta inválido (13 dígitos)");
+  }
+  if (!cm.leerQr(d.qr) && d.verificado !== true) {
+    throw new HttpsError("failed-precondition",
+        "Escanea el QR del cliente o confirma que lo verificaste en persona");
+  }
+  const {tel} = await telDeIdentificadorCb(c.negocioId, {qr: d.qr, telefono: d.telefono},
+      {permitirTelefono: true});
+  const neg = negRefCb(c.negocioId);
+  await db.runTransaction(async (tx) => {
+    const cuentaRef = cuentaRefCb(c.negocioId, tel);
+    const tarjetaRef = neg.collection(COL_TARJETAS_MAYOREO).doc(tarjeta);
+    const [cs, ts] = await Promise.all([tx.get(cuentaRef), tx.get(tarjetaRef)]);
+    if (!cs.exists) throw new HttpsError("not-found", "No hay cuenta de cashback con ese teléfono");
+    if (ts.exists && ts.get("telefono") !== tel) {
+      throw new HttpsError("already-exists", "Esa tarjeta ya está ligada a otra cuenta");
+    }
+    if (ts.exists) return;
+    const anterior = cs.get("tarjeta");
+    if (anterior && anterior !== tarjeta) tx.delete(neg.collection(COL_TARJETAS_MAYOREO).doc(anterior));
+    tx.create(tarjetaRef, {telefono: tel, creadoISO: isoCb(Date.now()), sucursalId: c.sucursalId});
+    tx.update(cuentaRef, {tarjeta});
+  });
+  return {tarjetaUltimos4: tarjeta.slice(-4)};
+});
+
+/** PIN olvidado: el cajero lo repone en la tienda tras verificar al cliente.
+ *  Cierra las sesiones abiertas de la página y quita el bloqueo de intentos. */
+exports.reponerPinCashbackMayoreo = onCall(OPC_CB_PIN, async (request) => {
+  const c = await cajaCashbackMayoreo(request.auth);
+  const d = request.data || {};
+  const tel = cm.normalizarTelefono(d.telefono);
+  if (!tel) throw new HttpsError("invalid-argument", "Teléfono inválido (10 dígitos)");
+  if (d.verificado !== true) {
+    throw new HttpsError("failed-precondition", "Confirma que verificaste al cliente en persona");
+  }
+  const pin = cm.generarPin(tel);
+  const sal = cm.generarSal();
+  const ahora = isoCb(Date.now());
+  await db.runTransaction(async (tx) => {
+    const cuentaRef = cuentaRefCb(c.negocioId, tel);
+    const cs = await tx.get(cuentaRef);
+    if (!cs.exists) throw new HttpsError("not-found", "No hay cuenta de cashback con ese teléfono");
+    tx.update(accesoRefCb(c.negocioId, tel), {
+      sal, pinHash: cm.hashPin(CASHBACK_PIN_PEPPER.value(), sal, pin), actualizadoISO: ahora,
+    });
+    tx.update(cuentaRef, {gen: (cs.get("gen") || 0) + 1, pinRepuestoISO: ahora, pinRepuestoPor: c.nodoId});
+    tx.delete(negRefCb(c.negocioId).collection(COL_CASHBACK_INTENTOS).doc(`tel_${cm.hashSesion(tel)}`));
+  });
+  logger.info("cashbackMayoreo_pin_repuesto", {tel4: tel.slice(-4), nodoId: c.nodoId});
+  return {pin};
+});
+
+/** Acredita lo ganado al subir la venta (también las hechas sin internet).
+ *  Idempotente por venta (`gan_{ventaId}`). Gana sobre lo pagado con dinero:
+ *  `montoCobro` ya viene sin el cashback usado ni la comisión de tarjeta. */
+exports.acreditarCashbackMayoreo = onDocumentCreated(
+    {
+      document: "negocios_web_new_version/{negocioId}/" +
+        "sucursales_data_web_new_version/{sucursalId}/" +
+        "ventas_n_web_new_version/{year}/{month}/{day}/items/{ventaId}",
+      retry: true,
+    },
+    async (event) => {
+      const snap = event.data;
+      if (!snap) return;
+      const v = snap.data() || {};
+      const cb = v.cashbackMayoreo;
+      if (!cb || !cb.telefono) return;
+      const {negocioId, sucursalId, ventaId} = event.params;
+      const tel = cm.normalizarTelefono(cb.telefono);
+      if (!tel) return;
+      const [suc, cfgSnap] = await Promise.all([
+        negRefCb(negocioId).collection(COL_SUCURSALES).doc(sucursalId).get(),
+        configRefCb(negocioId).get(),
+      ]);
+      const config = cfgSnap.exists ? cfgSnap.data() : null;
+      if (!suc.exists || suc.get("modoMayoreo") !== true || !config ||
+          config.activo !== true || cm.validarConfig(config)) {
+        logger.warn("cashbackMayoreo_venta_sin_programa", {ventaId, sucursalId});
+        return;
+      }
+      const giftTotal = (Array.isArray(v.articulos) ? v.articulos : [])
+          .filter((a) => a && a.giftCard)
+          .reduce((s, a) => s + (Number(a.cantidad) || 0) * (Number(a.descuento) || Number(a.precio) || 0), 0);
+      const ganado = cm.ganadoCentavos(Math.max(0, (Number(v.montoCobro) || 0) - giftTotal), config.pct);
+      const compraMs = Date.parse(v.fechaISO) || Date.now();
+      await db.runTransaction(async (tx) => {
+        const cuentaRef = cuentaRefCb(negocioId, tel);
+        const ganRef = movRefCb(negocioId, tel, `gan_${ventaId}`);
+        const usoRef = movRefCb(negocioId, tel, `uso_${ventaId}`);
+        const [cs, gs, us] = await Promise.all([tx.get(cuentaRef), tx.get(ganRef), tx.get(usoRef)]);
+        if (!cs.exists || gs.exists) return;
+        // Si el saldo ya había vencido al momento de esta compra, se pierde antes de sumar.
+        const cuenta = vencerCuentaEnTx(tx, negocioId, tel, cs.data(), compraMs);
+        const ultimaMs = Math.max(compraMs, Date.parse(cuenta.ultimaCompraISO || "") || 0);
+        const despues = (cuenta.saldoCentavos || 0) + ganado;
+        tx.set(ganRef, {
+          tipo: "ganado", centavos: ganado, saldoDespuesCentavos: despues, ventaId,
+          sucursalId, nodoId: v.nodoId || null, numeroDeVenta: v.numeroDeVenta || null,
+          fechaISO: isoCb(compraMs),
+        });
+        tx.update(cuentaRef, {
+          saldoCentavos: despues,
+          ultimaCompraISO: isoCb(ultimaMs),
+          venceISO: isoCb(cm.calcularVence(ultimaMs, config.vigencia)),
+        });
+        if (us.exists) tx.update(usoRef, {ventaConfirmada: true});
+      });
+    },
+);
+
+// ---------- Página del cliente (pública; sesión opaca, sin Firebase Auth) ----------
+
+function negocioPublicoCb(nid) {
+  return typeof nid === "string" && /^[a-z0-9-]{1,40}$/.test(nid) ? nid : "amise";
+}
+
+function ipDeCb(request) {
+  const raw = request.rawRequest || {};
+  const xff = raw.headers && raw.headers["x-forwarded-for"];
+  return (typeof xff === "string" && xff.split(",")[0].trim()) || raw.ip || "?";
+}
+
+/** Sesión vigente de la página (y la cuenta no cambió de PIN desde entonces). */
+async function sesionClienteCb(d) {
+  const nid = negocioPublicoCb(d && d.negocioId);
+  const token = d && d.sesion;
+  if (typeof token !== "string" || token.length < 20 || token.length > 100) {
+    throw new HttpsError("unauthenticated", "Tu sesión terminó. Vuelve a entrar.");
+  }
+  const ref = negRefCb(nid).collection(COL_CASHBACK_SESIONES).doc(cm.hashSesion(token));
+  const s = await ref.get();
+  const ses = s.exists ? s.data() : null;
+  let vale = !!ses && Date.now() < ses.venceMs;
+  if (vale) {
+    const cs = await cuentaRefCb(nid, ses.telefono).get();
+    vale = cs.exists && (cs.get("gen") || 0) === ses.gen;
+  }
+  if (!vale) {
+    if (s.exists) await ref.delete().catch(() => {});
+    throw new HttpsError("unauthenticated", "Tu sesión terminó. Vuelve a entrar.");
+  }
+  return {nid, ref, tel: ses.telefono};
+}
+
+/** Revisa el PIN contando los fallos (por teléfono y por IP). */
+async function revisarPinCb(request, nid, tel, pin) {
+  const ahoraMs = Date.now();
+  const intentos = negRefCb(nid).collection(COL_CASHBACK_INTENTOS);
+  const ipRef = intentos.doc(`ip_${cm.hashSesion(ipDeCb(request))}`);
+  const telRef = intentos.doc(`tel_${cm.hashSesion(tel || "sin-telefono")}`);
+  const [ipS, telS] = await Promise.all([ipRef.get(), telRef.get()]);
+  if (cm.ipBloqueada(ipS.data(), ahoraMs) || cm.bloqueado(telS.data(), ahoraMs)) {
+    throw new HttpsError("resource-exhausted",
+        "Demasiados intentos. Espera un rato y vuelve a intentar, o acude a la tienda.");
+  }
+  const pepper = CASHBACK_PIN_PEPPER.value();
+  let ok = false;
+  if (tel && /^\d{4}$/.test(String(pin))) {
+    const acc = await accesoRefCb(nid, tel).get();
+    if (acc.exists) ok = cm.pinCoincide(pepper, acc.get("sal"), String(pin), acc.get("pinHash"));
+    else cm.hashPin(pepper, "0".repeat(32), String(pin)); // el mismo trabajo, exista o no
+  }
+  if (!ok) {
+    await db.runTransaction(async (tx) => {
+      const [i, t] = await Promise.all([tx.get(ipRef), tx.get(telRef)]);
+      tx.set(ipRef, cm.ipTrasFallo(i.exists ? i.data() : null, ahoraMs));
+      tx.set(telRef, cm.trasFallo(t.exists ? t.data() : null, ahoraMs));
+    });
+    return false;
+  }
+  if (telS.exists) await telRef.delete();
+  return true;
+}
+
+async function nuevaSesionCb(nid, tel, gen) {
+  const token = cm.generarSesion();
+  const venceMs = Date.now() + cm.SESION_MS;
+  await negRefCb(nid).collection(COL_CASHBACK_SESIONES).doc(cm.hashSesion(token)).set({
+    telefono: tel, gen, venceMs, creadoISO: isoCb(Date.now()),
+  });
+  return {sesion: token, venceMs};
+}
+
+/** Entrar con teléfono y PIN. El error no dice si el teléfono existe. */
+exports.entrarCashbackCliente = onCall(OPC_CB_CLIENTE_PIN, async (request) => {
+  const d = request.data || {};
+  const nid = negocioPublicoCb(d.negocioId);
+  const tel = cm.normalizarTelefono(d.telefono);
+  const ok = await revisarPinCb(request, nid, tel, d.pin);
+  if (!ok) throw new HttpsError("permission-denied", "Teléfono o PIN incorrectos");
+  const cs = await cuentaRefCb(nid, tel).get();
+  if (!cs.exists) throw new HttpsError("permission-denied", "Teléfono o PIN incorrectos");
+  return nuevaSesionCb(nid, tel, cs.get("gen") || 0);
+});
+
+/** Saldo, vencimiento e ingresos (solo lo ganado) de la cuenta. */
+exports.estadoCashbackCliente = onCall(OPC_CB_CLIENTE, async (request) => {
+  const {nid, tel} = await sesionClienteCb(request.data);
+  const ahoraMs = Date.now();
+  const cuenta = await db.runTransaction(async (tx) => {
+    const s = await tx.get(cuentaRefCb(nid, tel));
+    return vencerCuentaEnTx(tx, nid, tel, s.data(), ahoraMs);
+  });
+  const [cfgS, movs] = await Promise.all([
+    configRefCb(nid).get(),
+    cuentaRefCb(nid, tel).collection("movimientos").orderBy("fechaISO", "desc").limit(60).get(),
+  ]);
+  const ingresos = movs.docs.map((m) => m.data())
+      .filter((m) => m.tipo === "ganado" && m.centavos > 0)
+      .slice(0, 30)
+      .map((m) => ({fechaISO: m.fechaISO, centavos: m.centavos}));
+  const cfg = cfgS.exists ? cfgS.data() : null;
+  return {
+    nombre: cuenta.nombre || "",
+    telefono4: tel.slice(-4),
+    saldoCentavos: cm.saldoVigente(cuenta, ahoraMs),
+    venceISO: cuenta.venceISO || null,
+    ultimaCompraISO: cuenta.ultimaCompraISO || null,
+    tarjetaUltimos4: cuenta.tarjeta ? String(cuenta.tarjeta).slice(-4) : null,
+    ingresos,
+    config: cfg ? {pct: cfg.pct, vigencia: cfg.vigencia, activo: cfg.activo === true} : null,
+  };
+});
+
+/** Cambiar el PIN (pide el actual). Cierra las demás sesiones. */
+exports.cambiarPinCashbackCliente = onCall(OPC_CB_CLIENTE_PIN, async (request) => {
+  const d = request.data || {};
+  const {nid, ref, tel} = await sesionClienteCb(d);
+  const nuevo = String(d.pinNuevo || "");
+  if (cm.pinTrivial(nuevo, tel)) {
+    throw new HttpsError("invalid-argument",
+        "Elige 4 dígitos difíciles de adivinar: nada de 1234, 0000, años ni los últimos 4 de tu teléfono");
+  }
+  const ok = await revisarPinCb(request, nid, tel, d.pinActual);
+  if (!ok) throw new HttpsError("permission-denied", "El PIN actual no es correcto");
+  const sal = cm.generarSal();
+  const ahora = isoCb(Date.now());
+  const gen = await db.runTransaction(async (tx) => {
+    const cuentaRef = cuentaRefCb(nid, tel);
+    const cs = await tx.get(cuentaRef);
+    const g = (cs.get("gen") || 0) + 1;
+    tx.update(accesoRefCb(nid, tel), {
+      sal, pinHash: cm.hashPin(CASHBACK_PIN_PEPPER.value(), sal, nuevo), actualizadoISO: ahora,
+    });
+    tx.update(cuentaRef, {gen: g, pinCambiadoISO: ahora});
+    tx.delete(ref);
+    return g;
+  });
+  return nuevaSesionCb(nid, tel, gen);
+});
+
+/** El QR de la cuenta; con `nuevo: true` lo cambia y el anterior deja de servir. */
+exports.qrCashbackCliente = onCall(OPC_CB_CLIENTE, async (request) => {
+  const d = request.data || {};
+  const {nid, tel} = await sesionClienteCb(d);
+  const qrCol = negRefCb(nid).collection(COL_QR_MAYOREO);
+  if (d.nuevo !== true) {
+    const a = await accesoRefCb(nid, tel).get();
+    return {qr: a.get("qr") || null};
+  }
+  const nuevo = cm.generarTokenQr();
+  await db.runTransaction(async (tx) => {
+    const accRef = accesoRefCb(nid, tel);
+    const a = await tx.get(accRef);
+    const viejo = a.get("qr");
+    if (viejo) tx.delete(qrCol.doc(viejo));
+    tx.create(qrCol.doc(nuevo), {telefono: tel, creadoISO: isoCb(Date.now())});
+    tx.update(accRef, {qr: nuevo, qrCambiadoISO: isoCb(Date.now())});
+  });
+  return {qr: nuevo};
+});
+
+exports.salirCashbackCliente = onCall(OPC_CB_CLIENTE, async (request) => {
+  const d = request.data || {};
+  const nid = negocioPublicoCb(d.negocioId);
+  if (typeof d.sesion === "string" && d.sesion.length >= 20 && d.sesion.length <= 100) {
+    await negRefCb(nid).collection(COL_CASHBACK_SESIONES).doc(cm.hashSesion(d.sesion)).delete();
+  }
+  return {ok: true};
+});
+
+// ---------- Admin ----------
+
+/** Ajuste manual del saldo (con motivo). El saldo nunca baja de 0. */
+exports.ajustarCashbackMayoreo = onCall(OPC_CB, async (request) => {
+  const d = request.data || {};
+  const t = requireAdminOrSuper(request.auth, d.negocioId);
+  const nid = d.negocioId;
+  const tel = cm.normalizarTelefono(d.telefono);
+  const centavos = Number(d.centavos);
+  const motivo = typeof d.motivo === "string" ? d.motivo.trim().slice(0, 200) : "";
+  if (!tel) throw new HttpsError("invalid-argument", "Teléfono inválido");
+  if (!Number.isInteger(centavos) || centavos === 0 || Math.abs(centavos) > 100000000) {
+    throw new HttpsError("invalid-argument", "Monto inválido");
+  }
+  if (motivo.length < 3) throw new HttpsError("invalid-argument", "Escribe el motivo del ajuste");
+  const ahoraMs = Date.now();
+  return db.runTransaction(async (tx) => {
+    const cuentaRef = cuentaRefCb(nid, tel);
+    const [cs, cfgS] = await Promise.all([tx.get(cuentaRef), tx.get(configRefCb(nid))]);
+    if (!cs.exists) throw new HttpsError("not-found", "No hay cuenta con ese teléfono");
+    const cuenta = vencerCuentaEnTx(tx, nid, tel, cs.data(), ahoraMs);
+    const saldo = cm.saldoVigente(cuenta, ahoraMs);
+    const despues = Math.max(0, saldo + centavos);
+    const cambio = despues - saldo;
+    tx.set(movRefCb(nid, tel, `aju_${ahoraMs}_${cm.generarSal().slice(0, 6)}`), {
+      tipo: "ajuste", centavos: cambio, saldoDespuesCentavos: despues, motivo,
+      por: t.email || request.auth.uid, fechaISO: isoCb(ahoraMs),
+    });
+    const upd = {saldoCentavos: despues};
+    // Un saldo agregado a mano también vence (vigencia actual, y el 1 de enero).
+    if (cambio > 0) {
+      const cfg = cfgS.exists ? cfgS.data() : null;
+      const vence = cfg && !cm.validarConfig(cfg) ?
+        cm.calcularVence(ahoraMs, cfg.vigencia) : cm.inicioAnioSiguienteMX(ahoraMs);
+      upd.venceISO = isoCb(Math.max(vence, Date.parse(cuenta.venceISO || "") || 0));
+    }
+    tx.update(cuentaRef, upd);
+    return {saldoCentavos: despues, cambioCentavos: cambio};
+  });
+});
+
+/** Quita la tarjeta ligada a la cuenta (p. ej. si se perdió). */
+exports.quitarTarjetaCashbackMayoreo = onCall(OPC_CB, async (request) => {
+  const d = request.data || {};
+  requireAdminOrSuper(request.auth, d.negocioId);
+  const nid = d.negocioId;
+  const tel = cm.normalizarTelefono(d.telefono);
+  if (!tel) throw new HttpsError("invalid-argument", "Teléfono inválido");
+  await db.runTransaction(async (tx) => {
+    const cuentaRef = cuentaRefCb(nid, tel);
+    const cs = await tx.get(cuentaRef);
+    if (!cs.exists) throw new HttpsError("not-found", "No hay cuenta con ese teléfono");
+    const tarjeta = cs.get("tarjeta");
+    if (!tarjeta) return;
+    tx.delete(negRefCb(nid).collection(COL_TARJETAS_MAYOREO).doc(tarjeta));
+    tx.update(cuentaRef, {tarjeta: FieldValue.delete()});
+  });
+  return {ok: true};
+});
