@@ -202,9 +202,13 @@ export function ConfirmarVentaModal({ data, onCancel, onConfirm }: Props) {
                 // registrado" (tiene nombre propio y es un pago real) → excluir.
                 const isNoReg =
                   (a.id === "00000000" || a.id === "0") && !a.giftCard;
-                const nombre = a.subvariacionNombre
-                  ? `${a.nombrePublico} - ${a.subvariacionNombre}`
-                  : a.nombrePublico;
+                // El carrito ya pone la variación en `nombrePublico`: solo
+                // se agrega si no viene, para no repetirla.
+                const nombre =
+                  a.subvariacionNombre &&
+                  !a.nombrePublico.includes(a.subvariacionNombre)
+                    ? `${a.nombrePublico} - ${a.subvariacionNombre}`
+                    : a.nombrePublico;
                 return (
                   <li key={idx}>
                     <div className="flex items-baseline gap-2">
@@ -239,6 +243,11 @@ export function ConfirmarVentaModal({ data, onCancel, onConfirm }: Props) {
                         {a.mayoreoAply && (
                           <span className="ml-1 font-bold uppercase text-emerald-600">
                             · Mayoreo
+                          </span>
+                        )}
+                        {a.menudeoAply && (
+                          <span className="ml-1 font-bold uppercase text-amber-700">
+                            · Menudeo
                           </span>
                         )}
                       </span>

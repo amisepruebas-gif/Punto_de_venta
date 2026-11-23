@@ -164,6 +164,11 @@ export function TicketModal({ venta, onClose }: Props) {
                         · Mayoreo
                       </span>
                     )}
+                    {a.menudeoAply && (
+                      <span className="ml-1 font-semibold uppercase">
+                        · Menudeo
+                      </span>
+                    )}
                   </p>
                 </div>
                 <span className="shrink-0 text-base font-semibold tabular-nums">

@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
-  aplicarEscalones,
+  aplicarPreciosCarrito,
   grupoMayoreo,
   resolverEscalones,
   resolverPrecioEfectivo,
+  resolverPrecioMenudeo,
   subtotalLinea,
   type Articulo,
   type EscalonMayoreo,
@@ -42,6 +43,13 @@ type CarritoItem = VentaArticulo & {
   mayoreoEscalones?: EscalonMayoreo[];
   /** Descuento previo de la línea mientras el mayoreo está aplicado. */
   descuentoBase?: string;
+  /** Menudeo (artículos «Solo mayoreo»): precio por pieza cuando el ticket
+   *  lleva menos de `PIEZAS_MAYOREO` piezas. Lo aplica
+   *  `aplicarPreciosCarrito` en `precio` + `menudeoAply`, guardando el
+   *  precio y la promo normales en `menudeoBase`. Internos del POS salvo
+   *  `menudeoAply`. */
+  precioMenudeo?: number;
+  menudeoBase?: { precio: string; descuento?: string };
 };
 
 /** Opciones al agregar un artículo al carrito (Fase 5: incluye subvariación). */
@@ -105,14 +113,15 @@ function compute3x2(cantidad: number): string {
 export const useCarrito = create<CarritoState>()(
   persist(
     (set) => {
-      // Todo cambio de líneas pasa por aquí y recalcula el mayoreo del
+      // Todo cambio de líneas pasa por aquí y recalcula los precios del
       // carrito completo: una pieza más de un modelo puede subir de escalón
-      // a otra línea de la misma zona.
+      // a otra línea de la misma zona, y la 3ª pieza del ticket quita el
+      // menudeo de todas las líneas.
       const setItems = (fn: (st: CarritoState) => Partial<CarritoState>) =>
         set((st) => {
           const next = fn(st);
           return next.items
-            ? { ...next, items: aplicarEscalones(next.items) }
+            ? { ...next, items: aplicarPreciosCarrito(next.items) }
             : next;
         });
 
@@ -177,6 +186,9 @@ export const useCarrito = create<CarritoState>()(
       // Mayoreo: snapshot de escalones y del grupo (zona o artículo). El
       // precio del escalón lo calcula `aplicarEscalones` vía setItems.
       const escalones = resolverEscalones(art);
+      // Menudeo: snapshot del precio (solo artículos «Solo mayoreo» con un
+      // menudeo válido). Lo aplica `aplicarPreciosCarrito` vía setItems.
+      const precioMenudeo = resolverPrecioMenudeo(art);
       const nuevo: CarritoItem = {
         key,
         id: art.id,
@@ -195,6 +207,7 @@ export const useCarrito = create<CarritoState>()(
         ...(escalones.length > 0
           ? { mayoreoGrupo: grupoMayoreo(art), mayoreoEscalones: escalones }
           : {}),
+        ...(precioMenudeo !== null ? { precioMenudeo } : {}),
       };
       return { items: [...st.items, nuevo] };
     }),
@@ -284,14 +297,22 @@ export const useCarrito = create<CarritoState>()(
       items: st.items.map((i) => {
         if (i.key !== key) return i;
         // Precio manual del cajero: pasa a ser el precio "normal" de la
-        // línea; el mayoreo solo lo reemplaza si es más barato.
+        // línea; el mayoreo solo lo reemplaza si es más barato. Con menudeo
+        // aplicado se regresa primero el precio normal (el menudeo, si
+        // sigue aplicando, se vuelve a poner en setItems).
         const {
           mayoreoAply: _a,
           escalonMinPz: _e,
           descuentoBase: _b,
+          menudeoAply: _m,
+          menudeoBase,
           ...resto
         } = i;
-        return { ...resto, descuento };
+        return {
+          ...resto,
+          ...(menudeoBase ? { precio: menudeoBase.precio } : {}),
+          descuento,
+        };
       }),
     })),
 
@@ -344,8 +365,9 @@ export function subtotalItem(it: CarritoItem | VentaArticulo): number {
 }
 
 /** Línea del carrito → línea de la venta (o del apartado): quita la llave,
- *  las flags de UI y el snapshot de mayoreo. `mayoreoAply` y
- *  `escalonMinPz` sí viajan: marcan la línea cobrada a precio de mayoreo. */
+ *  las flags de UI y los snapshots de mayoreo y menudeo. `mayoreoAply`,
+ *  `escalonMinPz` y `menudeoAply` sí viajan: marcan la línea cobrada a
+ *  precio de mayoreo o de menudeo. */
 export function aVentaArticulo(it: CarritoItem): VentaArticulo {
   const {
     key: _k,
@@ -355,6 +377,8 @@ export function aVentaArticulo(it: CarritoItem): VentaArticulo {
     mayoreoGrupo: _g,
     mayoreoEscalones: _e,
     descuentoBase: _b,
+    precioMenudeo: _pm,
+    menudeoBase: _mb,
     ...rest
   } = it;
   return rest;

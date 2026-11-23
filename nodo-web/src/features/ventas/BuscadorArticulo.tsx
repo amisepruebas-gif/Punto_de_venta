@@ -25,6 +25,7 @@ import {
   normalizarTexto,
   palabrasDeConsulta,
   resolverEscalones,
+  resolverPrecioMenudeo,
   type Articulo,
 } from "@shared";
 
@@ -310,6 +311,8 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
                     const imagen = padre?.imagenUrl;
                     // Primer escalón de mayoreo, como pista para el cajero.
                     const mayoreo = padre ? resolverEscalones(padre)[0] : undefined;
+                    // Precio con menos de 3 piezas («Solo mayoreo»).
+                    const menudeo = padre ? resolverPrecioMenudeo(padre) : null;
                     return (
                       <li
                         key={entry.idPadre}
@@ -357,6 +360,11 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
                           {mayoreo && (
                             <p className="text-[10px] font-medium text-emerald-600">
                               {mayoreo.minPz}+ pz ${mayoreo.precio}
+                            </p>
+                          )}
+                          {menudeo !== null && (
+                            <p className="text-[10px] font-medium text-amber-700">
+                              Menudeo ${menudeo}
                             </p>
                           )}
                           {!entry.tieneVariaciones && cantidad !== null && (

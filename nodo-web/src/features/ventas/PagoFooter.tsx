@@ -17,7 +17,12 @@ import { UsarPuntosModal } from "@/features/puntos/UsarPuntosModal";
 import { UsarRegaloModal } from "@/features/puntos/UsarRegaloModal";
 import { REGALO_HABILITADO } from "@/features/puntos/regalo";
 import { useTerminalClip } from "@/features/clip/useTerminalClip";
-import { telefonosIguales, type MovimientoPago, type VentaArticulo } from "@shared";
+import {
+  PIEZAS_MAYOREO,
+  telefonosIguales,
+  type MovimientoPago,
+  type VentaArticulo,
+} from "@shared";
 
 /** Billetes con sus imágenes copiadas de `nodo_1/.../drawable/billete*`.
  *  Los nombres reflejan las denominaciones reales del peso mexicano. */
@@ -354,6 +359,12 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
       tono: "aviso",
       texto:
         "Hay artículos desmarcados: desliza la fila a la derecha para marcarlos o a la izquierda para quitarlos.",
+    });
+  }
+  if (itemsActivos.some((it) => it.menudeoAply)) {
+    avisos.push({
+      tono: "aviso",
+      texto: `Menos de ${PIEZAS_MAYOREO} piezas: precio menudeo. Desde ${PIEZAS_MAYOREO} piezas se cobra a precio de mayoreo.`,
     });
   }
   if (error) avisos.push({ tono: "error", texto: error });

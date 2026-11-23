@@ -113,9 +113,12 @@ export function formatearTicketEscPos(
     // Subtotal cobrado: respeta 3x2 (antes lo ignoraba) y promo/mayoreo.
     const subtotal = subtotalLinea(a);
 
-    const nombre = a.subvariacionNombre
-      ? `${a.nombrePublico} - ${a.subvariacionNombre}`
-      : a.nombrePublico;
+    // El carrito ya pone la variación en `nombrePublico` ("Camisa — Rojo"):
+    // solo se agrega si no viene (ventas viejas), para no repetirla.
+    const nombre =
+      a.subvariacionNombre && !a.nombrePublico.includes(a.subvariacionNombre)
+        ? `${a.nombrePublico} - ${a.subvariacionNombre}`
+        : a.nombrePublico;
 
     out.push(`[L]${a.cantidad}x ${s(nombre)}\n`);
     if (a.subvariacionCodigo) {
@@ -126,7 +129,14 @@ export function formatearTicketEscPos(
     if (a.talla) {
       out.push(`[L]<font size='small'>Talla: ${s(a.talla)}</font>\n`);
     }
-    if (a.mayoreoAply) {
+    if (a.menudeoAply) {
+      // Menos de 3 piezas en la caja de mayoreo: el precio menudeo va en
+      // `precio` (sin descuento).
+      out.push(
+        `[L]<font size='small'>MENUDEO $${precioFinal} c/u</font>` +
+          `[R]<b>$${subtotal}</b>\n`,
+      );
+    } else if (a.mayoreoAply) {
       // Igual que el ticket del Android nodo_1: "MAYOREO $precio c/u".
       out.push(
         `[L]<font size='small'>MAYOREO $${precioFinal} c/u</font>` +

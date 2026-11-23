@@ -9,6 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PIEZAS_MAYOREO } from "@shared";
 import { useCarrito, subtotalItem } from "./carritoStore";
 
 /**
@@ -382,6 +383,14 @@ function CarritoRow({ itemKey }: { itemKey: string }) {
           {it.mayoreoAply && (
             <p className="text-[11px] font-bold uppercase text-cobro-texto">
               Mayoreo {it.escalonMinPz ? `${it.escalonMinPz}+ pz` : ""}
+            </p>
+          )}
+          {it.menudeoAply && (
+            <p
+              className="text-[11px] font-bold uppercase text-aviso"
+              title={`Menos de ${PIEZAS_MAYOREO} piezas en el ticket`}
+            >
+              Menudeo
             </p>
           )}
           <p className="text-[17px] font-bold tabular-nums">

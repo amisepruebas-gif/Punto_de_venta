@@ -31,6 +31,7 @@ import {
   palabrasDeConsulta,
   pasaFiltrosVigente,
   resolverEscalones,
+  resolverPrecioMenudeo,
   type Articulo,
   type ClasificacionVigente,
   type GrupoFiltro,
@@ -426,6 +427,7 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
                     ? leerStockTienda(padre, ubicacion.sucursalId, ubicacion.esDefault)
                     : null;
                 const mayoreo = resolverEscalones(padre)[0];
+                const menudeo = resolverPrecioMenudeo(padre);
                 const n = enCarrito.get(entry.idPadre) ?? 0;
                 return (
                   <li key={entry.idPadre}>
@@ -472,6 +474,11 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
                         {mayoreo && (
                           <p className="text-[10px] font-medium text-emerald-600">
                             {mayoreo.minPz}+ pz ${mayoreo.precio}
+                          </p>
+                        )}
+                        {menudeo !== null && (
+                          <p className="text-[10px] font-medium text-amber-700">
+                            Menudeo ${menudeo}
                           </p>
                         )}
                       </div>
