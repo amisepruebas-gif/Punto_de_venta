@@ -6,6 +6,7 @@ import {
   coincidePalabras,
   contarOpciones,
   hayFiltros,
+  nombreEnCaja,
   normalizarEtiqueta,
   normalizarTexto,
   palabrasDeConsulta,
@@ -147,5 +148,42 @@ describe("contarOpciones", () => {
     expect(r.total).toBe(1);
     expect(Object.fromEntries(r.categorias)).toEqual({ llavero: 1, peluche: 1 });
     expect(Object.fromEntries(r.generos)).toEqual({ anime: 1, [FILTRO_SIN]: 1 });
+  });
+});
+
+describe("nombreEnCaja", () => {
+  it("pone la categoría antes del nombre", () => {
+    expect(nombreEnCaja("vegueta", "llavero")).toBe("llavero vegueta");
+    expect(nombreEnCaja("Vegueta", "Llavero")).toBe("Llavero Vegueta");
+    expect(nombreEnCaja("  vegueta ", " llavero ")).toBe("llavero vegueta");
+  });
+
+  it("sin categoría deja el nombre tal cual", () => {
+    expect(nombreEnCaja("vegueta")).toBe("vegueta");
+    expect(nombreEnCaja("vegueta", "")).toBe("vegueta");
+    expect(nombreEnCaja("vegueta", null)).toBe("vegueta");
+  });
+
+  it("no repite la categoría si el nombre ya empieza con ella", () => {
+    expect(nombreEnCaja("Llavero vegueta", "llavero")).toBe("Llavero vegueta");
+    expect(nombreEnCaja("LLAVÉRO vegueta", "llavero")).toBe("LLAVÉRO vegueta");
+    expect(nombreEnCaja("llavero", "Llavero")).toBe("llavero");
+    expect(nombreEnCaja("Llavero-vegueta", "llavero")).toBe("Llavero-vegueta");
+  });
+
+  it("singular y plural cuentan como la misma categoría", () => {
+    expect(nombreEnCaja("llavero vegueta", "Llaveros")).toBe("llavero vegueta");
+    expect(nombreEnCaja("llaveros vegueta", "Llavero")).toBe("llaveros vegueta");
+    expect(nombreEnCaja("peluche osito", "Peluches")).toBe("peluche osito");
+    expect(nombreEnCaja("pin de anime", "Pines")).toBe("pin de anime");
+  });
+
+  it("solo palabras completas: «pinza» no es «pin»", () => {
+    expect(nombreEnCaja("pinza roja", "Pines")).toBe("Pines pinza roja");
+    expect(nombreEnCaja("llaverito vegueta", "llavero")).toBe("llavero llaverito vegueta");
+  });
+
+  it("la búsqueda encuentra el nombre de caja por partes", () => {
+    expect(coincideConsulta(normalizarTexto(nombreEnCaja("vegueta", "Llavero")), "llav veg")).toBe(true);
   });
 });

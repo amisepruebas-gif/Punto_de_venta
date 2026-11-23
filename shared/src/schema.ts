@@ -384,6 +384,11 @@ export type Articulo = {
   zonaPrecioId?: string;
   /** Solo visible y vendible en sucursales con `modoMayoreo`. */
   soloMayoreo?: boolean;
+  /** Precio por pieza cuando el ticket lleva menos de `PIEZAS_MAYOREO`
+   *  piezas (sumando todos los artículos). Obligatorio con `soloMayoreo` y
+   *  mayor que `precioVenta` (ver `validarPrecioMenudeo`). Es de cada
+   *  artículo: la zona de precios no lo toca. */
+  precioMenudeo?: string;
   /** Dado de alta desde Fabricación (mercancía propia). Su stock solo se
    *  mueve con lotes de producción, ajustes con motivo, embarques y
    *  ventas — los editores generales lo muestran de solo lectura. */
@@ -458,6 +463,10 @@ export type VentaArticulo = {
   /** Piezas mínimas del escalón aplicado (informativo para ticket y
    *  reportes). Solo presente junto con `mayoreoAply`. */
   escalonMinPz?: number;
+  /** "1" cuando la línea se cobró a precio menudeo (ticket con menos de
+   *  `PIEZAS_MAYOREO` piezas en una caja de mayoreo). El precio cobrado va
+   *  en `precio`. */
+  menudeoAply?: string;
 };
 
 export type MovimientoPago =

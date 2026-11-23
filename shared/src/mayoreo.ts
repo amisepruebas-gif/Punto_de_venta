@@ -163,6 +163,70 @@ export function articuloVisibleEnSucursal(
   return !!art.soloMayoreo === !!modoMayoreo;
 }
 
+// ============================================================
+// Precio menudeo (artículos «Solo mayoreo»)
+// ============================================================
+//
+// En la caja de mayoreo el precio normal es el de mayoreo. Si el ticket
+// lleva menos de `PIEZAS_MAYOREO` piezas (sumando TODOS los artículos), cada
+// artículo con precio menudeo se cobra a ese precio: sin escalones ni promo.
+
+/** Piezas del ticket desde las que ya no se cobra menudeo. */
+export const PIEZAS_MAYOREO = 3;
+
+/**
+ * Valida el precio menudeo que captura un editor. Devuelve el mensaje de
+ * error (para mostrarlo tal cual) o `null`. Solo aplica con «Solo mayoreo»:
+ * obligatorio, mayor que 0 y mayor que el precio de venta vigente (el de la
+ * zona si tiene).
+ */
+export function validarPrecioMenudeo(
+  soloMayoreo: boolean,
+  precioMenudeo: string,
+  precioVenta: number,
+): string | null {
+  if (!soloMayoreo) return null;
+  const raw = (precioMenudeo ?? "").trim();
+  if (!raw) {
+    return `Falta el precio menudeo: se cobra cuando el ticket lleva menos de ${PIEZAS_MAYOREO} piezas`;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    return "El precio menudeo debe ser mayor que 0";
+  }
+  if (precioVenta > 0 && n <= precioVenta) {
+    return `El precio menudeo ($${n}) debe ser mayor que el precio de venta ($${precioVenta})`;
+  }
+  return null;
+}
+
+/**
+ * Precio menudeo que cobra la caja, o `null` si no aplica: el artículo no es
+ * «Solo mayoreo», no lo tiene, o no es válido (p. ej. la zona subió el
+ * precio de venta y el menudeo quedó igual o menor). Sin menudeo válido la
+ * línea se cobra normal.
+ */
+export function resolverPrecioMenudeo(
+  art: Pick<Articulo, "soloMayoreo" | "precioMenudeo" | "precioVenta">,
+): number | null {
+  if (!art.soloMayoreo) return null;
+  const n = Number(art.precioMenudeo);
+  if (!art.precioMenudeo || !Number.isFinite(n) || n <= 0) return null;
+  const base = Number(art.precioVenta) || 0;
+  if (base > 0 && n <= base) return null;
+  return n;
+}
+
+/** Para avisos en admin: estado del precio menudeo de un artículo. `null`
+ *  si no es «Solo mayoreo». */
+export function estadoPrecioMenudeo(
+  art: Pick<Articulo, "soloMayoreo" | "precioMenudeo" | "precioVenta">,
+): "ok" | "falta" | "invalido" | null {
+  if (!art.soloMayoreo) return null;
+  if (!art.precioMenudeo || !art.precioMenudeo.trim()) return "falta";
+  return resolverPrecioMenudeo(art) === null ? "invalido" : "ok";
+}
+
 /** Campos de una línea de carrito que intervienen en el mayoreo. */
 export type LineaMayoreo = {
   cantidad: string;
@@ -179,6 +243,14 @@ export type LineaMayoreo = {
   mayoreoEscalones?: EscalonMayoreo[];
   mayoreoAply?: string;
   escalonMinPz?: number;
+  /** `resolverPrecioMenudeo` del artículo al agregarlo (solo si aplica). */
+  precioMenudeo?: number;
+  /** "1" mientras la línea se cobra a menudeo. Lo administra
+   *  `aplicarPreciosCarrito`. */
+  menudeoAply?: string;
+  /** Mientras el menudeo está aplicado: el precio y la promo que la línea
+   *  tenía antes; se restauran al juntar `PIEZAS_MAYOREO` piezas. */
+  menudeoBase?: { precio: string; descuento?: string };
   aply_3x2?: string;
   desmarcado?: boolean;
   giftCard?: boolean;
@@ -192,6 +264,7 @@ function participa(l: LineaMayoreo): boolean {
     !l.giftCard &&
     !l.no_registrado &&
     !l.desmarcado &&
+    l.menudeoAply === undefined &&
     !(Number(l.aply_3x2) > 0)
   );
 }
@@ -262,4 +335,76 @@ export function aplicarEscalones<T extends LineaMayoreo>(items: T[]): T[] {
       ...(normal !== undefined ? { descuentoBase: normal } : {}),
     } as T;
   });
+}
+
+/** Piezas del ticket que cuentan para el menudeo: todas las líneas activas
+ *  (también las no registradas y la tarjeta de cashback), menos las
+ *  desmarcadas y las tarjetas de regalo. */
+export function piezasDelTicket(items: readonly LineaMayoreo[]): number {
+  let n = 0;
+  for (const l of items) {
+    if (l.desmarcado || l.giftCard) continue;
+    n += Number(l.cantidad) || 0;
+  }
+  return n;
+}
+
+function aplicaMenudeo(l: LineaMayoreo): boolean {
+  return (
+    (Number(l.precioMenudeo) || 0) > 0 &&
+    !l.desmarcado &&
+    !l.giftCard &&
+    !l.no_registrado
+  );
+}
+
+/** Quita el menudeo y devuelve el precio y la promo que tenía la línea. Las
+ *  líneas sin menudeo vuelven intactas (misma instancia). */
+function sinMenudeo<T extends LineaMayoreo>(l: T): T {
+  if (l.menudeoAply === undefined && l.menudeoBase === undefined) return l;
+  const { menudeoAply: _m, menudeoBase, descuento: _d, ...resto } = l;
+  const base = menudeoBase ?? { precio: l.precio };
+  return {
+    ...resto,
+    precio: base.precio,
+    ...(base.descuento !== undefined ? { descuento: base.descuento } : {}),
+  } as T;
+}
+
+/** Cobra la línea a su precio menudeo: sin escalón ni promo, que se guardan
+ *  en `menudeoBase` para regresarlos. */
+function conMenudeo<T extends LineaMayoreo>(l: T): T {
+  const precio = String(l.precioMenudeo);
+  if (l.menudeoAply === "1" && l.precio === precio && l.descuento === undefined) {
+    return l;
+  }
+  const normal = sinMayoreo(sinMenudeo(l));
+  const { descuento, ...resto } = normal;
+  return {
+    ...resto,
+    precio,
+    menudeoAply: "1",
+    menudeoBase: {
+      precio: normal.precio,
+      ...(descuento !== undefined ? { descuento } : {}),
+    },
+  } as T;
+}
+
+/**
+ * Precios del carrito completo: menudeo y escalones. Se llama después de
+ * CADA cambio de líneas, en lugar de `aplicarEscalones`.
+ *   - Menos de `PIEZAS_MAYOREO` piezas en el ticket: las líneas con precio
+ *     menudeo se cobran a ese precio (sin escalón ni promo).
+ *   - Desde `PIEZAS_MAYOREO`: precio normal, promo y escalones como siempre.
+ * Las líneas sin precio menudeo (artículos que no son «Solo mayoreo», no
+ * registradas, regalo) se cobran como siempre. Las líneas que no cambian se
+ * devuelven con la misma instancia.
+ */
+export function aplicarPreciosCarrito<T extends LineaMayoreo>(items: T[]): T[] {
+  const piezas = piezasDelTicket(items);
+  const menudeo = piezas > 0 && piezas < PIEZAS_MAYOREO;
+  return aplicarEscalones(
+    items.map((l) => (menudeo && aplicaMenudeo(l) ? conMenudeo(l) : sinMenudeo(l))),
+  );
 }

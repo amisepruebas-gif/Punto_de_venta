@@ -43,6 +43,38 @@ export function coincideConsulta(texto: string, consulta: string): boolean {
   return coincidePalabras(texto, palabrasDeConsulta(consulta));
 }
 
+/** La categoría y sus posibles singulares: "llaveros" → llavero;
+ *  "pines" → pine, pin; "peluches" → peluche, peluch. */
+function formasCategoria(c: string): string[] {
+  const formas = [c];
+  if (c.length > 3 && c.endsWith("s")) formas.push(c.slice(0, -1));
+  if (c.length > 4 && c.endsWith("es")) formas.push(c.slice(0, -2));
+  return formas;
+}
+
+/** true si el texto empieza con esa palabra, en singular o plural, como
+ *  palabra completa ("pin de anime" sí empieza con "pin"; "pinza", no). */
+function empiezaCon(texto: string, forma: string): boolean {
+  if (!forma || !texto.startsWith(forma)) return false;
+  return /^(s|es)?($|[^a-z0-9])/.test(texto.slice(forma.length));
+}
+
+/**
+ * Nombre de un artículo en la caja: la categoría antes del nombre
+ * ("Llavero" + "vegueta" → "Llavero vegueta"). Si el nombre ya empieza con
+ * la categoría, en singular o plural, se deja igual ("Llaveros" + "llavero
+ * vegueta" → "llavero vegueta"). Sin categoría, el nombre tal cual.
+ */
+export function nombreEnCaja(nombre: string, categoria?: string | null): string {
+  const cat = (categoria ?? "").trim();
+  const nom = (nombre ?? "").trim();
+  if (!cat) return nombre;
+  if (!nom) return cat;
+  const n = normalizarTexto(nom);
+  if (formasCategoria(normalizarTexto(cat)).some((f) => empiezaCon(n, f))) return nombre;
+  return `${cat} ${nom}`;
+}
+
 /** Clave de comparación de una etiqueta: normalizada y sin `#` al inicio. */
 export function normalizarEtiqueta(t: string): string {
   return normalizarTexto(t).replace(/^#+/, "").trim();
