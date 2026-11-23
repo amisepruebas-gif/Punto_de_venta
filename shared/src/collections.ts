@@ -55,6 +55,21 @@ export const COL_PRODUCCION = `produccion${SUFFIX}`;
 /** Reducciones manuales de inventario con motivo. Inmutables. */
 export const COL_AJUSTES_INVENTARIO = `ajustes_inventario${SUFFIX}`;
 
+// Cashback de mayoreo (propio de la tienda, sin amise.mx) — ver
+// shared/src/cashbackMayoreo.ts. Scope por negocio.
+/** Configuración (doc `config`): la lee la caja, la escribe admin. */
+export const COL_CASHBACK_MAYOREO = `cashback_mayoreo${SUFFIX}`;
+/** Cuentas por teléfono (id = 10 dígitos). Solo las escribe el servidor. */
+export const COL_CLIENTES_MAYOREO = `clientes_mayoreo${SUFFIX}`;
+/** Movimientos de una cuenta (sub-colección). */
+export const COL_MOVIMIENTOS_CASHBACK = "movimientos";
+/** Índices únicos: tarjeta (13 dígitos) y QR (token) → teléfono. Cerrados. */
+export const COL_TARJETAS_MAYOREO = `tarjetas_mayoreo${SUFFIX}`;
+export const COL_QR_MAYOREO = `qr_mayoreo${SUFFIX}`;
+/** Sesiones de la página del cliente e intentos de PIN. Cerrados. */
+export const COL_CASHBACK_SESIONES = `cashback_sesiones${SUFFIX}`;
+export const COL_CASHBACK_INTENTOS = `cashback_intentos${SUFFIX}`;
+
 // Chat — ver docs/14-chat-arquitectura.md
 export const COL_CHAT_GRUPOS = `chat_grupos${SUFFIX}`;
 export const COL_CHAT_DIRECTOS = `chat_directos${SUFFIX}`;
@@ -160,6 +175,13 @@ export const paths = {
 
   zonaPrecio: (nid: string, zid: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_ZONAS_PRECIO}/${zid}`,
+  configCashbackMayoreo: (nid: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_CASHBACK_MAYOREO}/config`,
+  clienteMayoreo: (nid: string, tel: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_CLIENTES_MAYOREO}/${tel}`,
+  clientesMayoreoCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_CLIENTES_MAYOREO}`,
+  movimientosCashback: (nid: string, tel: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_CLIENTES_MAYOREO}/${tel}/${COL_MOVIMIENTOS_CASHBACK}`,
   zonasPrecioCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_ZONAS_PRECIO}`,
   lote: (nid: string, loteId: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_PRODUCCION}/${loteId}`,

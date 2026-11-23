@@ -2,6 +2,8 @@
 // Esquemas TypeScript — docs Firestore
 // ============================================================
 
+import type { CashbackMayoreoVenta } from "./cashbackMayoreo";
+
 // ---------- Negocio ----------
 export type Negocio = {
   negocioId: string;
@@ -534,6 +536,12 @@ export type Venta = {
   /** Cashback, tarjeta o regalo de esta venta que amise rechazó (la caja lo
    *  conserva en "Por enviar"). Se agrega vía updateDoc post-venta. */
   lealtadErrores?: { tipo: string; error: string; fecha: string }[];
+  /** Cashback de mayoreo (propio, sin amise): saldo USADO en esta venta, en
+   *  pesos. Reduce `montoCobro`. Ver shared/src/cashbackMayoreo.ts. */
+  descuentoCashbackMayoreo?: string;
+  /** Cuenta de cashback de mayoreo ligada a la venta. El disparador
+   *  `acreditarCashbackMayoreo` acredita lo ganado al subir la venta. */
+  cashbackMayoreo?: CashbackMayoreoVenta;
 };
 
 // ---------- Corte de caja ----------

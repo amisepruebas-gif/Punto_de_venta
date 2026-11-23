@@ -18,3 +18,4 @@ export * from "./lotes";
 export * from "./enlaceLote";
 export * from "./impresion";
 export * from "./tspl";
+export * from "./cashbackMayoreo";
