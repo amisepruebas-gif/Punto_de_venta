@@ -7,6 +7,7 @@ import { ArticuloEditPage } from "./routes/articulos/ArticuloEditPage";
 import { CategoriasPage } from "./routes/categorias/CategoriasPage";
 import { IngresoMercanciaPage } from "./routes/ingreso-mercancia/IngresoMercanciaPage";
 import { SucursalesPage } from "./routes/sucursales/SucursalesPage";
+import { CashbackMayoreoPage } from "./routes/cashback/CashbackMayoreoPage";
 import { EditarTicketPage } from "./routes/sucursales/EditarTicketPage";
 import { NodosPage } from "./routes/nodos/NodosPage";
 import { EquipoPage } from "./routes/equipo/EquipoPage";
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="categorias" element={<CategoriasPage />} />
           <Route path="ingreso-mercancia" element={<IngresoMercanciaPage />} />
           <Route path="sucursales" element={<SucursalesPage />} />
+          <Route path="cashback-mayoreo" element={<CashbackMayoreoPage />} />
           <Route
             path="sucursales/:sid/ticket"
             element={<EditarTicketPage />}

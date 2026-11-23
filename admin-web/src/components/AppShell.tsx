@@ -23,6 +23,7 @@ import {
   Factory,
   MessagesSquare,
   Link2,
+  HandCoins,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/firebase/config";
@@ -54,6 +55,7 @@ const NAV: NavItem[] = [
   { to: "/ventas", label: "Ventas", icon: ShoppingBag },
   { to: "/cortes", label: "Cortes", icon: ScrollText },
   { to: "/apartados", label: "Apartados", icon: Bookmark },
+  { to: "/cashback-mayoreo", label: "Cashback mayoreo", icon: HandCoins },
   { to: "/reportes/mas-vendidos", label: "Más vendidos", icon: BarChart3 },
   { to: "/reportes/articulo", label: "Por artículo", icon: Package },
   { to: "/chat", label: "Chat", icon: MessageSquare },

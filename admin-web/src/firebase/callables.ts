@@ -291,3 +291,23 @@ export const fnAsegurarChatGrupoNodo = callable<
   AsegurarChatGrupoNodoInput,
   AsegurarChatGrupoNodoOutput
 >("asegurarChatGrupoNodo");
+
+// ---------- Cashback de mayoreo (propio, sin amise) ----------
+export type AjustarCashbackMayoreoInput = {
+  negocioId: string;
+  telefono: string;
+  /** Con signo: positivo suma, negativo resta (el saldo nunca baja de 0). */
+  centavos: number;
+  motivo: string;
+};
+export type AjustarCashbackMayoreoOutput = { saldoCentavos: number; cambioCentavos: number };
+export const fnAjustarCashbackMayoreo = callable<
+  AjustarCashbackMayoreoInput,
+  AjustarCashbackMayoreoOutput
+>("ajustarCashbackMayoreo");
+
+export type QuitarTarjetaCashbackMayoreoInput = { negocioId: string; telefono: string };
+export const fnQuitarTarjetaCashbackMayoreo = callable<
+  QuitarTarjetaCashbackMayoreoInput,
+  { ok: true }
+>("quitarTarjetaCashbackMayoreo");
