@@ -25,6 +25,8 @@ export type FormStateInput = {
   /** Zona de precios ("" = sin zona, precio propio). */
   zonaPrecioId: string;
   soloMayoreo: boolean;
+  /** Solo con «Solo mayoreo»; "" = sin menudeo. */
+  precioMenudeo: string;
   precioDescuento: string;
   flag3x2: boolean;
   flagSeña: boolean;
@@ -150,6 +152,9 @@ export function construirInputArticulo(args: ConstruirInputArgs): ArticuloInput 
     cantMayoreo: "",
     zonaPrecioId: form.zonaPrecioId,
     soloMayoreo: form.soloMayoreo,
+    // Siempre explícito para poder quitarlo: sin «Solo mayoreo» va "" y el
+    // service lo borra del doc.
+    precioMenudeo: form.soloMayoreo ? form.precioMenudeo.trim() : "",
     // Espejo de FIX D3 para imagenUrl: emitimos `precioDescuento` SIEMPRE.
     // `""` del form llega como "" al service → "user limpió el descuento",
     // el service lo strip-ea antes de persistir. Sin esto, el conditional

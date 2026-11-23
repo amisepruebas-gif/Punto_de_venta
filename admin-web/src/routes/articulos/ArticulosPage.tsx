@@ -12,6 +12,7 @@ import {
   FILTRO_SIN,
   clasificacionVigente,
   coincidePalabras,
+  estadoPrecioMenudeo,
   normalizarEtiqueta,
   normalizarTexto,
   palabrasDeConsulta,
@@ -792,10 +793,12 @@ function ArticuloCard({
   );
 }
 
-/** Marcas de fabricación / mayoreo: "Solo mayoreo", "Fabricado" y los
- *  escalones vigentes (incluido el mayoreo legacy de un escalón). */
+/** Marcas de fabricación / mayoreo: "Solo mayoreo" con su precio menudeo
+ *  (o el aviso de que falta / no vale), "Fabricado" y los escalones
+ *  vigentes (incluido el mayoreo legacy de un escalón). */
 function MarcasMayoreo({ articulo }: { articulo: Articulo }) {
   const escalones = resolverEscalones(articulo);
+  const menudeo = estadoPrecioMenudeo(articulo);
   if (!articulo.soloMayoreo && !articulo.fabricado && escalones.length === 0) {
     return null;
   }
@@ -804,6 +807,24 @@ function MarcasMayoreo({ articulo }: { articulo: Articulo }) {
       {articulo.soloMayoreo && (
         <span className="rounded-full bg-emerald-100 px-1.5 font-medium text-emerald-800">
           Solo mayoreo
+        </span>
+      )}
+      {menudeo === "ok" && (
+        <span className="rounded-full bg-emerald-50 px-1.5 text-emerald-800">
+          Menudeo ${articulo.precioMenudeo}
+        </span>
+      )}
+      {menudeo === "falta" && (
+        <span className="rounded-full bg-red-100 px-1.5 font-medium text-red-800">
+          Falta precio menudeo
+        </span>
+      )}
+      {menudeo === "invalido" && (
+        <span
+          className="rounded-full bg-red-100 px-1.5 font-medium text-red-800"
+          title="Debe ser mayor que el precio de venta; mientras tanto la caja cobra el precio normal"
+        >
+          Menudeo inválido (${articulo.precioMenudeo})
         </span>
       )}
       {articulo.fabricado && (

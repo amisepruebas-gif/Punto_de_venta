@@ -19,7 +19,12 @@ import { EtiquetasInput } from "@/features/fabricacion/EtiquetasInput";
 import { registrarProduccion } from "@/features/fabricacion/produccionService";
 import { TALLER_ID, useUbicaciones } from "@/features/fabricacion/useFabricacion";
 import type { PrefillResurtido } from "@/features/resurtidos/prefill";
-import { ymdPaddedMX, type LoteProduccion } from "@shared";
+import {
+  PIEZAS_MAYOREO,
+  validarPrecioMenudeo,
+  ymdPaddedMX,
+  type LoteProduccion,
+} from "@shared";
 
 type Modo = "nuevo" | "existente";
 
@@ -51,6 +56,7 @@ export function RegistrarProduccionPage() {
   const [zonaPrecioId, setZonaPrecioId] = useState("");
   const [costo, setCosto] = useState("");
   const [soloMayoreo, setSoloMayoreo] = useState(true);
+  const [precioMenudeo, setPrecioMenudeo] = useState("");
   const [imagenFile, setImagenFile] = useState<File | null>(null);
   const [imagenViaNanobanana, setImagenViaNanobanana] = useState(false);
   // Lote
@@ -91,7 +97,7 @@ export function RegistrarProduccionPage() {
     if (!nombre.trim()) return "Escribe el nombre del artículo (ej. Llavero Goku M1)";
     if (!categoria.categoriaId) return "Elige o crea la categoría";
     if (!zona) return "Elige o crea la zona de precios";
-    return null;
+    return validarPrecioMenudeo(soloMayoreo, precioMenudeo, zona.precioVenta);
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -135,6 +141,7 @@ export function RegistrarProduccionPage() {
           zonaPrecioId: zona.zonaId,
           escalonesMayoreo: zona.escalones,
           soloMayoreo,
+          ...(soloMayoreo ? { precioMenudeo: precioMenudeo.trim() } : {}),
           fabricado: true,
           imagenFile,
           imagenViaNanobanana,
@@ -359,19 +366,43 @@ export function RegistrarProduccionPage() {
                 placeholder="Para calcular la utilidad"
               />
             </div>
-            <label className="flex items-start gap-2 pt-6">
-              <Checkbox
-                className="mt-0.5"
-                checked={soloMayoreo}
-                onChange={(e) => setSoloMayoreo(e.target.checked)}
-              />
-              <span className="text-sm">
-                Solo mayoreo
-                <span className="block text-[11px] text-muted-foreground">
-                  Solo lo ven y venden las sucursales de mayoreo.
+            <div className="space-y-3 pt-6">
+              <label className="flex items-start gap-2">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={soloMayoreo}
+                  onChange={(e) => {
+                    setSoloMayoreo(e.target.checked);
+                    if (!e.target.checked) setPrecioMenudeo("");
+                  }}
+                />
+                <span className="text-sm">
+                  Solo mayoreo
+                  <span className="block text-[11px] text-muted-foreground">
+                    Solo lo ven y venden las sucursales de mayoreo.
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+              {soloMayoreo && (
+                <div className="space-y-1.5 pl-6">
+                  <Label htmlFor="fab-menudeo">Precio menudeo *</Label>
+                  <Input
+                    id="fab-menudeo"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="any"
+                    value={precioMenudeo}
+                    onChange={(e) => setPrecioMenudeo(e.target.value)}
+                    placeholder={zona ? `Mayor que $${zona.precioVenta}` : undefined}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Se cobra cuando el ticket lleva menos de {PIEZAS_MAYOREO}{" "}
+                    piezas.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Etiquetas (opcional)</Label>

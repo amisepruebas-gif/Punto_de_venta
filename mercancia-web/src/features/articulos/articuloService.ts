@@ -431,9 +431,11 @@ export async function actualizarArticulo(
   return actualizado;
 }
 
-/** La ficha manda la clasificación siempre (vacía = "quitar"): aquí se
- *  borran del doc los "" y el [] para que quitar sí se guarde. */
+/** La ficha manda la clasificación y el precio menudeo siempre (vacío =
+ *  "quitar"): aquí se borran del doc los "" y el [] para que quitar sí se
+ *  guarde. */
 function borrarClasificacionVacia(a: Articulo): void {
+  if (a.precioMenudeo === "") delete a.precioMenudeo;
   if (a.categoriaId === "") delete a.categoriaId;
   if (a.subcategoriaId === "") delete a.subcategoriaId;
   if (a.generoId === "") delete a.generoId;

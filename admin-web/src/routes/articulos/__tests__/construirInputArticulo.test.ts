@@ -21,6 +21,7 @@ const FORM_BASE: FormStateInput = {
   escalones: [],
   zonaPrecioId: "",
   soloMayoreo: false,
+  precioMenudeo: "",
   precioDescuento: "",
   flag3x2: false,
   flagSeña: false,
@@ -159,6 +160,22 @@ describe("construirInputArticulo — mayoreo, zona y solo mayoreo", () => {
     });
     expect(con.soloMayoreo).toBe(true);
     expect(con.zonaPrecioId).toBe("llaveros");
+  });
+
+  it("precioMenudeo va siempre: con «Solo mayoreo» el valor, sin él '' (para quitarlo)", () => {
+    const sin = construirInputArticulo(ARGS_BASE);
+    expect(sin.precioMenudeo).toBe("");
+    const con = construirInputArticulo({
+      ...ARGS_BASE,
+      form: { ...FORM_BASE, soloMayoreo: true, precioMenudeo: " 180 " },
+    });
+    expect(con.precioMenudeo).toBe("180");
+    // Un valor viejo en el form sin «Solo mayoreo» no se guarda.
+    const quitado = construirInputArticulo({
+      ...ARGS_BASE,
+      form: { ...FORM_BASE, soloMayoreo: false, precioMenudeo: "180" },
+    });
+    expect(quitado.precioMenudeo).toBe("");
   });
 });
 

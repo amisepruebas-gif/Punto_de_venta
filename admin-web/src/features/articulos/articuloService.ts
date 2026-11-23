@@ -466,10 +466,11 @@ export async function actualizarArticulo(
   return actualizado;
 }
 
-/** `""` = "sin valor" en mayoreo legacy, zona y clasificación (categoría,
- *  subcategoría, género; etiquetas `[]`): el builder los manda vacíos para
- *  poder quitarlos y aquí se borran del doc. */
+/** `""` = "sin valor" en mayoreo legacy, zona, precio menudeo y
+ *  clasificación (categoría, subcategoría, género; etiquetas `[]`): el
+ *  builder los manda vacíos para poder quitarlos y aquí se borran del doc. */
 function borrarLlavesVacias(a: Articulo): void {
+  if (a.precioMenudeo === "") delete a.precioMenudeo;
   if (a.mayoreo === "") delete a.mayoreo;
   if (a.cantMayoreo === "") delete a.cantMayoreo;
   if (a.zonaPrecioId === "") delete a.zonaPrecioId;

@@ -27,7 +27,9 @@ import {
   escalonesDeTexto,
   escalonesEditables,
   leerStockTienda,
+  PIEZAS_MAYOREO,
   validarEscalones,
+  validarPrecioMenudeo,
   type ArticuloSubvariacion,
   type EscalonTexto,
 } from "@shared";
@@ -54,6 +56,8 @@ type FormState = {
   flagSeña: boolean;
   promoBandera: boolean;
   soloMayoreo: boolean;
+  /** Solo con «Solo mayoreo» (obligatorio ahí). */
+  precioMenudeo: string;
   subvariaciones: ArticuloSubvariacion[];
 };
 
@@ -77,6 +81,7 @@ const FORM_EMPTY: FormState = {
   flagSeña: false,
   promoBandera: false,
   soloMayoreo: false,
+  precioMenudeo: "",
   subvariaciones: [],
 };
 
@@ -201,6 +206,7 @@ export function ArticuloEditPage() {
       flagSeña: articulo.seña !== undefined,
       promoBandera: articulo.promoBandera === "1",
       soloMayoreo: !!articulo.soloMayoreo,
+      precioMenudeo: articulo.precioMenudeo ?? "",
       subvariaciones: articulo.subvariaciones ?? [],
     });
     const n = (articulo.subvariaciones ?? []).length;
@@ -241,6 +247,15 @@ export function ArticuloEditPage() {
         return;
       }
     }
+    const errorMenudeo = validarPrecioMenudeo(
+      form.soloMayoreo,
+      form.precioMenudeo,
+      nVenta,
+    );
+    if (errorMenudeo) {
+      setError(errorMenudeo);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -260,6 +275,9 @@ export function ArticuloEditPage() {
         mayoreo: "",
         cantMayoreo: "",
         soloMayoreo: form.soloMayoreo,
+        // Siempre explícito para poder quitarlo: sin «Solo mayoreo» va "" y
+        // el service lo borra del doc.
+        precioMenudeo: form.soloMayoreo ? form.precioMenudeo.trim() : "",
         utilidad: String(utilidad),
         utilidadTotal: String(utilidadTotal),
         // Clasificación: solo lo que cambió (al crear, todo). Vacío = QUITAR:
@@ -694,7 +712,14 @@ export function ArticuloEditPage() {
               <Checkbox
                 className="mt-0.5"
                 checked={form.soloMayoreo}
-                onChange={(e) => set("soloMayoreo", e.target.checked)}
+                onChange={(e) =>
+                  setForm((s) => ({
+                    ...s,
+                    soloMayoreo: e.target.checked,
+                    // Sin «Solo mayoreo» no hay menudeo: se borra al guardar.
+                    ...(e.target.checked ? {} : { precioMenudeo: "" }),
+                  }))
+                }
               />
               <span className="text-sm">
                 Solo mayoreo
@@ -703,6 +728,26 @@ export function ArticuloEditPage() {
                 </span>
               </span>
             </label>
+            {form.soloMayoreo && (
+              <div className="space-y-1.5 pl-6 sm:col-start-2">
+                <Label htmlFor="precioMenudeo">Precio menudeo *</Label>
+                <Input
+                  id="precioMenudeo"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="any"
+                  value={form.precioMenudeo}
+                  onChange={(e) => set("precioMenudeo", e.target.value)}
+                  placeholder={nVenta > 0 ? `Mayor que $${nVenta}` : undefined}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Se cobra cuando el ticket lleva menos de {PIEZAS_MAYOREO}{" "}
+                  piezas. Desde {PIEZAS_MAYOREO} piezas se cobra el precio de
+                  venta.
+                </p>
+              </div>
+            )}
           </div>
           <EscalonesMayoreoEditor
             filas={
