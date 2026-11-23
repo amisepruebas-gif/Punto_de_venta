@@ -116,7 +116,8 @@ export function formatearTicketEscPos(
     // El carrito ya pone la variación en `nombrePublico` ("Camisa — Rojo"):
     // solo se agrega si no viene (ventas viejas), para no repetirla.
     const nombre =
-      a.subvariacionNombre && !a.nombrePublico.includes(a.subvariacionNombre)
+      a.subvariacionNombre &&
+      !a.nombrePublico.endsWith(` — ${a.subvariacionNombre}`)
         ? `${a.nombrePublico} - ${a.subvariacionNombre}`
         : a.nombrePublico;
 

@@ -206,7 +206,7 @@ export function ConfirmarVentaModal({ data, onCancel, onConfirm }: Props) {
                 // se agrega si no viene, para no repetirla.
                 const nombre =
                   a.subvariacionNombre &&
-                  !a.nombrePublico.includes(a.subvariacionNombre)
+                  !a.nombrePublico.endsWith(` — ${a.subvariacionNombre}`)
                     ? `${a.nombrePublico} - ${a.subvariacionNombre}`
                     : a.nombrePublico;
                 return (

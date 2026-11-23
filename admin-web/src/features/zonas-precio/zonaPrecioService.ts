@@ -1,13 +1,51 @@
-import { doc, getDoc, runTransaction, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  runTransaction,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "@/firebase/config";
 import {
+  COL_ARTICULOS,
+  COL_NEGOCIOS,
   fechaISO_MX,
   paths,
+  resolverPrecioMenudeo,
   slugCategoria,
   validarEscalones,
+  type Articulo,
   type EscalonMayoreo,
   type ZonaPrecio,
 } from "@shared";
+
+/**
+ * Artículos «Solo mayoreo» de la zona cuyo precio menudeo quedaría igual o
+ * menor que `nuevoPrecio`: con ese precio la caja deja de cobrarles menudeo
+ * (ver `resolverPrecioMenudeo`). Lee solo los artículos de esa zona.
+ */
+export async function articulosConMenudeoAfectado(
+  negocioId: string,
+  zonaId: string,
+  nuevoPrecio: number,
+): Promise<Articulo[]> {
+  const snap = await getDocs(
+    query(
+      collection(db, `${COL_NEGOCIOS}/${negocioId}/${COL_ARTICULOS}`),
+      where("zonaPrecioId", "==", zonaId),
+    ),
+  );
+  return snap.docs
+    .map((d) => d.data() as Articulo)
+    .filter(
+      (a) =>
+        resolverPrecioMenudeo(a) !== null &&
+        resolverPrecioMenudeo({ ...a, precioVenta: String(nuevoPrecio) }) === null,
+    );
+}
 
 /**
  * Zonas de precios (Fabricación). La zona es la fuente viva del precio: al

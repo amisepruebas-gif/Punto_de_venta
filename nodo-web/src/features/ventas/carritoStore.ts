@@ -37,7 +37,7 @@ type CarritoItem = VentaArticulo & {
   desmarcado?: boolean;
   /** Mayoreo: grupo con el que se suman piezas (zona o artículo) y
    *  escalones del artículo al agregarlo. El precio del escalón lo pone
-   *  `aplicarEscalones` en `descuento` + `mayoreoAply`. Internos del POS:
+   *  `aplicarPreciosCarrito` (vía `aplicarEscalones`) en `descuento` + `mayoreoAply`. Internos del POS:
    *  `aVentaArticulo` los quita antes de guardar la venta. */
   mayoreoGrupo?: string;
   mayoreoEscalones?: EscalonMayoreo[];
@@ -184,7 +184,7 @@ export const useCarrito = create<CarritoState>()(
         subDoc,
       );
       // Mayoreo: snapshot de escalones y del grupo (zona o artículo). El
-      // precio del escalón lo calcula `aplicarEscalones` vía setItems.
+      // precio del escalón lo calcula `aplicarPreciosCarrito` vía setItems.
       const escalones = resolverEscalones(art);
       // Menudeo: snapshot del precio (solo artículos «Solo mayoreo» con un
       // menudeo válido). Lo aplica `aplicarPreciosCarrito` vía setItems.

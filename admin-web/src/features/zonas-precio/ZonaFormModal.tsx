@@ -12,7 +12,12 @@ import {
   type EscalonTexto,
   type ZonaPrecio,
 } from "@shared";
-import { crearZona, editarZona, validarZona } from "./zonaPrecioService";
+import {
+  articulosConMenudeoAfectado,
+  crearZona,
+  editarZona,
+  validarZona,
+} from "./zonaPrecioService";
 
 /**
  * Alta / edición de una zona de precios: nombre, categoría sugerida,
@@ -66,6 +71,26 @@ export function ZonaFormModal({
     setError(null);
     try {
       if (editando) {
+        // Subir el precio puede dejar el menudeo de sus artículos «Solo
+        // mayoreo» igual o menor: la caja dejaría de cobrarlo. Avisar antes.
+        if (input.precioVenta > editando.precioVenta) {
+          const afectados = await articulosConMenudeoAfectado(
+            negocioId,
+            editando.zonaId,
+            input.precioVenta,
+          );
+          if (afectados.length > 0) {
+            const lista = afectados
+              .slice(0, 6)
+              .map((a) => `• ${a.nombre} (menudeo $${a.precioMenudeo})`)
+              .join("\n");
+            const mas = afectados.length > 6 ? `\n… y ${afectados.length - 6} más` : "";
+            const seguir = window.confirm(
+              `Con el precio $${input.precioVenta}, el precio menudeo de ${afectados.length} artículo(s) «Solo mayoreo» queda igual o menor, y la caja dejará de cobrarlo hasta que lo subas en su ficha:\n\n${lista}${mas}\n\n¿Guardar la zona de todos modos?`,
+            );
+            if (!seguir) return;
+          }
+        }
         await editarZona(negocioId, editando.zonaId, input);
       } else {
         const zona = await crearZona(negocioId, input);

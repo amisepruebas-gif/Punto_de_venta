@@ -26,9 +26,13 @@ export function ApartadoModal({ open, onClose, onSuccess }: Props) {
   if (!open) return null;
 
   const señaNum = Number(seña) || 0;
+  // Igual que COBRAR: con líneas desmarcadas no se aparta (no está claro si
+  // van, y cambian las piezas del ticket y con ellas el precio menudeo).
+  const hayDesmarcados = items.some((i) => i.desmarcado);
   const puedeCrear =
     !submitting &&
     items.length > 0 &&
+    !hayDesmarcados &&
     cliente.trim().length > 0 &&
     señaNum >= 0 &&
     señaNum <= total &&
@@ -47,14 +51,17 @@ export function ApartadoModal({ open, onClose, onSuccess }: Props) {
         nodoId,
         cliente: cliente.trim(),
         ...(telefono.trim() ? { telefonoCliente: telefono.trim() } : {}),
-        // Sin la llave ni el snapshot interno de mayoreo (el precio de
-        // mayoreo aplicado sí queda en `descuento` + `mayoreoAply`).
+        // Sin la llave ni los snapshots internos de mayoreo y menudeo.
+        // `crearApartado` guarda por línea solo id, cantidad, precio (el de
+        // lista, o el menudeo si aplicó), nombre y variación.
         articulos: items.map(
           ({
             key: _k,
             mayoreoGrupo: _g,
             mayoreoEscalones: _e,
             descuentoBase: _b,
+            precioMenudeo: _pm,
+            menudeoBase: _mb,
             ...rest
           }) => rest,
         ),
@@ -116,6 +123,12 @@ export function ApartadoModal({ open, onClose, onSuccess }: Props) {
             Saldo: ${(total - señaNum).toFixed(0)}
           </p>
         </div>
+        {hayDesmarcados && (
+          <p className="text-sm text-amber-800">
+            Hay artículos desmarcados: márcalos o quítalos del carrito para
+            poder apartar.
+          </p>
+        )}
         {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex gap-2 pt-2">
           <Button
