@@ -47,20 +47,36 @@ export type CuentaCashbackMayoreo = {
   gen: number;
 };
 
-export type TipoMovimientoCashback = "ganado" | "usado" | "vencido" | "devuelto" | "ajuste";
+export type TipoMovimientoCashback =
+  | "ganado"
+  | "usado"
+  | "vencido"
+  | "devuelto"
+  | "ajuste"
+  /** Registro (sin dinero): la caja repuso el PIN. */
+  | "pin_repuesto"
+  /** Registro (sin dinero): la caja ligó una tarjeta. */
+  | "tarjeta_ligada";
 
 /** `.../clientes_mayoreo_web_new_version/{tel}/movimientos/{id}`. */
 export type MovimientoCashbackMayoreo = {
   tipo: TipoMovimientoCashback;
   /** Siempre positivo; el tipo dice si suma o resta (el ajuste lleva signo). */
   centavos: number;
-  saldoDespuesCentavos: number;
+  /** Falta en los registros sin dinero. */
+  saldoDespuesCentavos?: number;
   fechaISO: string;
   ventaId?: string;
   sucursalId?: string;
   nodoId?: string;
   motivo?: string;
   por?: string;
+  /** Solo en `uso_{ventaId}`: "usado" (la venta aún no sube), "devuelto" o "confirmado". */
+  estado?: "usado" | "devuelto" | "confirmado";
+  /** Lo hizo el servidor solo (devolución tras 6 h sin venta, o recobro). */
+  automatico?: boolean;
+  tarjetaUltimos4?: string;
+  verificadoCon?: string;
 };
 
 /** Lo que la venta lleva del cashback de mayoreo (lo lee el disparador que

@@ -145,6 +145,16 @@ type OpcionesVenta = {
 
 /** Un descuento (cashback o regalo) no se pudo aplicar. Con la tarjeta ya
  *  cobrada no aborta: se reintenta o la diferencia se cobra en efectivo. */
+/** Regresa el cashback de mayoreo que apartó esta venta. No hace nada si no
+ *  usó saldo, si ya se devolvió o si la venta ya subió (el servidor revisa). */
+async function devolverCashbackMayoreoDe(v: VentaEnCobro | null | undefined): Promise<void> {
+  const cbm = v?.cashbackMayoreoPago;
+  if (!v || !cbm || !(cbm.usarCentavos > 0)) return;
+  await fnDevolverCashbackMayoreo({ telefono: cbm.telefono, ventaId: v.idempotencyKey }).catch((e) =>
+    console.warn("No se pudo devolver el cashback de mayoreo:", e),
+  );
+}
+
 class DescuentoFallido extends Error {
   quitar: "cashback" | "regalo";
   monto: number;
@@ -533,19 +543,25 @@ export function Ventas() {
     // si la venta ya existe → deferido); el residual es el huérfano raro (detectable).
     const cobroId = p.idempotencyKey;
 
+    // Otro cobro con tarjeta sin terminar: se resuelve antes de descontar nada.
+    if (p.terminalClip && !op.pagoClip) {
+      const previo = useCobroClip.getState().cobro;
+      if (previo && previo.cobroId !== cobroId) {
+        setRecuperarClip(true);
+        throw new Error("Hay un cobro con tarjeta anterior sin terminar. Resuélvelo primero.");
+      }
+    }
+
     // Cashback de mayoreo (propio, sin amise): el saldo se descuenta en el
-    // servidor ANTES de la terminal y de guardar la venta (idempotente por
-    // cobroId: un reintento no descuenta dos veces). Si luego el cobro falla
-    // del todo (la terminal lo rechaza o la venta no se guarda), se devuelve.
-    // Si la terminal queda "sin resolver", NO se devuelve: la venta se retoma.
+    // servidor ANTES de la terminal y de guardar la venta (por cobroId: un
+    // reintento no descuenta dos veces y, si se había devuelto, descuenta otra
+    // vez). Se devuelve solo si NO se cobró la tarjeta y la venta no se guardó.
+    // Con la tarjeta cobrada (o "sin resolver") nunca: la venta se retoma.
+    // Si la venta llega a subir con el descuento ya devuelto, el servidor lo
+    // vuelve a descontar.
     const cbm = p.cashbackMayoreoPago;
     const cbmUsar = cbm?.usarCentavos ?? 0;
-    const devolverCbm = async () => {
-      if (!cbm || cbmUsar <= 0) return;
-      await fnDevolverCashbackMayoreo({ telefono: cbm.telefono, ventaId: cobroId }).catch((e) =>
-        console.warn("No se pudo devolver el cashback de mayoreo:", e),
-      );
-    };
+    const devolverCbm = () => devolverCashbackMayoreoDe(p);
     if (cbm && cbmUsar > 0) {
       if (!cbm.qr && !cbm.tarjeta) {
         throw new Error("Para usar el cashback escanea el QR o la tarjeta del cliente.");
@@ -572,11 +588,6 @@ export function Ventas() {
     let pagoClip = op.pagoClip;
     try {
       if (p.terminalClip && !pagoClip) {
-        const previo = useCobroClip.getState().cobro;
-        if (previo && previo.cobroId !== cobroId) {
-          setRecuperarClip(true);
-          throw new Error("Hay un cobro con tarjeta anterior sin terminar. Resuélvelo primero.");
-        }
         await revisarSaldosAntesDeTerminal(
           { codigo: p.puntosCodigo, phone: puntosTel },
           cashbackUsar,
@@ -745,7 +756,9 @@ export function Ventas() {
       // se reintenta (los débitos son idempotentes por cobroId) o la diferencia
       // se cobra en efectivo. Nunca se guarda un descuento sin débito.
       if (!pagoClip || !(e instanceof DescuentoFallido)) {
-        await devolverCbm();
+        // Con la tarjeta cobrada la venta se retoma (RecuperarCobroClip): el
+        // cashback de mayoreo se queda descontado.
+        if (!pagoClip) await devolverCbm();
         throw e;
       }
       const tarjeta = etiquetaTarjetaClip(pagoClip);
@@ -808,9 +821,10 @@ export function Ventas() {
           : {}),
       });
     } catch (e) {
-      // La venta no se guardó: regresa el cashback de mayoreo (el servidor no
-      // lo devuelve si la venta sí llegó a subir).
-      await devolverCbm();
+      // La venta no se guardó: regresa el cashback de mayoreo, salvo que la
+      // tarjeta ya se haya cobrado (la venta se retoma y se guarda después).
+      // Si aun así la venta llega a subir, el servidor lo vuelve a descontar.
+      if (!pagoClip) await devolverCbm();
       throw e;
     }
     retomadoRef.current = null;
@@ -1101,6 +1115,8 @@ export function Ventas() {
     if (accion === "mas-tarde") return; // sigue guardado: se pregunta al volver a abrir
     if (accion === "descartar" || accion === "revisar") {
       useCobroClip.getState().terminar();
+      // La venta no se guardará: regresa el cashback de mayoreo que apartó.
+      void devolverCashbackMayoreoDe(r.venta);
       return;
     }
     const pagoClip =
@@ -1523,6 +1539,12 @@ export function Ventas() {
       <ConfirmarVentaModal
         data={preview}
         onCancel={() => {
+          // Si esta venta alcanzó a apartar cashback de mayoreo (p. ej. se
+          // perdió la respuesta, o se retomó un cobro), se regresa. Con un
+          // cobro con tarjeta pendiente de esta venta, no: se retoma después.
+          if (preview && useCobroClip.getState().cobro?.cobroId !== preview.idempotencyKey) {
+            void devolverCashbackMayoreoDe(preview);
+          }
           setPreview(null);
           setResetPuntosSignal((n) => n + 1);
           retomadoRef.current = null;

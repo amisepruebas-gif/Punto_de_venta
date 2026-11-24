@@ -195,8 +195,14 @@ export function PagoFooter({ onCobrar, resetSignal }: Props) {
   const esMayoreo = !!sucursal?.modoMayoreo;
   const cbmCliente = useCashbackMayoreo((s) => s.cliente);
   const cbmUsarCent = useCashbackMayoreo((s) => s.usarCentavos);
-  const { config: cbmConfig, activo: cbmActivo } = useConfigCashbackMayoreoCaja();
+  const cbmModalAbierto = useCashbackMayoreo((s) => s.modalAbierto);
+  const { config: cbmConfig, activo: cbmActivo } = useConfigCashbackMayoreoCaja(esMayoreo);
   const descuentoCbm = esMayoreo ? cbmUsarCent / 100 : 0;
+  // Al volver a abrir el cashback de mayoreo el cajero ya atendió el aviso de
+  // "el carrito cambió" (aunque elija solo acumular).
+  useEffect(() => {
+    if (cbmModalAbierto) setDescuentoInvalidado(false);
+  }, [cbmModalAbierto]);
   const maxCbmPesos = Math.max(0, subtotalBruto - giftTotal);
 
   // Total a cobrar = bruto menos cashback menos crédito de regalo (ambos descuentos).

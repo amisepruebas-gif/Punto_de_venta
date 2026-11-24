@@ -7,8 +7,10 @@ import type { CuentaCashbackMayoreoCaja } from "@/firebase/callable";
 import { paths, validarConfigCashback, type ConfigCashbackMayoreo } from "@shared";
 
 /** Cliente de cashback de mayoreo de la venta en curso. `qr`/`tarjeta`: con
- *  cuál se identificó (lo pide el servidor para gastar). No se guarda en la
- *  tablet: el carrito tampoco. */
+ *  cuál se identificó (lo pide el servidor para gastar). Este store no se
+ *  guarda en la tablet (el carrito tampoco); pero un cobro con terminal Clip
+ *  en curso sí guarda su venta completa, con el QR o la tarjeta, hasta que
+ *  termina (para retomarla si la app se recarga). La venta nunca los guarda. */
 export type ClienteCbMayoreo = CuentaCashbackMayoreoCaja & { qr?: string; tarjeta?: string };
 
 type Estado = {
@@ -40,18 +42,18 @@ export const useCashbackMayoreo = create<Estado>()((set) => ({
 }));
 
 /** Config del cashback de mayoreo (de la caché si no hay red). `activo` solo
- *  si existe, está prendida y es válida. */
-export function useConfigCashbackMayoreoCaja() {
+ *  si existe, está prendida y es válida. Solo escucha en cajas de mayoreo. */
+export function useConfigCashbackMayoreoCaja(habilitado = true) {
   const { negocioId } = useNodoSession();
   const [config, setConfig] = useState<ConfigCashbackMayoreo | null>(null);
   useEffect(() => {
-    if (!negocioId) return;
+    if (!negocioId || !habilitado) return;
     return onSnapshot(
       doc(db, paths.configCashbackMayoreo(negocioId)),
       (snap) => setConfig(snap.exists() ? (snap.data() as ConfigCashbackMayoreo) : null),
       (err) => console.warn("config cashback mayoreo:", err),
     );
-  }, [negocioId]);
-  const activo = !!config && config.activo === true && !validarConfigCashback(config);
+  }, [negocioId, habilitado]);
+  const activo = habilitado && !!config && config.activo === true && !validarConfigCashback(config);
   return { config, activo };
 }

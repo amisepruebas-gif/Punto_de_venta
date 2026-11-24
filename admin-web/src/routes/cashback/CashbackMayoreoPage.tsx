@@ -10,6 +10,7 @@ import {
   guardarConfigCashbackMayoreo,
   movimientosCashback,
   useConfigCashbackMayoreo,
+  useCuentaCashbackPorTelefono,
   useCuentasCashbackMayoreo,
 } from "@/features/cashback-mayoreo/cashbackMayoreoService";
 import { fnAjustarCashbackMayoreo, fnQuitarTarjetaCashbackMayoreo } from "@/firebase/callables";
@@ -193,13 +194,23 @@ function Cuentas() {
   const [q, setQ] = useState("");
   const [abierta, setAbierta] = useState<string | null>(null);
   const ahora = Date.now();
+  // Solo se cargan las más recientes; con el teléfono completo se busca la
+  // cuenta aunque sea vieja.
+  const digitos = q.replace(/\D/g, "");
+  const telCompleto =
+    digitos.length === 10 && !cuentas.some((c) => c.telefono === digitos) ? digitos : null;
+  const cuentaVieja = useCuentaCashbackPorTelefono(telCompleto ?? (abierta && !cuentas.some((c) => c.telefono === abierta) ? abierta : null));
+  const todas = useMemo(
+    () => (cuentaVieja && !cuentas.some((c) => c.telefono === cuentaVieja.telefono) ? [cuentaVieja, ...cuentas] : cuentas),
+    [cuentas, cuentaVieja],
+  );
   const filtradas = useMemo(() => {
     const d = q.replace(/\D/g, "");
     const t = q.trim().toLowerCase();
-    return cuentas.filter((c) =>
+    return todas.filter((c) =>
       !t || (d && c.telefono.includes(d)) || (c.nombre ?? "").toLowerCase().includes(t));
-  }, [cuentas, q]);
-  const cuenta = cuentas.find((c) => c.telefono === abierta) ?? null;
+  }, [todas, q]);
+  const cuenta = todas.find((c) => c.telefono === abierta) ?? null;
 
   return (
     <section className="space-y-3 rounded-lg border bg-card p-4 sm:p-5">
@@ -213,7 +224,10 @@ function Cuentas() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Cargando…</p>
       ) : filtradas.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Sin cuentas{q ? " con esa búsqueda" : " todavía"}.</p>
+        <p className="text-sm text-muted-foreground">
+          Sin cuentas{q ? " con esa búsqueda" : " todavía"}.
+          {q && digitos.length !== 10 ? " Aquí están las 300 más recientes: para otra, escribe su teléfono completo." : ""}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -341,14 +355,21 @@ function DetalleCuenta({ cuenta, onCerrar }: { cuenta: CuentaCashbackMayoreo; on
             {movs.map((m) => (
               <li key={m.id} className="flex flex-wrap justify-between gap-2 py-1">
                 <span>
-                  {fecha(m.fechaISO)} · {TIPO[m.tipo]}
+                  {fecha(m.fechaISO)} · {TIPO[m.tipo] ?? m.tipo}
+                  {m.tipo === "tarjeta_ligada" && m.tarjetaUltimos4 ? ` •••• ${m.tarjetaUltimos4}` : ""}
+                  {m.verificadoCon ? ` (con ${m.verificadoCon})` : ""}
+                  {m.estado === "usado" ? " · la venta aún no sube" : ""}
+                  {m.automatico ? " · automático" : ""}
                   {m.motivo ? ` — ${m.motivo}` : ""}
                   {m.ventaId ? <span className="text-muted-foreground"> · venta {m.ventaId}</span> : null}
+                  {m.nodoId && !m.ventaId ? <span className="text-muted-foreground"> · caja {m.nodoId}</span> : null}
                 </span>
-                <span className="tabular-nums">
-                  {signo(m)}{pesosDeCentavos(Math.abs(m.centavos))}{" "}
-                  <span className="text-muted-foreground">→ {pesosDeCentavos(m.saldoDespuesCentavos)}</span>
-                </span>
+                {m.saldoDespuesCentavos !== undefined && (
+                  <span className="tabular-nums">
+                    {signo(m)}{pesosDeCentavos(Math.abs(m.centavos))}{" "}
+                    <span className="text-muted-foreground">→ {pesosDeCentavos(m.saldoDespuesCentavos)}</span>
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -364,6 +385,8 @@ const TIPO: Record<MovimientoCashbackMayoreo["tipo"], string> = {
   vencido: "Venció",
   devuelto: "Devuelto",
   ajuste: "Ajuste",
+  pin_repuesto: "La caja repuso el PIN",
+  tarjeta_ligada: "La caja ligó la tarjeta",
 };
 
 function signo(m: MovimientoCashbackMayoreo): string {

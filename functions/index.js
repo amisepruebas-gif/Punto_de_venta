@@ -3648,7 +3648,8 @@ const OPC_CB = {timeoutSeconds: 20, memory: "256MiB"};
 const OPC_CB_PIN = {...OPC_CB, secrets: [CASHBACK_PIN_PEPPER]};
 // La página del cliente es pública: pocas instancias frenan la fuerza bruta.
 const OPC_CB_CLIENTE = {...OPC_CB, maxInstances: 5};
-const OPC_CB_CLIENTE_PIN = {...OPC_CB_CLIENTE, secrets: [CASHBACK_PIN_PEPPER]};
+// Con PIN: una petición a la vez por instancia (máximo 5 en paralelo).
+const OPC_CB_CLIENTE_PIN = {...OPC_CB_CLIENTE, concurrency: 1, secrets: [CASHBACK_PIN_PEPPER]};
 const RE_VENTA_ID = /^[A-Za-z0-9_-]{6,80}$/;
 
 const negRefCb = (nid) => db.collection(COL_NEGOCIOS).doc(nid);
@@ -3660,10 +3661,11 @@ const isoCb = (ms) => new Date(ms).toISOString();
 const pesosCb = (c) => `$${(Math.max(0, c) / 100).toFixed(2).replace(/\.00$/, "")}`;
 
 /** Si el saldo ya venció, lo deja en 0 con su movimiento. Va DENTRO de una
- *  transacción, después de todas sus lecturas. Devuelve la cuenta al día. */
+ *  transacción, después de todas sus lecturas. Devuelve la cuenta al día.
+ *  `ahoraMs` se calcula fuera de la transacción (estable en sus reintentos). */
 function vencerCuentaEnTx(tx, nid, tel, cuenta, ahoraMs) {
   if (!cm.vencioConSaldo(cuenta, ahoraMs)) return cuenta;
-  tx.set(movRefCb(nid, tel, `ven_${cuenta.venceISO.replace(/\D/g, "")}`), {
+  tx.set(movRefCb(nid, tel, `ven_${cuenta.venceISO.replace(/\D/g, "")}_${ahoraMs}`), {
     tipo: "vencido",
     centavos: cuenta.saldoCentavos,
     saldoDespuesCentavos: 0,
@@ -3671,6 +3673,44 @@ function vencerCuentaEnTx(tx, nid, tel, cuenta, ahoraMs) {
   });
   tx.update(cuentaRefCb(nid, tel), {saldoCentavos: 0});
   return {...cuenta, saldoCentavos: 0};
+}
+
+// Cada uso de saldo en una venta vive en `movimientos/uso_{ventaId}` con su
+// estado: "usado" (descontado, la venta aún no sube), "devuelto" (el cobro no
+// se completó) o "confirmado" (la venta subió). Un uso "usado" de hace más de
+// 6 h sin venta se devuelve solo al consultar la cuenta (p. ej. la caja no
+// pudo devolverlo por falta de red). Si esa venta llega después, el
+// disparador vuelve a descontarlo.
+const PENDIENTE_CB_MS = 6 * 60 * 60 * 1000;
+const usosPendientesCb = (nid, tel) =>
+  cuentaRefCb(nid, tel).collection("movimientos").where("estado", "==", "usado");
+
+/** Devuelve (DENTRO de la tx, tras sus lecturas) los usos viejos sin venta.
+ *  `pendientes` = resultado de `tx.get(usosPendientesCb(...))`. */
+function devolverUsosViejosEnTx(tx, nid, tel, cuenta, pendientes, ahoraMs, exceptoVentaId) {
+  let saldo = cuenta.saldoCentavos || 0;
+  for (const u of pendientes.docs) {
+    const x = u.data();
+    if (x.ventaId === exceptoVentaId) continue;
+    if (ahoraMs - (Date.parse(x.ultimoUsoISO || x.fechaISO) || 0) < PENDIENTE_CB_MS) continue;
+    const ret = x.retenidoCentavos || 0;
+    saldo += ret;
+    tx.set(movRefCb(nid, tel, `dev_${x.ventaId}_${x.veces || 1}`), {
+      tipo: "devuelto", centavos: ret, saldoDespuesCentavos: saldo, ventaId: x.ventaId,
+      automatico: true, fechaISO: isoCb(ahoraMs),
+    });
+    tx.update(u.ref, {estado: "devuelto", retenidoCentavos: 0});
+    logger.warn("cashbackMayoreo_uso_devuelto_solo", {ventaId: x.ventaId, centavos: ret});
+  }
+  if (saldo === (cuenta.saldoCentavos || 0)) return cuenta;
+  tx.update(cuentaRefCb(nid, tel), {saldoCentavos: saldo});
+  return {...cuenta, saldoCentavos: saldo};
+}
+
+/** Vencimiento + usos viejos sin venta: la cuenta al día. */
+function cuentaAlDiaEnTx(tx, nid, tel, cuenta, pendientes, ahoraMs, exceptoVentaId) {
+  const c = vencerCuentaEnTx(tx, nid, tel, cuenta, ahoraMs);
+  return devolverUsosViejosEnTx(tx, nid, tel, c, pendientes, ahoraMs, exceptoVentaId);
 }
 
 /** Caja de una sucursal de mayoreo con el programa activo. */
@@ -3796,9 +3836,12 @@ exports.buscarCuentaCashbackMayoreo = onCall(OPC_CB, async (request) => {
   const {tel, via} = await telDeIdentificadorCb(c.negocioId, request.data || {}, {permitirTelefono: true});
   const ahoraMs = Date.now();
   const cuenta = await db.runTransaction(async (tx) => {
-    const s = await tx.get(cuentaRefCb(c.negocioId, tel));
+    const [s, pend] = await Promise.all([
+      tx.get(cuentaRefCb(c.negocioId, tel)),
+      tx.get(usosPendientesCb(c.negocioId, tel)),
+    ]);
     if (!s.exists) return null;
-    return vencerCuentaEnTx(tx, c.negocioId, tel, s.data(), ahoraMs);
+    return cuentaAlDiaEnTx(tx, c.negocioId, tel, s.data(), pend, ahoraMs);
   });
   const config = {pct: c.config.pct, vigencia: c.config.vigencia};
   if (!cuenta) {
@@ -3808,7 +3851,9 @@ exports.buscarCuentaCashbackMayoreo = onCall(OPC_CB, async (request) => {
   return {existe: true, ...resumenCuentaCb(cuenta, via, ahoraMs), config};
 });
 
-/** Descuenta saldo para una venta (antes de crearla). Idempotente por venta. */
+/** Descuenta saldo para una venta (antes de crearla). Idempotente por venta:
+ *  si ya está descontado no se repite; si se había devuelto (la terminal
+ *  rechazó la tarjeta y se reintenta), se vuelve a descontar. */
 exports.usarCashbackMayoreo = onCall(OPC_CB, async (request) => {
   const c = await cajaCashbackMayoreo(request.auth);
   const d = request.data || {};
@@ -3825,32 +3870,47 @@ exports.usarCashbackMayoreo = onCall(OPC_CB, async (request) => {
   return db.runTransaction(async (tx) => {
     const cuentaRef = cuentaRefCb(c.negocioId, tel);
     const usoRef = movRefCb(c.negocioId, tel, `uso_${ventaId}`);
-    const [cs, us] = await Promise.all([tx.get(cuentaRef), tx.get(usoRef)]);
+    const [cs, us, pend] = await Promise.all([
+      tx.get(cuentaRef), tx.get(usoRef), tx.get(usosPendientesCb(c.negocioId, tel)),
+    ]);
     if (!cs.exists) throw new HttpsError("not-found", "La cuenta ya no existe");
-    if (us.exists) {
-      if (us.get("centavos") !== centavos) {
+    const estado = us.exists ? us.get("estado") : null;
+    if (estado === "usado" || estado === "confirmado") {
+      if (us.get("retenidoCentavos") !== centavos) {
         throw new HttpsError("failed-precondition", "Esa venta ya usó otro monto de cashback");
       }
       return {telefono: tel, usadoCentavos: centavos,
         saldoCentavos: cm.saldoVigente(cs.data(), ahoraMs), ya: true};
     }
-    const cuenta = vencerCuentaEnTx(tx, c.negocioId, tel, cs.data(), ahoraMs);
+    const cuenta = cuentaAlDiaEnTx(tx, c.negocioId, tel, cs.data(), pend, ahoraMs, ventaId);
     const saldo = cm.saldoVigente(cuenta, ahoraMs);
     if (centavos > saldo) {
       throw new HttpsError("failed-precondition", `Saldo insuficiente: el cliente tiene ${pesosCb(saldo)}`);
     }
     const despues = saldo - centavos;
-    tx.set(usoRef, {
+    const ahora = isoCb(ahoraMs);
+    const mov = {
       tipo: "usado", centavos, saldoDespuesCentavos: despues, ventaId,
-      sucursalId: c.sucursalId, nodoId: c.nodoId, fechaISO: isoCb(ahoraMs),
-    });
+      sucursalId: c.sucursalId, nodoId: c.nodoId, fechaISO: ahora,
+    };
+    const control = {estado: "usado", retenidoCentavos: centavos, ultimoUsoISO: ahora,
+      sucursalId: c.sucursalId, nodoId: c.nodoId};
+    if (!us.exists) {
+      tx.set(usoRef, {...mov, ...control, veces: 1});
+    } else {
+      // Se había devuelto (rechazo de la tarjeta, etc.) y se reintenta.
+      const veces = (us.get("veces") || 1) + 1;
+      tx.set(movRefCb(c.negocioId, tel, `uso_${ventaId}_${veces}`), mov);
+      tx.update(usoRef, {...control, veces});
+    }
     tx.update(cuentaRef, {saldoCentavos: despues});
     return {telefono: tel, usadoCentavos: centavos, saldoCentavos: despues};
   });
 });
 
 /** Regresa lo usado si la venta no se completó (p. ej. falló la terminal).
- *  No devuelve si la venta ya subió (`ventaConfirmada`). Una sola vez. */
+ *  No devuelve si la venta ya subió (uso "confirmado"). Si se vuelve a
+ *  usar con el mismo folio, se descuenta otra vez. */
 exports.devolverCashbackMayoreo = onCall(OPC_CB, async (request) => {
   const c = await requireCaja(request.auth);
   const d = request.data || {};
@@ -3859,25 +3919,29 @@ exports.devolverCashbackMayoreo = onCall(OPC_CB, async (request) => {
     throw new HttpsError("invalid-argument", "Faltan el teléfono o el folio");
   }
   const ventaId = d.ventaId;
+  const ahoraMs = Date.now();
   return db.runTransaction(async (tx) => {
     const cuentaRef = cuentaRefCb(c.negocioId, tel);
     const usoRef = movRefCb(c.negocioId, tel, `uso_${ventaId}`);
-    const devRef = movRefCb(c.negocioId, tel, `dev_${ventaId}`);
-    const [cs, us, ds] = await Promise.all([tx.get(cuentaRef), tx.get(usoRef), tx.get(devRef)]);
+    const [cs, us] = await Promise.all([tx.get(cuentaRef), tx.get(usoRef)]);
     if (!cs.exists || !us.exists) return {devueltoCentavos: 0};
-    if (ds.exists) return {devueltoCentavos: ds.get("centavos"), ya: true};
-    if (us.get("ventaConfirmada") === true) {
+    const estado = us.get("estado");
+    if (estado === "devuelto") return {devueltoCentavos: 0, ya: true};
+    if (estado !== "usado") {
       throw new HttpsError("failed-precondition", "Esa venta ya se registró: no se devuelve el cashback");
     }
     if (us.get("sucursalId") !== c.sucursalId) {
       throw new HttpsError("permission-denied", "Ese cashback se usó en otra sucursal");
     }
-    const centavos = us.get("centavos");
-    const despues = (cs.get("saldoCentavos") || 0) + centavos;
-    tx.set(devRef, {
+    const centavos = us.get("retenidoCentavos") || 0;
+    // Si el saldo venció mientras tanto, lo devuelto también vence (1 de enero, etc.).
+    const cuenta = vencerCuentaEnTx(tx, c.negocioId, tel, cs.data(), ahoraMs);
+    const despues = (cuenta.saldoCentavos || 0) + centavos;
+    tx.set(movRefCb(c.negocioId, tel, `dev_${ventaId}_${us.get("veces") || 1}`), {
       tipo: "devuelto", centavos, saldoDespuesCentavos: despues, ventaId,
-      sucursalId: c.sucursalId, nodoId: c.nodoId, fechaISO: isoCb(Date.now()),
+      sucursalId: c.sucursalId, nodoId: c.nodoId, fechaISO: isoCb(ahoraMs),
     });
+    tx.update(usoRef, {estado: "devuelto", retenidoCentavos: 0});
     tx.update(cuentaRef, {saldoCentavos: despues});
     return {devueltoCentavos: centavos, saldoCentavos: despues};
   });
@@ -3911,8 +3975,15 @@ exports.vincularTarjetaCashbackMayoreo = onCall(OPC_CB, async (request) => {
     if (ts.exists) return;
     const anterior = cs.get("tarjeta");
     if (anterior && anterior !== tarjeta) tx.delete(neg.collection(COL_TARJETAS_MAYOREO).doc(anterior));
-    tx.create(tarjetaRef, {telefono: tel, creadoISO: isoCb(Date.now()), sucursalId: c.sucursalId});
+    const ahoraMs = Date.now();
+    tx.create(tarjetaRef, {telefono: tel, creadoISO: isoCb(ahoraMs), sucursalId: c.sucursalId});
     tx.update(cuentaRef, {tarjeta});
+    // Queda a la vista de admin: quién ligó qué tarjeta y cómo se verificó.
+    tx.set(movRefCb(c.negocioId, tel, `tar_${ahoraMs}`), {
+      tipo: "tarjeta_ligada", centavos: 0, tarjetaUltimos4: tarjeta.slice(-4),
+      verificadoCon: cm.leerQr(d.qr) ? "qr" : "en persona",
+      sucursalId: c.sucursalId, nodoId: c.nodoId, fechaISO: isoCb(ahoraMs),
+    });
   });
   return {tarjetaUltimos4: tarjeta.slice(-4)};
 });
@@ -3938,6 +4009,10 @@ exports.reponerPinCashbackMayoreo = onCall(OPC_CB_PIN, async (request) => {
       sal, pinHash: cm.hashPin(CASHBACK_PIN_PEPPER.value(), sal, pin), actualizadoISO: ahora,
     });
     tx.update(cuentaRef, {gen: (cs.get("gen") || 0) + 1, pinRepuestoISO: ahora, pinRepuestoPor: c.nodoId});
+    // Queda a la vista de admin: quién repuso el PIN.
+    tx.set(movRefCb(c.negocioId, tel, `pin_${Date.parse(ahora)}`), {
+      tipo: "pin_repuesto", centavos: 0, sucursalId: c.sucursalId, nodoId: c.nodoId, fechaISO: ahora,
+    });
     tx.delete(negRefCb(c.negocioId).collection(COL_CASHBACK_INTENTOS).doc(`tel_${cm.hashSesion(tel)}`));
   });
   logger.info("cashbackMayoreo_pin_repuesto", {tel4: tel.slice(-4), nodoId: c.nodoId});
@@ -3963,42 +4038,82 @@ exports.acreditarCashbackMayoreo = onDocumentCreated(
       const {negocioId, sucursalId, ventaId} = event.params;
       const tel = cm.normalizarTelefono(cb.telefono);
       if (!tel) return;
+      const usadoVenta = Number.isInteger(cb.usadoCentavos) && cb.usadoCentavos > 0 ? cb.usadoCentavos : 0;
       const [suc, cfgSnap] = await Promise.all([
         negRefCb(negocioId).collection(COL_SUCURSALES).doc(sucursalId).get(),
         configRefCb(negocioId).get(),
       ]);
       const config = cfgSnap.exists ? cfgSnap.data() : null;
-      if (!suc.exists || suc.get("modoMayoreo") !== true || !config ||
-          config.activo !== true || cm.validarConfig(config)) {
-        logger.warn("cashbackMayoreo_venta_sin_programa", {ventaId, sucursalId});
-        return;
-      }
+      const activo = suc.exists && suc.get("modoMayoreo") === true && !!config &&
+        config.activo === true && !cm.validarConfig(config);
+      if (!activo) logger.warn("cashbackMayoreo_venta_sin_programa", {ventaId, sucursalId});
       const giftTotal = (Array.isArray(v.articulos) ? v.articulos : [])
           .filter((a) => a && a.giftCard)
           .reduce((s, a) => s + (Number(a.cantidad) || 0) * (Number(a.descuento) || Number(a.precio) || 0), 0);
-      const ganado = cm.ganadoCentavos(Math.max(0, (Number(v.montoCobro) || 0) - giftTotal), config.pct);
-      const compraMs = Date.parse(v.fechaISO) || Date.now();
+      const ganado = activo ?
+        cm.ganadoCentavos(Math.max(0, (Number(v.montoCobro) || 0) - giftTotal), config.pct) : 0;
+      // La fecha la pone la tablet: nunca en el futuro (alargaría la vigencia).
+      const compraMs = Math.min(Date.parse(v.fechaISO) || Date.now(), Date.now());
       await db.runTransaction(async (tx) => {
         const cuentaRef = cuentaRefCb(negocioId, tel);
         const ganRef = movRefCb(negocioId, tel, `gan_${ventaId}`);
         const usoRef = movRefCb(negocioId, tel, `uso_${ventaId}`);
         const [cs, gs, us] = await Promise.all([tx.get(cuentaRef), tx.get(ganRef), tx.get(usoRef)]);
-        if (!cs.exists || gs.exists) return;
+        if (!cs.exists) return;
+        const estadoUso = us.exists ? us.get("estado") : null;
+        const ganar = activo && !gs.exists;
+        // Uso de saldo: se confirma; si la caja lo había devuelto (o nunca se
+        // descontó) pero la venta sí guardó el descuento, se descuenta otra vez.
+        const recobrar = usadoVenta > 0 && estadoUso !== "usado" && estadoUso !== "confirmado";
+        // La venta subió SIN el descuento que se había apartado: se regresa.
+        const soltar = usadoVenta === 0 && estadoUso === "usado";
+        if (!ganar && !recobrar && !soltar && estadoUso !== "usado") return;
         // Si el saldo ya había vencido al momento de esta compra, se pierde antes de sumar.
         const cuenta = vencerCuentaEnTx(tx, negocioId, tel, cs.data(), compraMs);
-        const ultimaMs = Math.max(compraMs, Date.parse(cuenta.ultimaCompraISO || "") || 0);
-        const despues = (cuenta.saldoCentavos || 0) + ganado;
-        tx.set(ganRef, {
-          tipo: "ganado", centavos: ganado, saldoDespuesCentavos: despues, ventaId,
-          sucursalId, nodoId: v.nodoId || null, numeroDeVenta: v.numeroDeVenta || null,
-          fechaISO: isoCb(compraMs),
-        });
-        tx.update(cuentaRef, {
-          saldoCentavos: despues,
-          ultimaCompraISO: isoCb(ultimaMs),
-          venceISO: isoCb(cm.calcularVence(ultimaMs, config.vigencia)),
-        });
-        if (us.exists) tx.update(usoRef, {ventaConfirmada: true});
+        let saldo = cuenta.saldoCentavos || 0;
+        const ahora = isoCb(Date.now());
+        if (recobrar) {
+          const cobrar = Math.min(usadoVenta, saldo);
+          saldo -= cobrar;
+          const veces = us.exists ? (us.get("veces") || 1) + 1 : 1;
+          const mov = {
+            tipo: "usado", centavos: cobrar, saldoDespuesCentavos: saldo, ventaId,
+            sucursalId, nodoId: v.nodoId || null, fechaISO: ahora, automatico: true,
+            ...(cobrar < usadoVenta ? {faltanteCentavos: usadoVenta - cobrar} : {}),
+          };
+          const control = {estado: "confirmado", ventaConfirmada: true, retenidoCentavos: cobrar, veces};
+          if (us.exists) {
+            tx.set(movRefCb(negocioId, tel, `uso_${ventaId}_${veces}`), mov);
+            tx.update(usoRef, control);
+          } else {
+            tx.set(usoRef, {...mov, ...control, ultimoUsoISO: ahora});
+          }
+          logger.warn("cashbackMayoreo_uso_recobrado", {ventaId, usadoVenta, cobrar});
+        } else if (soltar) {
+          const ret = us.get("retenidoCentavos") || 0;
+          saldo += ret;
+          tx.set(movRefCb(negocioId, tel, `dev_${ventaId}_${us.get("veces") || 1}`), {
+            tipo: "devuelto", centavos: ret, saldoDespuesCentavos: saldo, ventaId,
+            automatico: true, fechaISO: ahora,
+          });
+          tx.update(usoRef, {estado: "devuelto", retenidoCentavos: 0});
+        } else if (estadoUso === "usado") {
+          tx.update(usoRef, {estado: "confirmado", ventaConfirmada: true});
+        }
+        const upd = {saldoCentavos: saldo};
+        if (ganar) {
+          const ultimaMs = Math.max(compraMs, Date.parse(cuenta.ultimaCompraISO || "") || 0);
+          saldo += ganado;
+          upd.saldoCentavos = saldo;
+          upd.ultimaCompraISO = isoCb(ultimaMs);
+          upd.venceISO = isoCb(cm.calcularVence(ultimaMs, config.vigencia));
+          tx.set(ganRef, {
+            tipo: "ganado", centavos: ganado, saldoDespuesCentavos: saldo, ventaId,
+            sucursalId, nodoId: v.nodoId || null, numeroDeVenta: v.numeroDeVenta || null,
+            fechaISO: isoCb(compraMs),
+          });
+        }
+        tx.update(cuentaRef, upd);
       });
     },
 );
@@ -4009,10 +4124,13 @@ function negocioPublicoCb(nid) {
   return typeof nid === "string" && /^[a-z0-9-]{1,40}$/.test(nid) ? nid : "amise";
 }
 
+/** IP del cliente: la ÚLTIMA de X-Forwarded-For, que agrega el front de
+ *  Google. Las de antes las pone quien llama (se pueden inventar). */
 function ipDeCb(request) {
   const raw = request.rawRequest || {};
   const xff = raw.headers && raw.headers["x-forwarded-for"];
-  return (typeof xff === "string" && xff.split(",")[0].trim()) || raw.ip || "?";
+  const partes = typeof xff === "string" ? xff.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  return partes[partes.length - 1] || raw.ip || "?";
 }
 
 /** Sesión vigente de la página (y la cuenta no cambió de PIN desde entonces). */
@@ -4037,14 +4155,25 @@ async function sesionClienteCb(d) {
   return {nid, ref, tel: ses.telefono};
 }
 
-/** Revisa el PIN contando los fallos (por teléfono y por IP). */
+/** Revisa el PIN. El intento se cuenta ANTES de revisarlo y en una sola
+ *  transacción con el bloqueo (por teléfono y por IP): muchas peticiones en
+ *  paralelo no pueden pasar del límite. Si acierta, se borra el conteo. */
 async function revisarPinCb(request, nid, tel, pin) {
   const ahoraMs = Date.now();
   const intentos = negRefCb(nid).collection(COL_CASHBACK_INTENTOS);
   const ipRef = intentos.doc(`ip_${cm.hashSesion(ipDeCb(request))}`);
   const telRef = intentos.doc(`tel_${cm.hashSesion(tel || "sin-telefono")}`);
-  const [ipS, telS] = await Promise.all([ipRef.get(), telRef.get()]);
-  if (cm.ipBloqueada(ipS.data(), ahoraMs) || cm.bloqueado(telS.data(), ahoraMs)) {
+  const bloqueado = await db.runTransaction(async (tx) => {
+    const [i, t] = await Promise.all([tx.get(ipRef), tx.get(telRef)]);
+    const ip = i.exists ? i.data() : null;
+    const te = t.exists ? t.data() : null;
+    if (cm.ipBloqueada(ip, ahoraMs) || cm.bloqueado(te, ahoraMs)) return true;
+    tx.set(ipRef, cm.ipTrasFallo(ip, ahoraMs));
+    tx.set(telRef, cm.trasFallo(te, ahoraMs));
+    return false;
+  });
+  if (bloqueado) {
+    logger.warn("cashbackMayoreo_pin_bloqueado", {tel4: tel ? tel.slice(-4) : null});
     throw new HttpsError("resource-exhausted",
         "Demasiados intentos. Espera un rato y vuelve a intentar, o acude a la tienda.");
   }
@@ -4055,15 +4184,13 @@ async function revisarPinCb(request, nid, tel, pin) {
     if (acc.exists) ok = cm.pinCoincide(pepper, acc.get("sal"), String(pin), acc.get("pinHash"));
     else cm.hashPin(pepper, "0".repeat(32), String(pin)); // el mismo trabajo, exista o no
   }
-  if (!ok) {
-    await db.runTransaction(async (tx) => {
-      const [i, t] = await Promise.all([tx.get(ipRef), tx.get(telRef)]);
-      tx.set(ipRef, cm.ipTrasFallo(i.exists ? i.data() : null, ahoraMs));
-      tx.set(telRef, cm.trasFallo(t.exists ? t.data() : null, ahoraMs));
-    });
-    return false;
-  }
-  if (telS.exists) await telRef.delete();
+  if (!ok) return false;
+  await telRef.delete();
+  // El acierto no cuenta como fallo de esa IP.
+  await db.runTransaction(async (tx) => {
+    const i = await tx.get(ipRef);
+    if (i.exists && (i.get("fallos") || 0) > 0) tx.update(ipRef, {fallos: i.get("fallos") - 1});
+  }).catch(() => {});
   return true;
 }
 
@@ -4093,9 +4220,11 @@ exports.estadoCashbackCliente = onCall(OPC_CB_CLIENTE, async (request) => {
   const {nid, tel} = await sesionClienteCb(request.data);
   const ahoraMs = Date.now();
   const cuenta = await db.runTransaction(async (tx) => {
-    const s = await tx.get(cuentaRefCb(nid, tel));
-    return vencerCuentaEnTx(tx, nid, tel, s.data(), ahoraMs);
+    const [s, pend] = await Promise.all([tx.get(cuentaRefCb(nid, tel)), tx.get(usosPendientesCb(nid, tel))]);
+    if (!s.exists) return null;
+    return cuentaAlDiaEnTx(tx, nid, tel, s.data(), pend, ahoraMs);
   });
+  if (!cuenta) throw new HttpsError("unauthenticated", "Tu sesión terminó. Vuelve a entrar.");
   const [cfgS, movs] = await Promise.all([
     configRefCb(nid).get(),
     cuentaRefCb(nid, tel).collection("movimientos").orderBy("fechaISO", "desc").limit(60).get(),

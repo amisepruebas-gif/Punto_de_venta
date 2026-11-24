@@ -87,6 +87,24 @@ export function useCuentasCashbackMayoreo(max = 300) {
   return { cuentas, loading };
 }
 
+/** Una cuenta por teléfono (para las que no están entre las más recientes). */
+export function useCuentaCashbackPorTelefono(telefono: string | null) {
+  const { negocioId } = useNegocio();
+  const [cuenta, setCuenta] = useState<CuentaCashbackMayoreo | null>(null);
+
+  useEffect(() => {
+    setCuenta(null);
+    if (!negocioId || !telefono) return;
+    return onSnapshot(
+      doc(db, paths.clienteMayoreo(negocioId, telefono)),
+      (snap) => setCuenta(snap.exists() ? (snap.data() as CuentaCashbackMayoreo) : null),
+      (err) => console.error("useCuentaCashbackPorTelefono:", err),
+    );
+  }, [negocioId, telefono]);
+
+  return cuenta;
+}
+
 export async function movimientosCashback(
   negocioId: string,
   telefono: string,

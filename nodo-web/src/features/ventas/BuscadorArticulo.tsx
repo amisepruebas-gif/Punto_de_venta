@@ -199,24 +199,26 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
   function intentarExacto(texto: string): boolean {
     if (cargandoSucursal) return false;
     // Caja de mayoreo: el QR de la página del cliente o su tarjeta (13
-    // dígitos) abren el cashback en vez de buscarse como artículo.
-    if (modoMayoreo) {
-      const t = texto.trim();
-      const d = t.replace(/\D/g, "");
-      if (leerQrCashback(t) || (d.length === 13 && d === t && ean13Ok(d))) {
-        setQ("");
-        setAbierto(false);
-        useCashbackMayoreo.getState().abrir(t);
-        return true;
-      }
-    }
+    // dígitos) abren el cashback. La tarjeta, solo si no es el código de un
+    // artículo (un producto puede traer su EAN-13).
+    const abrirCashback = (t: string) => {
+      setQ("");
+      setAbierto(false);
+      useCashbackMayoreo.getState().abrir(t);
+      return true;
+    };
+    if (modoMayoreo && leerQrCashback(texto.trim())) return abrirCashback(texto.trim());
     const r = resolverCodigoExacto(
       texto,
       byId,
       bySigla,
       (id) => !!entryPorId.get(id)?.tieneVariaciones,
     );
-    if (!r) return false;
+    if (!r) {
+      const t = texto.trim();
+      if (modoMayoreo && /^\d{13}$/.test(t) && ean13Ok(t)) return abrirCashback(t);
+      return false;
+    }
     setQ("");
     setAbierto(false);
     if (!articuloVisibleEnSucursal(r.padre, modoMayoreo)) {

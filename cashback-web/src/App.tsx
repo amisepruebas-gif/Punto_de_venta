@@ -324,16 +324,19 @@ function MiQr({ sesion, onAtras, onSesion }: { sesion: Sesion; onAtras: () => vo
   const [aviso, setAviso] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
 
-  const cargar = useCallback(async (nuevo = false) => {
+  /** `true` si se cargó (o cambió) el QR. */
+  const cargar = useCallback(async (nuevo = false): Promise<boolean> => {
     setError(null);
     try {
       const r = await leerQr({ sesion: sesion.sesion, ...(nuevo ? { nuevo: true } : {}) });
       if (!r.qr) throw new Error("Tu cuenta no tiene QR todavía. Pídelo en la tienda.");
       setToken(r.qr);
       setImg(await imagenQr(r.qr));
+      return true;
     } catch (e) {
       if ((e as { code?: string })?.code === "functions/unauthenticated") onSesion(null);
       else setError(mensajeError(e));
+      return false;
     }
   }, [sesion.sesion, onSesion]);
 
@@ -354,8 +357,8 @@ function MiQr({ sesion, onAtras, onSesion }: { sesion: Sesion; onAtras: () => vo
   async function cambiar() {
     if (!window.confirm("¿Cambiar tu QR? El QR anterior dejará de servir.")) return;
     setTrabajando(true);
-    await cargar(true);
-    setAviso("Listo: tu QR cambió. El anterior ya no sirve.");
+    setAviso(null);
+    if (await cargar(true)) setAviso("Listo: tu QR cambió. El anterior ya no sirve.");
     setTrabajando(false);
   }
 
