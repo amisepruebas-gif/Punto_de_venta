@@ -1007,6 +1007,7 @@ export function planearRecepcionLote(args: {
     quien: meta.quien.trim(),
     ...(meta.nodoId ? { nodoId: meta.nodoId } : {}),
     ...(meta.vendedor ? { vendedor: meta.vendedor } : {}),
+    ...(ubicacion.tipo === "bodegaSucursal" ? { destino: "bodega" as const } : {}),
     ...(cajas.length > 0 ? { cajas } : {}),
     ...(paquetes.length > 0 ? { paquetes } : {}),
     ...(paquetesDanados.length > 0 ? { paquetesDanados } : {}),

@@ -2327,16 +2327,138 @@ exports.loginMercanciaConPin = onCall(
         throw new HttpsError("permission-denied", "Acceso deshabilitado");
       }
 
-      // Éxito: reset del rate-limit + customToken con claims role:"mercancia".
+      // Éxito: reset del rate-limit + customToken con el rol del usuario.
+      // `acceso: "existencias"` es el encargado de tienda: su rol `encargado`
+      // solo lee (ver firestore.rules) y mueve piezas con `moverExistencias`.
+      // Sin `acceso` es el usuario de siempre, rol `mercancia`.
       await rlRef.set({winStart: now, count: 0}, {merge: true});
       const mercanciaUid = docSnap.id;
+      const acceso = data.acceso === "existencias" ? "existencias" : "completo";
       const token = await admin.auth().createCustomToken(mercanciaUid, {
-        role: "mercancia",
+        role: acceso === "existencias" ? "encargado" : "mercancia",
         negocioId,
         sucursalId,
         mercanciaUid,
       });
-      return {token, usuarioId: mercanciaUid, nombre: data.nombre || ""};
+      return {token, usuarioId: mercanciaUid, nombre: data.nombre || "", acceso};
+    },
+);
+
+// ============================================================
+// moverExistencias — piezas entre la bodega y la tienda de una sucursal
+// ============================================================
+// La llama mercancia-web con la sesión del PIN (rol `encargado` o
+// `mercancia`). El encargado no escribe nada en Firestore: esta CF es la
+// única forma de cambiar sus existencias, y solo MUEVE (lo que sale de un
+// lado entra al otro; nunca más de lo que hay en el origen). Todo o nada, en
+// una transacción, junto con su registro (quién, cuándo, antes y después).
+// El id del movimiento lo pone la app: repetir la llamada no mueve dos veces.
+// Lógica pura en lib/existenciasTienda.js.
+const existenciasTienda = require("./lib/existenciasTienda");
+
+exports.moverExistencias = onCall(
+    {timeoutSeconds: 30, memory: "256MiB"},
+    async (request) => {
+      const t = (request.auth && request.auth.token) || {};
+      if (!request.auth || !["encargado", "mercancia"].includes(t.role) ||
+          !t.negocioId || !t.sucursalId) {
+        throw new HttpsError("permission-denied", "Entra con tu PIN para mover existencias");
+      }
+      let peticion;
+      try {
+        peticion = existenciasTienda.normalizarPeticion(request.data);
+      } catch (e) {
+        throw new HttpsError("invalid-argument", e.message);
+      }
+      const {negocioId, sucursalId} = t;
+      const usuarioId = request.auth.uid;
+      const negocioRef = db.collection(COL_NEGOCIOS).doc(negocioId);
+      const sucDataRef = negocioRef
+          .collection(`sucursales_data${SUFFIX}`).doc(sucursalId);
+
+      // La persona sigue habilitada (el token dura una hora) y la sucursal
+      // maneja bodega y tienda (las de mayoreo).
+      const [usuarioSnap, sucursalSnap] = await Promise.all([
+        sucDataRef.collection(`usuariosMercancia${SUFFIX}`).doc(usuarioId).get(),
+        negocioRef.collection(COL_SUCURSALES).doc(sucursalId).get(),
+      ]);
+      if (!usuarioSnap.exists || usuarioSnap.get("habilitado") !== true) {
+        throw new HttpsError("permission-denied", "Tu acceso está deshabilitado");
+      }
+      if (!sucursalSnap.exists || sucursalSnap.get("modoMayoreo") !== true) {
+        throw new HttpsError("failed-precondition",
+            "Esta sucursal no maneja bodega y tienda");
+      }
+      const usuarioNombre = String(usuarioSnap.get("nombre") || "");
+      const ubicacion = await cargarUbicacionStock(negocioRef, sucursalId);
+      const movRef = sucDataRef
+          .collection(`movimientos_existencias${SUFFIX}`).doc(peticion.movimientoId);
+      const artRef = (id) =>
+        negocioRef.collection("articulos_n_web_new_version").doc(id);
+
+      const r = await db.runTransaction(async (tx) => {
+        const previo = await tx.get(movRef);
+        if (previo.exists) return {previo: previo.data()};
+        const ids = [...new Set(peticion.renglones.map((x) => x.articuloId))];
+        const snaps = await tx.getAll(...ids.map(artRef));
+        const articulos = new Map(
+            snaps.map((s) => [s.id, s.exists ? s.data() : null]));
+        const plan = existenciasTienda.planearMovimiento(
+            articulos, peticion.renglones, peticion.direccion, ubicacion);
+        if (plan.faltantes.length > 0) return {faltantes: plan.faltantes};
+        plan.patches.forEach((patch, id) => tx.update(artRef(id), patch));
+        const movimiento = {
+          movimientoId: peticion.movimientoId,
+          sucursalId,
+          direccion: peticion.direccion,
+          renglones: plan.renglones,
+          piezas: plan.renglones.reduce((acc, x) => acc + x.piezas, 0),
+          usuarioId,
+          usuarioNombre,
+          fecha: new Date().toISOString(),
+          creadoEn: FieldValue.serverTimestamp(),
+        };
+        tx.create(movRef, movimiento);
+        return {movimiento};
+      });
+
+      if (r.faltantes) {
+        throw new HttpsError("failed-precondition",
+            existenciasTienda.mensajeFaltantes(r.faltantes, peticion.direccion),
+            {faltantes: r.faltantes.map((f) => ({
+              articuloId: f.articuloId,
+              subvariacionCodigo: f.subvariacionCodigo || null,
+              motivo: f.motivo,
+              piezas: f.piezas,
+              hay: typeof f.hay === "number" ? f.hay : null,
+            }))});
+      }
+      if (r.previo) {
+        // La misma llamada repetida (se perdió la respuesta): no mueve otra
+        // vez. Si ese id es de otra persona, no es un reintento.
+        if (r.previo.usuarioId !== usuarioId) {
+          throw new HttpsError("already-exists", "Ese movimiento ya existe");
+        }
+        return {
+          ok: true, ya: true,
+          direccion: r.previo.direccion,
+          piezas: r.previo.piezas,
+          renglones: r.previo.renglones,
+        };
+      }
+      logger.info("moverExistencias", {
+        negocioId, sucursalId, usuarioId,
+        movimientoId: peticion.movimientoId,
+        direccion: peticion.direccion,
+        piezas: r.movimiento.piezas,
+        renglones: r.movimiento.renglones.length,
+      });
+      return {
+        ok: true, ya: false,
+        direccion: r.movimiento.direccion,
+        piezas: r.movimiento.piezas,
+        renglones: r.movimiento.renglones,
+      };
     },
 );
 
@@ -2991,6 +3113,7 @@ exports.cerrarCreditoRegalo = onCall(
 //     un precio viejo (editor abierto, app sin actualizar), lo corrige. Las
 //     ventas solo tocan stock y salen sin leer nada.
 const zonaPrecio = require("./lib/zonaPrecio");
+const preciosMayoreo = require("./lib/preciosMayoreo");
 
 function generarHuella() {
   const d = new Date();
@@ -3050,19 +3173,76 @@ exports.asegurarPrecioZona = onDocumentWritten(
         event.data.before.data() : null;
       const despues = event.data && event.data.after.exists ?
         event.data.after.data() : null;
-      if (!zonaPrecio.requiereVerificarZona(antes, despues)) return;
-
       const {negocioId, articuloId} = event.params;
-      const zonaSnap = await db.collection(COL_NEGOCIOS).doc(negocioId)
-          .collection("zonas_precio_web_new_version")
-          .doc(despues.zonaPrecioId).get();
-      if (!zonaSnap.exists) return;
-      const patch = zonaPrecio.calcularPatchZona(despues, zonaSnap.data());
+      const negocioRef = db.collection(COL_NEGOCIOS).doc(negocioId);
+
+      if (zonaPrecio.requiereVerificarZona(antes, despues)) {
+        const zonaSnap = await negocioRef
+            .collection("zonas_precio_web_new_version")
+            .doc(despues.zonaPrecioId).get();
+        if (!zonaSnap.exists) return;
+        const patch = zonaPrecio.calcularPatchZona(despues, zonaSnap.data());
+        if (!patch) return;
+        await event.data.after.ref.update(patch);
+        console.log(
+            `asegurarPrecioZona ${negocioId}/${articuloId}: precio de zona ` +
+            `${despues.zonaPrecioId} restaurado`);
+        return;
+      }
+
+      // Misma red de seguridad para la escalera de mayoreo (categoría →
+      // subcategoría): un artículo «Solo mayoreo» sin precio propio ni zona
+      // siempre queda con el precio de su nivel. Con zona manda la zona, así
+      // que los dos caminos no se cruzan.
+      if (!preciosMayoreo.requiereVerificarPrecio(antes, despues)) return;
+      const preciosSnap = await negocioRef
+          .collection("datos_web_new_version").doc("_preciosMayoreo").get();
+      const patch = preciosMayoreo.calcularPatchPrecio(
+          despues, preciosSnap.exists ? preciosSnap.data() : null);
       if (!patch) return;
       await event.data.after.ref.update(patch);
       console.log(
-          `asegurarPrecioZona ${negocioId}/${articuloId}: precio de zona ` +
-          `${despues.zonaPrecioId} restaurado`);
+          `asegurarPrecioZona ${negocioId}/${articuloId}: precio de mayoreo ` +
+          `restaurado ($${patch.precioVenta} / $${patch.precioMenudeo})`);
+    },
+);
+
+// Precios de mayoreo en escalera (lib/preciosMayoreo.js): al cambiar el
+// precio de una categoría o subcategoría en `datos/_preciosMayoreo`,
+// reescribe solo los artículos «Solo mayoreo» que lo heredan y difieren. Si
+// se borra el doc, los artículos conservan su último precio.
+exports.sincronizarPreciosMayoreo = onDocumentWritten(
+    {
+      document: "negocios_web_new_version/{negocioId}/" +
+        "datos_web_new_version/_preciosMayoreo",
+    },
+    async (event) => {
+      const {negocioId} = event.params;
+      const despues = event.data && event.data.after.exists ?
+        event.data.after.data() : null;
+      if (!despues) return;
+
+      const base = db.collection(COL_NEGOCIOS).doc(negocioId);
+      const arts = await base.collection("articulos_n_web_new_version")
+          .where("soloMayoreo", "==", true).get();
+      if (arts.empty) return;
+
+      const writer = db.bulkWriter();
+      let escritos = 0;
+      arts.forEach((d) => {
+        const patch = preciosMayoreo.calcularPatchPrecio(d.data(), despues);
+        if (!patch) return;
+        writer.update(d.ref, patch);
+        escritos++;
+      });
+      await writer.close();
+      if (escritos > 0) {
+        await base.collection("datos_web_new_version").doc("articulos_ac")
+            .set({huella: generarHuella()}, {merge: true});
+      }
+      console.log(
+          `sincronizarPreciosMayoreo ${negocioId}: ` +
+          `${escritos}/${arts.size} artículos actualizados`);
     },
 );
 

@@ -293,6 +293,18 @@ export type ArticuloSubvariacion = {
    *  `cantidadPorSucursal[sid]` salvo que `sid` sea el `sucursalDefaultId`
    *  del negocio, en cuyo caso suma a `cantidad`. */
   cantidadPorSucursal?: { [sucursalId: string]: string };
+  /** Existencia de esta subvariación en la BODEGA DE UNA TIENDA (la
+   *  trastienda de esa sucursal), por sucursal. No es `cantidadBodega`, que
+   *  es la bodega general del negocio (el Taller). Solo se mueve con
+   *  `planearMovimientoStock` (ubicación `bodegaSucursal`) y con la function
+   *  `moverExistencias`. */
+  cantidadBodegaSucursal?: { [sucursalId: string]: string };
+  /** Código de 8 dígitos para la etiqueta y el lector. Solo en artículos
+   *  «Solo mayoreo»: cada variación es un artículo final con su propio
+   *  código. Único en el negocio (sale del mismo consecutivo que los ids de
+   *  artículo, ver `siguienteArticuloId`). El `codigo` `v-NN-XXX` sigue
+   *  siendo la identidad interna. */
+  codigoBarras?: string;
   /** Precio con descuento de esta subvariación. Si está presente y > 0
    *  reemplaza al `Articulo.precioVenta` del padre para esta sub al
    *  cobrarse en el POS. `precioVenta` sigue siendo único en el padre —
@@ -346,6 +358,10 @@ export type Articulo = {
   /** Stock por sucursal (sólo para sucursales NO default). Mismo criterio
    *  que `ArticuloSubvariacion.cantidadPorSucursal`. */
   cantidadPorSucursal?: { [sucursalId: string]: string };
+  /** Existencia en la bodega de cada tienda (por sucursal). Mismo criterio
+   *  que `ArticuloSubvariacion.cantidadBodegaSucursal`. Con subvariaciones
+   *  el padre NO guarda la suma (igual que `cantidadPorSucursal`). */
+  cantidadBodegaSucursal?: { [sucursalId: string]: string };
   preciCompra: string; // typo histórico preservado
   precioVenta: string;
   utilidad: string;
@@ -391,6 +407,13 @@ export type Articulo = {
    *  mayor que `precioVenta` (ver `validarPrecioMenudeo`). Es de cada
    *  artículo: la zona de precios no lo toca. */
   precioMenudeo?: string;
+  /** Solo con `soloMayoreo`. `true` → `precioVenta` y `precioMenudeo` son
+   *  de este artículo. Ausente → son copia viva del precio de su
+   *  subcategoría o de su categoría (`PreciosMayoreo`, ver
+   *  `resolverPrecioMayoreo`); las mantienen las functions
+   *  `sincronizarPreciosMayoreo` y `asegurarPrecioZona`. Con `zonaPrecioId`
+   *  manda la zona. */
+  precioPropio?: boolean;
   /** Dado de alta desde Fabricación (mercancía propia). Su stock solo se
    *  mueve con lotes de producción, ajustes con motivo, embarques y
    *  ventas — los editores generales lo muestran de solo lectura. */
@@ -828,6 +851,9 @@ export type LoteSesion = {
   nodoId?: string;
   /** Vendedor en turno en la caja al terminar. */
   vendedor?: string;
+  /** A dónde entró lo recibido en la sucursal: su tienda (ausente = tienda,
+   *  lo de siempre) o la bodega de esa tienda. */
+  destino?: "tienda" | "bodega";
   /** Llaves de las cajas cuya llegada se anotó en esta sesión. */
   cajas?: string[];
   /** Llaves de los paquetes escaneados cerrados: vale su contenido declarado. */
@@ -1024,10 +1050,72 @@ export type ZonaPrecio = {
 
 // ---------- Fabricación e inventario ----------
 /** Dónde está el stock: la bodega global (en Fabricación se muestra como
- *  "Taller", campo `cantidadBodega`) o la tienda de una sucursal. */
+ *  "Taller", campo `cantidadBodega`), la tienda de una sucursal o la bodega
+ *  de esa tienda (`cantidadBodegaSucursal[sid]`). */
 export type UbicacionInventario =
   | { tipo: "bodega" }
-  | { tipo: "sucursal"; sucursalId: string };
+  | { tipo: "sucursal"; sucursalId: string }
+  | { tipo: "bodegaSucursal"; sucursalId: string };
+
+// ---------- Mayoreo: precios por categoría y existencias de tienda ----------
+/** Los dos precios de mayoreo de una categoría o subcategoría. */
+export type PrecioMayoreoNivel = {
+  /** Precio normal de la caja de mayoreo (va a `Articulo.precioVenta`). */
+  precio: number;
+  /** Precio con menos de `PIEZAS_MAYOREO` piezas (va a `precioMenudeo`).
+   *  Mayor que `precio`. */
+  menudeo: number;
+};
+
+/**
+ * Precios de mayoreo en escalera: categoría → subcategoría → artículo. Vive
+ * en `datos_web_new_version/_preciosMayoreo` (solo admin lo escribe). Los
+ * artículos «Solo mayoreo» sin `precioPropio` ni zona guardan copia del
+ * nivel que les toca (ver `resolverPrecioMayoreo`).
+ */
+export type PreciosMayoreo = {
+  categorias?: { [categoriaId: string]: PrecioMayoreoNivel };
+  subcategorias?: { [subcategoriaId: string]: PrecioMayoreoNivel };
+};
+
+export type DireccionMovimientoExistencias = "bodega_a_tienda" | "tienda_a_bodega";
+
+/** Un artículo final dentro de un movimiento, con sus cantidades antes y
+ *  después en la bodega y en la tienda de esa sucursal. */
+export type RenglonMovimientoExistencias = {
+  articuloId: string;
+  subvariacionCodigo?: string;
+  /** Código de 8 dígitos del artículo final. */
+  codigo: string;
+  nombre: string;
+  piezas: number;
+  bodegaAntes: number;
+  bodegaDespues: number;
+  tiendaAntes: number;
+  tiendaDespues: number;
+};
+
+/**
+ * Movimiento de piezas entre la bodega y la tienda de una sucursal. No crea
+ * ni quita piezas. Inmutable; solo lo escribe la function
+ * `moverExistencias`. Vive en
+ * `sucursales_data_web_new_version/{sid}/movimientos_existencias_web_new_version/{id}`.
+ */
+export type MovimientoExistencias = {
+  movimientoId: string;
+  sucursalId: string;
+  direccion: DireccionMovimientoExistencias;
+  renglones: RenglonMovimientoExistencias[];
+  /** Suma de piezas de los renglones. */
+  piezas: number;
+  /** Id del usuario de mercancía (el del PIN) que lo hizo. */
+  usuarioId: string;
+  usuarioNombre: string;
+  /** ISO 8601 con la hora del servidor. */
+  fecha: string;
+  /** Timestamp del servidor (para ordenar). */
+  creadoEn: unknown;
+};
 
 /**
  * Lote de producción de mercancía propia. Inmutable: un error se corrige
@@ -1090,10 +1178,18 @@ export type AjusteInventario = {
  * con salt por documento. El admin puede cambiar el PIN desde el dashboard;
  * el usuario nunca ve el hash.
  */
+/** Qué puede hacer un usuario de mercancía. `completo`: todo lo de la app
+ *  (como siempre). `existencias`: encargado de tienda — solo ve existencias
+ *  y mueve piezas entre la bodega y la tienda con `moverExistencias`; su
+ *  sesión lleva el rol `encargado`, que no escribe nada en Firestore. */
+export type AccesoMercancia = "completo" | "existencias";
+
 export type UsuarioMercancia = {
   /** Auto-generado al crear; sirve como segmento del path. */
   id: string;
   nombre: string;
+  /** Ausente = `completo`. */
+  acceso?: AccesoMercancia;
   /** Hash del PIN. Ver `lib/pinHash` en cada cliente — algoritmo idéntico. */
   pinHash: string;
   /** `false` deshabilita el login sin borrar el registro. */

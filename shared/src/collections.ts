@@ -33,6 +33,9 @@ export const COL_APARTADOS = `apartados${SUFFIX}`;
 export const COL_CONTADORES = `contadores${SUFFIX}`;
 /** Usuarios con PIN para entrar a `mercancia-web`. Scope por sucursal. */
 export const COL_USUARIOS_MERCANCIA = `usuariosMercancia${SUFFIX}`;
+/** Movimientos de piezas entre la bodega y la tienda de una sucursal. Solo
+ *  los escribe la function `moverExistencias`. */
+export const COL_MOVIMIENTOS_EXISTENCIAS = `movimientos_existencias${SUFFIX}`;
 
 /** Resurtidos (transferencias bodega → sucursal). Scope por negocio. */
 export const COL_RESURTIDOS = `resurtidos${SUFFIX}`;
@@ -103,6 +106,12 @@ export const DOC_CONTADOR_FABRICACION = "_contadorFabricacion";
 /** Contador de las etiquetas numeradas de lote. Shape: `{ ultimo: number }`.
  *  Solo admin lo escribe (regla dedicada). */
 export const DOC_CONTADOR_ETIQUETAS_LOTE = "_contadorEtiquetasLote";
+/** Consecutivo de ids de artículo (y de los códigos de 8 dígitos de las
+ *  variaciones de mayoreo). Shape: `{ ultimoId: string }`. */
+export const DOC_CONTADOR_ARTICULOS = "_contadorArticulos";
+/** Precios de mayoreo por categoría y subcategoría (`PreciosMayoreo`). Solo
+ *  admin lo escribe (regla dedicada). */
+export const DOC_PRECIOS_MAYOREO = "_preciosMayoreo";
 
 // Storage paths
 export const STORAGE_MEDIA_ARTICULOS = `media${SUFFIX}/articulos`;
@@ -151,6 +160,10 @@ export const paths = {
     `${COL_NEGOCIOS}/${nid}/${COL_SUCURSALES_DATA}/${sid}/${COL_USUARIOS_MERCANCIA}/${uid}`,
   usuariosMercanciaCol: (nid: string, sid: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_SUCURSALES_DATA}/${sid}/${COL_USUARIOS_MERCANCIA}`,
+  movimientosExistenciasCol: (nid: string, sid: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_SUCURSALES_DATA}/${sid}/${COL_MOVIMIENTOS_EXISTENCIAS}`,
+  preciosMayoreo: (nid: string) =>
+    `${COL_NEGOCIOS}/${nid}/${COL_DATOS}/${DOC_PRECIOS_MAYOREO}`,
   resurtido: (nid: string, rid: string) =>
     `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}/${rid}`,
   resurtidosCol: (nid: string) => `${COL_NEGOCIOS}/${nid}/${COL_RESURTIDOS}`,

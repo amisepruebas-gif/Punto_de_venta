@@ -43,6 +43,47 @@ export function siguienteArticuloId(ultimoId: string | null | undefined): string
   return String(base);
 }
 
+/** Los `cuantos` ids que siguen a `ultimoId`, en orden. Sirve para apartar
+ *  de una vez el id de un artículo y los códigos de sus variaciones. */
+export function siguientesIdsArticulo(
+  ultimoId: string | null | undefined,
+  cuantos: number,
+): string[] {
+  const ids: string[] = [];
+  let ultimo = ultimoId;
+  for (let i = 0; i < cuantos; i++) {
+    ultimo = siguienteArticuloId(ultimo);
+    ids.push(ultimo);
+  }
+  return ids;
+}
+
+/**
+ * Mayor número ya usado en el consecutivo de artículos: ids de artículo y
+ * `codigoBarras` de sus variaciones (comparten consecutivo). Es la red de
+ * seguridad contra un contador atrasado: quien aparta ids usa
+ * `max(contador, esto)`.
+ */
+export function maxCodigoArticulos(
+  articulos: Iterable<{
+    id: string;
+    subvariaciones?: ReadonlyArray<{ codigoBarras?: string }> | null;
+  }>,
+): number {
+  let max = 0;
+  const ver = (c: string | undefined) => {
+    if (c && /^\d+$/.test(c)) {
+      const n = parseInt(c, 10);
+      if (n > max) max = n;
+    }
+  };
+  for (const a of articulos) {
+    ver(a.id);
+    for (const s of a.subvariaciones ?? []) ver(s.codigoBarras);
+  }
+  return max;
+}
+
 /** Genera apartadoId. Timestamp-based, como huella pero prefijado. */
 export function genApartadoId(): string {
   return "ap_" + generarID();

@@ -11,6 +11,7 @@
 //   - bodega (en Fabricación se muestra como "Taller") → `cantidadBodega`.
 //   - sucursal default → `cantidad`.
 //   - otra sucursal → `cantidadPorSucursal[sid]`.
+//   - bodega de una tienda → `cantidadBodegaSucursal[sid]`.
 // Con subvariación el stock vive en la subvariación; el padre guarda la
 // suma solo para bodega y sucursal default (mismo criterio que
 // `cerrarResurtido` y el `stockService` del POS).
@@ -26,12 +27,21 @@ import { conStockTienda, leerStockTienda } from "./stockSucursal";
 /** `UbicacionInventario` con la sucursal default ya resuelta. */
 export type UbicacionResuelta =
   | { tipo: "bodega" }
-  | { tipo: "sucursal"; sucursalId: string; esDefault: boolean };
+  | { tipo: "sucursal"; sucursalId: string; esDefault: boolean }
+  | { tipo: "bodegaSucursal"; sucursalId: string };
 
 type StockShape = Pick<
   ArticuloSubvariacion,
-  "cantidad" | "cantidadBodega" | "cantidadPorSucursal"
+  "cantidad" | "cantidadBodega" | "cantidadPorSucursal" | "cantidadBodegaSucursal"
 >;
+
+/** Piezas en la bodega de la tienda `sid` (0 si no hay dato). */
+export function leerBodegaSucursal(
+  obj: Pick<StockShape, "cantidadBodegaSucursal">,
+  sid: string,
+): number {
+  return Number(obj.cantidadBodegaSucursal?.[sid]) || 0;
+}
 
 /** Stock en `ubicacion` de un artículo o subvariación. */
 export function leerStockUbicacion(
@@ -39,6 +49,9 @@ export function leerStockUbicacion(
   ubicacion: UbicacionResuelta,
 ): number {
   if (ubicacion.tipo === "bodega") return Number(obj.cantidadBodega) || 0;
+  if (ubicacion.tipo === "bodegaSucursal") {
+    return leerBodegaSucursal(obj, ubicacion.sucursalId);
+  }
   return leerStockTienda(obj, ubicacion.sucursalId, ubicacion.esDefault);
 }
 
@@ -51,6 +64,15 @@ export function conStockUbicacion<T extends StockShape>(
   if (ubicacion.tipo === "bodega") {
     return { ...obj, cantidadBodega: String(valor) };
   }
+  if (ubicacion.tipo === "bodegaSucursal") {
+    return {
+      ...obj,
+      cantidadBodegaSucursal: {
+        ...(obj.cantidadBodegaSucursal ?? {}),
+        [ubicacion.sucursalId]: String(valor),
+      },
+    };
+  }
   return conStockTienda(obj, ubicacion.sucursalId, ubicacion.esDefault, valor);
 }
 
@@ -58,9 +80,23 @@ export function conStockUbicacion<T extends StockShape>(
 export function ubicacionPersistible(
   ubicacion: UbicacionResuelta,
 ): UbicacionInventario {
-  return ubicacion.tipo === "bodega"
-    ? { tipo: "bodega" }
-    : { tipo: "sucursal", sucursalId: ubicacion.sucursalId };
+  if (ubicacion.tipo === "bodega") return { tipo: "bodega" };
+  return { tipo: ubicacion.tipo, sucursalId: ubicacion.sucursalId };
+}
+
+/** Bodega y tienda de una sucursal para un artículo final (artículo sin
+ *  variaciones o una variación). */
+export type ExistenciasTienda = { bodega: number; tienda: number };
+
+export function leerExistenciasTienda(
+  obj: StockShape,
+  sid: string,
+  esDefault: boolean,
+): ExistenciasTienda {
+  return {
+    bodega: leerBodegaSucursal(obj, sid),
+    tienda: leerStockTienda(obj, sid, esDefault),
+  };
 }
 
 export type PlanMovimientoStock = {
@@ -104,7 +140,7 @@ export function planearMovimientoStock(
     // El padre guarda la suma solo donde lo hace el resto del sistema.
     if (ubicacion.tipo === "bodega") {
       patch.cantidadBodega = String(sumar(nuevas, (s) => s.cantidadBodega));
-    } else if (ubicacion.esDefault) {
+    } else if (ubicacion.tipo === "sucursal" && ubicacion.esDefault) {
       patch.cantidad = String(sumar(nuevas, (s) => s.cantidad));
     }
     return { patch, cantidadAnterior, cantidadNueva };
@@ -120,9 +156,11 @@ export function planearMovimientoStock(
   const patch: Partial<Articulo> =
     ubicacion.tipo === "bodega"
       ? { cantidadBodega: actualizado.cantidadBodega }
-      : ubicacion.esDefault
-        ? { cantidad: actualizado.cantidad }
-        : { cantidadPorSucursal: actualizado.cantidadPorSucursal };
+      : ubicacion.tipo === "bodegaSucursal"
+        ? { cantidadBodegaSucursal: actualizado.cantidadBodegaSucursal }
+        : ubicacion.esDefault
+          ? { cantidad: actualizado.cantidad }
+          : { cantidadPorSucursal: actualizado.cantidadPorSucursal };
   return { patch, cantidadAnterior, cantidadNueva };
 }
 

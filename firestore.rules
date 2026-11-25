@@ -20,6 +20,10 @@ rules_version = '2';
 //   resurtidoId. `imprimir` es la PC del programa "AMISE Impresora" (sucursalId opcional).
 //   `precio` es la página aparte de etiquetas de precio (código + precio, como "codigos").
 //   NO es `miembro`: solo puede lo que diga una regla con `esEnlace`.
+//   Rol `encargado` (encargado de tienda: usuario de mercancia-web con acceso «existencias»,
+//   ver functions loginMercanciaConPin): trae negocioId, sucursalId y mercanciaUid. Solo LEE
+//   el catálogo y los movimientos de su tienda. NO escribe nada: sus existencias las mueve
+//   la function moverExistencias. Tampoco es `miembro`.
 // ============================================================
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -33,6 +37,8 @@ service cloud.firestore {
     function esNodoSuc(nid, sid) { return esNodo(nid) && request.auth.token.sucursalId == sid; }
     function esMercancia(nid) { return enNegocio(nid) && rol() == 'mercancia'; }
     function miembro(nid) { return esAdmin(nid) || esNodo(nid) || esMercancia(nid) || esSuperAdmin(); }
+    function esEncargado(nid) { return enNegocio(nid) && rol() == 'encargado'; }
+    function esEncargadoSuc(nid, sid) { return esEncargado(nid) && request.auth.token.sucursalId == sid; }
 
     // Sesión de un enlace de lote. El vencimiento viene en el token (lo pone la
     // function con la hora del servidor). El apagador y la renovación se leen EN
@@ -93,9 +99,10 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
-      // Artículos: el nodo SOLO ajusta stock; mercancia CRUD; admin full.
+      // Artículos: el nodo SOLO ajusta stock; mercancia CRUD; admin full. El
+      // encargado de tienda solo los lee.
       match /articulos_n_web_new_version/{artId} {
-        allow read: if miembro(nid);
+        allow read: if miembro(nid) || esEncargado(nid);
         // Enlace de armar: la lista de los fabricados (`where fabricado == true`)
         // y, por su código, otro artículo solo si tiene piezas en el taller (lo
         // único que se puede enviar en un lote). Así no se puede recorrer el
@@ -110,33 +117,37 @@ service cloud.firestore {
         allow update: if esAdmin(nid) || esMercancia(nid)
           || (esNodo(nid)
               && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['cantidad', 'subvariaciones', 'cantidadBodega', 'cantidadPorSucursal']));
+                 .hasOnly(['cantidad', 'subvariaciones', 'cantidadBodega', 'cantidadPorSucursal',
+                           'cantidadBodegaSucursal']));
       }
 
       // G1/G2: categorías y subcategorías (mercancia + admin).
       match /categorias_web_new_version/{cid} {
-        allow read: if miembro(nid);
+        allow read: if miembro(nid) || esEncargado(nid);
         allow write: if esAdmin(nid) || esMercancia(nid);
       }
       match /subcategorias_web_new_version/{scid} {
-        allow read: if miembro(nid);
+        allow read: if miembro(nid) || esEncargado(nid);
         allow write: if esAdmin(nid) || esMercancia(nid);
       }
       // Géneros (temáticas: Anime, K-pop…): mismo trato que categorías. La
       // caja los lee para sus filtros.
       match /generos_web_new_version/{gid} {
-        allow read: if miembro(nid);
+        allow read: if miembro(nid) || esEncargado(nid);
         allow write: if esAdmin(nid) || esMercancia(nid);
       }
 
       // datos: config (admin), huellas *_ac (nodo), tallas (mercancia).
       // El folio de Fabricacion (_contadorFabricacion) y el contador de etiquetas
-      // de lote (_contadorEtiquetasLote) solo los avanza admin.
+      // de lote (_contadorEtiquetasLote) solo los avanza admin. Los precios de
+      // mayoreo por categoría y subcategoría (_preciosMayoreo) solo los escribe
+      // admin: de ahí sale el precio de los artículos «Solo mayoreo».
       match /datos_web_new_version/{k} {
         allow read: if miembro(nid);
         allow write: if esAdmin(nid)
           || ((esNodo(nid) || esMercancia(nid))
-              && k != '_contadorFabricacion' && k != '_contadorEtiquetasLote');
+              && k != '_contadorFabricacion' && k != '_contadorEtiquetasLote'
+              && k != '_preciosMayoreo');
         // El programa de una impresora (acceso `imprimir`) aparta números de
         // etiquetas de lote al tomar una orden: sube el contador (de a lo más
         // 300) SOLO junto con esa orden. En la misma escritura la orden
@@ -444,6 +455,14 @@ service cloud.firestore {
             && nuevaValida(['tipo', 'impresoraId', 'estado', 'origen', 'creadoPor', 'quien', 'creadoEn',
                             'cantidad'])
             && nueva().tipo == 'etiquetas_lote' && nueva().origen == 'admin' && cantidadHasta(300))
+          // Admin: etiquetas de precio de artículos finales (mayoreo), a
+          // cualquier impresora del negocio.
+          || (esAdmin(nid)
+            && nuevaValida(['tipo', 'impresoraId', 'estado', 'origen', 'creadoPor', 'quien', 'creadoEn',
+                            'renglones'])
+            && nueva().tipo == 'etiquetas_precio' && nueva().origen == 'admin'
+            && nueva().renglones is list
+            && nueva().renglones.size() >= 1 && nueva().renglones.size() <= 20)
           || (esEnlace(nid, 'armar')
             && nuevaValida(['tipo', 'impresoraId', 'estado', 'origen', 'creadoPor', 'quien', 'creadoEn',
                             'cantidad', 'enlaceId'])
@@ -612,6 +631,14 @@ service cloud.firestore {
         }
         match /mercanciaRateLimit/{doc} {
           allow read, write: if false; // solo la CF (Admin SDK)
+        }
+        // Movimientos de piezas entre la bodega y la tienda de esta sucursal.
+        // Los escribe solo la CF moverExistencias (Admin SDK). Los ven admin y
+        // la gente de mercancía de ESTA sucursal (encargado o usuario completo).
+        match /movimientos_existencias_web_new_version/{mid} {
+          allow read: if esAdmin(nid) || esEncargadoSuc(nid, sid)
+            || (esMercancia(nid) && request.auth.token.sucursalId == sid);
+          allow write: if false;
         }
         // Cobros con la terminal Clip: los escriben solo las CF; la caja lee
         // los suyos para seguir el cobro en vivo.
