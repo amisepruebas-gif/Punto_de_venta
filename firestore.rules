@@ -627,6 +627,9 @@ service cloud.firestore {
         }
         match /usuariosMercancia_web_new_version/{uid} {
           allow read: if esAdmin(nid) || esMercancia(nid);
+          // El encargado solo lee SU registro: la app lo vigila para sacarlo
+          // en cuanto admin lo deshabilita.
+          allow get: if esEncargadoSuc(nid, sid) && request.auth.uid == uid;
           allow write: if esAdmin(nid);
         }
         match /mercanciaRateLimit/{doc} {

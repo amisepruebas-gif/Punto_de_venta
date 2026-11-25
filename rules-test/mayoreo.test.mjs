@@ -104,7 +104,10 @@ await check("encargado NO escribe el contador de artículos", "fail", setDoc(doc
 await check("encargado NO se cambia el acceso", "fail", updateDoc(doc(encargado, `${N}/sucursales_data_web_new_version/${S2}/usuariosMercancia_web_new_version/e2`), { acceso: "completo" }));
 
 // ============ Encargado de tienda: lo que no le toca ver ============
-await check("encargado NO lee los usuarios de mercancía", "fail", getDoc(doc(encargado, `${N}/sucursales_data_web_new_version/${S2}/usuariosMercancia_web_new_version/e2`)));
+await check("encargado lee SU registro de usuario", "ok", getDoc(doc(encargado, `${N}/sucursales_data_web_new_version/${S2}/usuariosMercancia_web_new_version/e2`)));
+await check("encargado NO lee el registro de otro usuario", "fail", getDoc(doc(encargado, `${N}/sucursales_data_web_new_version/${S2}/usuariosMercancia_web_new_version/m2`)));
+await check("encargado NO lista los usuarios de mercancía", "fail", getDocs(collection(encargado, `${N}/sucursales_data_web_new_version/${S2}/usuariosMercancia_web_new_version`)));
+await check("encargado NO lee usuarios de otra tienda", "fail", getDoc(doc(encargado, `${N}/sucursales_data_web_new_version/${S1}/usuariosMercancia_web_new_version/e2`)));
 await check("encargado NO lee los precios por categoría", "fail", getDoc(doc(encargado, PRECIOS)));
 await check("encargado NO lee las ventas", "fail", getDocs(collection(encargado, `${N}/sucursales_data_web_new_version/${S2}/ventas_n_web_new_version`)));
 await check("encargado NO lee resurtidos", "fail", getDoc(doc(encargado, `${N}/resurtidos_web_new_version/R1`)));
