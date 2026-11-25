@@ -9,24 +9,7 @@ import {
 } from "@/firebase/enlaceApp";
 import { EnlaceContext, type EnlaceCtx } from "@/features/enlace/EnlaceContext";
 import { AvisoError, PantallaCargando } from "@/features/enlace/ui";
-
-/** `navigator.onLine` al momento (cambia con los eventos del navegador). */
-function useEnLinea(): boolean {
-  const [enLinea, setEnLinea] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine !== false,
-  );
-  useEffect(() => {
-    const si = () => setEnLinea(true);
-    const no = () => setEnLinea(false);
-    window.addEventListener("online", si);
-    window.addEventListener("offline", no);
-    return () => {
-      window.removeEventListener("online", si);
-      window.removeEventListener("offline", no);
-    };
-  }, []);
-  return enLinea;
-}
+import { useEnLinea } from "@/hooks/useEnLinea";
 
 /**
  * Marco de todo `/enlace/:negocioId/:enlaceId/*` (y de la página aparte de

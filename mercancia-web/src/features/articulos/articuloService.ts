@@ -22,6 +22,7 @@ import {
   fechaISO_MX,
   generarID,
   generarVariacionCodigo,
+  maxCodigoArticulos,
   siguienteArticuloId,
   type Articulo,
   type ArticuloSubvariacion,
@@ -45,6 +46,8 @@ import {
 // existe y el `setDoc` de `crearArticulo` sobrescribe ese artículo en
 // silencio. Por eso SIEMPRE se escanea el máximo numérico de la colección y
 // la base es `max(contador, máximo existente)` — mismo enfoque que admin-web.
+// El máximo cuenta también el `codigoBarras` de las variaciones de mayoreo:
+// comparten el consecutivo con los ids (`maxCodigoArticulos`).
 // Costo: un pase por la colección por cada `crearArticulo`; es una acción
 // manual y poco frecuente, y no compensa arriesgar una sobreescritura.
 // ============================================================
@@ -63,13 +66,12 @@ async function siguienteId(negocioId: string): Promise<string> {
     `${paths.negocio(negocioId)}/${COL_ARTICULOS}`,
   );
   const todos = await getDocs(colArticulos);
-  let scanMaxNum = 0;
-  todos.forEach((d) => {
-    if (/^\d+$/.test(d.id)) {
-      const n = parseInt(d.id, 10);
-      if (n > scanMaxNum) scanMaxNum = n;
-    }
-  });
+  const scanMaxNum = maxCodigoArticulos(
+    todos.docs.map((d) => ({
+      id: d.id,
+      subvariaciones: (d.data() as Articulo).subvariaciones,
+    })),
+  );
 
   let nuevo = "";
   await runTransaction(db, async (tx) => {
@@ -233,6 +235,15 @@ async function resolverSubvariaciones(
           : sv.cantidadPorSucursal
             ? { cantidadPorSucursal: sv.cantidadPorSucursal }
             : {}),
+        // Tampoco maneja la bodega de cada tienda (la mueven Ingreso y la
+        // function `moverExistencias`) ni el código de 8 dígitos de la
+        // variación (lo pone admin): siempre los del doc actual.
+        ...(existenteSv?.cantidadBodegaSucursal
+          ? { cantidadBodegaSucursal: existenteSv.cantidadBodegaSucursal }
+          : {}),
+        ...(existenteSv?.codigoBarras
+          ? { codigoBarras: existenteSv.codigoBarras }
+          : {}),
         // Tampoco maneja el descuento por subvariación (se edita en
         // admin-web): `sv` lo trae si el form lo conservó; si no, el del doc.
         // `""` = quitar el descuento.
@@ -353,6 +364,11 @@ export async function actualizarArticulo(
     throw new Error(`Artículo ${id} no existe`);
   }
   const existente = existenteSnap.data() as Articulo;
+  // Se revisa contra el doc recién leído: admin pudo marcarlo de mayoreo
+  // mientras la ficha estaba abierta.
+  if (existente.soloMayoreo) {
+    throw new Error("Los artículos de mayoreo se editan en el panel de administración");
+  }
 
   const {
     imagenFile,

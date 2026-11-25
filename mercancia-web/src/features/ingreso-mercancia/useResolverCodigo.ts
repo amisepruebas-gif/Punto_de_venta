@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useArticulos } from "@/features/articulos/useArticulos";
 import {
+  indiceCodigosVariacion,
   parseVariacionCodigo,
   type Articulo,
   type ArticuloSubvariacion,
@@ -33,6 +34,10 @@ export type ResolveResult =
  *     específica;
  *   - los códigos `v-NN-XXX` se resuelven siempre.
  *
+ * Un código de 8 dígitos que no es el id de un artículo se busca como el
+ * `codigoBarras` de una variación (artículos de mayoreo: cada variación
+ * lleva su etiqueta de 8 dígitos).
+ *
  * Construye su propio `Map<id, Articulo>` localmente porque el
  * `useArticulos` de admin-web no lo expone (a diferencia de nodo-web).
  */
@@ -43,6 +48,10 @@ export function useResolverCodigo() {
     for (const a of articulos) m.set(a.id, a);
     return m;
   }, [articulos]);
+  const porCodigoBarras = useMemo(
+    () => indiceCodigosVariacion(articulos),
+    [articulos],
+  );
 
   const resolver = useCallback(
     (codigo: string): ResolveResult => {
@@ -77,6 +86,9 @@ export function useResolverCodigo() {
       // Id 8-dig de un padre
       const padre = byId.get(limpio);
       if (!padre) {
+        // ...o el código de 8 dígitos de una variación.
+        const variacion = porCodigoBarras.get(limpio);
+        if (variacion) return { ok: true, ...variacion };
         return { ok: false, codigo: limpio, razon: "no-encontrado" };
       }
       if ((padre.subvariaciones?.length ?? 0) > 0) {
@@ -84,7 +96,7 @@ export function useResolverCodigo() {
       }
       return { ok: true, articulo: padre };
     },
-    [byId],
+    [byId, porCodigoBarras],
   );
 
   return { resolver };

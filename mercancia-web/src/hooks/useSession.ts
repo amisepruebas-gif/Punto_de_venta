@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
+import type { AccesoMercancia } from "@shared";
 
 /**
  * Sesión local de mercancia-web. Persiste en `localStorage`. Dos partes:
  *
  *  - `binding` (negocioId + sucursalId): se elige una vez en FirstRun y
  *    sobrevive a logouts. Reseteable desde el botón "Cambiar sucursal".
- *  - `auth` (usuarioId + nombre): se establece tras login PIN exitoso. Se
- *    limpia en logout.
+ *  - `auth` (usuarioId + nombre + acceso): se establece tras login PIN
+ *    exitoso. Se limpia en logout.
  */
 
 const KEY_BINDING = "mercancia.binding.v1";
@@ -22,9 +23,18 @@ export type Binding = {
 export type AuthSession = {
   usuarioId: string;
   nombre: string;
+  /** Lo que devolvió `loginMercanciaConPin`. Ausente (sesión de antes) =
+   *  `completo`. */
+  acceso?: AccesoMercancia;
   /** ms epoch del login. */
   ts: number;
 };
+
+/** Encargado de tienda: solo ve existencias y mueve piezas entre la bodega
+ *  y la tienda. */
+export function esEncargado(a: AuthSession | null): boolean {
+  return a?.acceso === "existencias";
+}
 
 function readJson<T>(key: string): T | null {
   try {

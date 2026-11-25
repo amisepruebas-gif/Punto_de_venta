@@ -10,6 +10,9 @@ import { IngresoMercanciaPage } from "@/routes/ingreso-mercancia/IngresoMercanci
 import { ResurtidosListPage } from "@/routes/resurtidos/ResurtidosListPage";
 import { ResurtidoCreatePage } from "@/routes/resurtidos/ResurtidoCreatePage";
 import { ResurtidoDetailPage } from "@/routes/resurtidos/ResurtidoDetailPage";
+import { ExistenciasPage } from "@/routes/existencias/ExistenciasPage";
+import { MoverPage } from "@/routes/existencias/MoverPage";
+import { MovimientosPage } from "@/routes/existencias/MovimientosPage";
 import { EnlaceLayout } from "@/routes/enlace/EnlaceLayout";
 import { EntrarPage } from "@/routes/enlace/EntrarPage";
 import { MisLotesPage } from "@/routes/enlace/MisLotesPage";
@@ -18,17 +21,36 @@ import { FotosPage } from "@/routes/enlace/FotosPage";
 import { EtiquetasPage } from "@/routes/enlace/EtiquetasPage";
 import { PrecioPage } from "@/routes/precio/PrecioPage";
 import { AuthWatcher } from "@/features/auth/AuthWatcher";
-import { useSession } from "@/hooks/useSession";
+import { BarraSesion } from "@/features/auth/BarraSesion";
+import { esEncargado, useSession } from "@/hooks/useSession";
+
+/**
+ * Guard común para rutas autenticadas: requiere binding + auth. El
+ * encargado de tienda solo entra a las rutas marcadas `paraEncargado`; en
+ * las demás regresa al inicio. Arriba de toda página va la barra con el
+ * nombre de quien entró.
+ */
+function Protected({
+  children,
+  paraEncargado = false,
+}: {
+  children: React.ReactNode;
+  paraEncargado?: boolean;
+}) {
+  const { binding, auth } = useSession();
+  if (!binding) return <Navigate to="/first-run" replace />;
+  if (!auth) return <Navigate to="/login" replace />;
+  if (esEncargado(auth) && !paraEncargado) return <Navigate to="/" replace />;
+  return (
+    <div className="con-barra-sesion">
+      <BarraSesion />
+      {children}
+    </div>
+  );
+}
 
 export default function App() {
   const { binding, auth } = useSession();
-
-  // Guard común para rutas autenticadas: requiere binding + auth.
-  function Protected({ children }: { children: React.ReactNode }) {
-    if (!binding) return <Navigate to="/first-run" replace />;
-    if (!auth) return <Navigate to="/login" replace />;
-    return <>{children}</>;
-  }
 
   return (
     <>
@@ -52,8 +74,32 @@ export default function App() {
       <Route
         path="/"
         element={
-          <Protected>
+          <Protected paraEncargado>
             <Home />
+          </Protected>
+        }
+      />
+      <Route
+        path="/existencias"
+        element={
+          <Protected paraEncargado>
+            <ExistenciasPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/mover"
+        element={
+          <Protected paraEncargado>
+            <MoverPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/movimientos"
+        element={
+          <Protected paraEncargado>
+            <MovimientosPage />
           </Protected>
         }
       />

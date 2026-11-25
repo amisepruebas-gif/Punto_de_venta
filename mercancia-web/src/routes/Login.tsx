@@ -11,7 +11,7 @@ import {
   setBinding,
   useSession,
 } from "@/hooks/useSession";
-import { isValidPin } from "@shared";
+import { isValidPin, type AccesoMercancia } from "@shared";
 
 const PIN_LEN = 5;
 
@@ -64,9 +64,11 @@ export function Login() {
       // un customToken de Firebase con claims role:"mercancia". Antes se validaba
       // leyendo Firestore directo (sin seguridad real); ahora la sesión es REAL, que
       // es lo que las reglas van a exigir. Ver docs/auditoria-cashback/07-login-mercancia.md.
+      // `acceso: "existencias"` es el encargado de tienda (rol `encargado`);
+      // una versión anterior de la CF no lo manda: es el usuario completo.
       const login = httpsCallable<
         { negocioId: string; sucursalId: string; pin: string },
-        { token: string; usuarioId: string; nombre: string }
+        { token: string; usuarioId: string; nombre: string; acceso?: AccesoMercancia }
       >(functions, "loginMercanciaConPin");
       const { data } = await login({
         negocioId: binding.negocioId,
@@ -74,7 +76,12 @@ export function Login() {
         pin: intentado,
       });
       await signInWithCustomToken(auth, data.token);
-      setAuth({ usuarioId: data.usuarioId, nombre: data.nombre, ts: Date.now() });
+      setAuth({
+        usuarioId: data.usuarioId,
+        nombre: data.nombre,
+        acceso: data.acceso === "existencias" ? "existencias" : "completo",
+        ts: Date.now(),
+      });
       navigate("/", { replace: true });
     } catch (e) {
       // La CF devuelve mensajes claros ("PIN no reconocido", "Acceso deshabilitado",

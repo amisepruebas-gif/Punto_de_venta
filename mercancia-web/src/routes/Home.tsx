@@ -1,15 +1,19 @@
 import { useNavigate } from "react-router-dom";
 import {
+  ArrowDownUp,
   ArrowRightLeft,
   FolderTree,
+  History,
   LogOut,
   Package,
+  PackageSearch,
   Ruler,
   Truck,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { logout, useSession } from "@/hooks/useSession";
+import { esEncargado, logout, useSession } from "@/hooks/useSession";
+import { useSucursalActual } from "@/features/sucursal/useSucursalActual";
 
 type Tile = {
   to: string;
@@ -41,24 +45,36 @@ const TILES: Tile[] = [
   },
 ];
 
+/** Bodega y tienda de una sucursal de mayoreo. Es lo único que ve el
+ *  encargado de tienda. */
+const TILES_EXISTENCIAS: Tile[] = [
+  { to: "/existencias", label: "Existencias", icon: PackageSearch, estado: "ok" },
+  { to: "/mover", label: "Mover", icon: ArrowDownUp, estado: "ok" },
+  { to: "/movimientos", label: "Movimientos", icon: History, estado: "ok" },
+];
+
 export function Home() {
   const navigate = useNavigate();
   const { binding, auth } = useSession();
+  const { sucursal } = useSucursalActual();
+  const tiles = esEncargado(auth)
+    ? TILES_EXISTENCIAS
+    : sucursal?.modoMayoreo
+      ? [...TILES, ...TILES_EXISTENCIAS]
+      : TILES;
 
   function salir() {
     logout();
     navigate("/login", { replace: true });
   }
 
+  // Quién entró y la sucursal ya van en la barra de arriba (Protected).
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col p-4">
       <header className="flex items-center justify-between gap-2 border-b pb-3">
-        <div className="min-w-0">
-          <p className="truncate text-xs uppercase tracking-wide text-muted-foreground">
-            {binding?.sucursalNombre}
-          </p>
-          <h1 className="truncate text-base font-semibold">{auth?.nombre}</h1>
-        </div>
+        <h1 className="truncate text-base font-semibold">
+          {binding?.negocioNombre}
+        </h1>
         <Button
           variant="ghost"
           size="sm"
@@ -70,7 +86,7 @@ export function Home() {
       </header>
 
       <main className="grid flex-1 grid-cols-2 content-start gap-3 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        {TILES.map(({ to, label, icon: Icon, estado }) => (
+        {tiles.map(({ to, label, icon: Icon, estado }) => (
           <button
             key={to}
             type="button"

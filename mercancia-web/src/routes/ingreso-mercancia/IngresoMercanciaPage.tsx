@@ -24,15 +24,31 @@ import {
   type IngresoResult,
 } from "@/features/ingreso-mercancia/ingresoService";
 import { useUbicacionStock } from "@/features/sucursal/ubicacionStock";
+import { useSucursalActual } from "@/features/sucursal/useSucursalActual";
 import {
   leerStockUbicacion,
   type ArticuloSubvariacion,
   type UbicacionResuelta,
+  type UbicacionStock,
 } from "@shared";
 
 /** A dónde entra la mercancía: la tienda de la sucursal ligada a este
- *  teléfono o la bodega. */
+ *  teléfono o la bodega. En una sucursal de mayoreo la bodega es la de ESA
+ *  tienda (`cantidadBodegaSucursal`); en las demás, la bodega general. */
 type Destino = "tienda" | "bodega";
+
+/** Dónde se suma según el destino elegido (null mientras se resuelve la
+ *  sucursal). */
+function ubicacionDestino(
+  destino: Destino,
+  tienda: UbicacionStock | null,
+  sucursal: { cargando: boolean; bodegaDeTienda: boolean },
+): UbicacionResuelta | null {
+  if (destino === "tienda") return tienda ? { tipo: "sucursal", ...tienda } : null;
+  if (sucursal.cargando) return null;
+  if (!sucursal.bodegaDeTienda) return { tipo: "bodega" };
+  return tienda ? { tipo: "bodegaSucursal", sucursalId: tienda.sucursalId } : null;
+}
 
 type ResueltoOk = Extract<ResolveResult, { ok: true }>;
 
@@ -48,13 +64,14 @@ export function IngresoMercanciaPage() {
   const { auth, binding } = useSession();
   const { resolver } = useResolverCodigo();
   const ubicacionTienda = useUbicacionStock();
+  const { sucursal, cargando: cargandoSucursal } = useSucursalActual();
+  const bodegaDeTienda = sucursal?.modoMayoreo === true;
+  const nombreBodega = bodegaDeTienda ? "Bodega de la tienda" : "Bodega";
   const [destino, setDestino] = useState<Destino>("tienda");
-  const ubicacion: UbicacionResuelta | null =
-    destino === "bodega"
-      ? { tipo: "bodega" }
-      : ubicacionTienda
-        ? { tipo: "sucursal", ...ubicacionTienda }
-        : null;
+  const ubicacion = ubicacionDestino(destino, ubicacionTienda, {
+    cargando: cargandoSucursal,
+    bodegaDeTienda,
+  });
 
   const [scannerOpen, setScannerOpen] = useState(false);
   const [manualInput, setManualInput] = useState("");
@@ -81,7 +98,7 @@ export function IngresoMercanciaPage() {
     const mensajes: Record<typeof r.razon, string> = {
       "no-encontrado": `Código no encontrado: ${r.codigo}`,
       "padre-con-variaciones":
-        "Este artículo tiene variaciones. Escanea el código v-NN-XXX de la específica.",
+        "Este artículo tiene variaciones. Escanea la etiqueta de la variación (su código de 8 dígitos o v-NN-XXX).",
       "subvariacion-no-encontrada": `Subvariación no existe en el padre`,
     };
     setToast({ tipo: "err", texto: mensajes[r.razon] });
@@ -126,7 +143,7 @@ export function IngresoMercanciaPage() {
         tipo: "ok",
         texto: `${n > 0 ? "+" : ""}${n} a ${
           resuelto.subvariacion?.nombre ?? resuelto.articulo.nombre
-        } (${destino === "bodega" ? "bodega" : "tienda"})`,
+        } (${destino === "bodega" ? nombreBodega.toLowerCase() : "tienda"})`,
         detalle: `${res.cantidadAnterior} → ${res.cantidadNueva}`,
       });
       setResuelto(null);
@@ -177,7 +194,7 @@ export function IngresoMercanciaPage() {
               }`}
             >
               {d === "bodega"
-                ? "Bodega"
+                ? nombreBodega
                 : `Tienda · ${binding?.sucursalNombre ?? "sucursal"}`}
             </button>
           ))}

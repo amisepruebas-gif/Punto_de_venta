@@ -9,8 +9,11 @@ import { paths, type UsuarioMercancia } from "@shared";
  * Mientras haya `binding + auth`, se suscribe al doc en
  * `usuariosMercancia_web_new_version`. Si:
  *
- *   - el doc se borra, o
- *   - `habilitado` pasa a `false`,
+ *   - el doc se borra,
+ *   - `habilitado` pasa a `false`, o
+ *   - admin le cambia el tipo de acceso (`acceso`: mercancía ↔ encargado
+ *     de tienda): el permiso real va en el token de la sesión, así que hay
+ *     que volver a entrar para que tome el nuevo,
  *
  * llama a `logout()` automáticamente. La sesión queda limpia y `App.tsx`
  * redirige a `/login` por su Protected guard. El binding (sucursal) se
@@ -50,6 +53,12 @@ export function AuthWatcher() {
         const data = snap.data() as UsuarioMercancia;
         if (!data.habilitado) {
           logout();
+          return;
+        }
+        // Lo que no viene escrito es el acceso completo, en el doc y en una
+        // sesión de antes de que existiera el encargado.
+        if ((data.acceso ?? "completo") !== (auth.acceso ?? "completo")) {
+          logout();
         }
       },
       (err) => {
@@ -58,7 +67,7 @@ export function AuthWatcher() {
       },
     );
     return unsub;
-  }, [binding?.negocioId, binding?.sucursalId, auth?.usuarioId]);
+  }, [binding?.negocioId, binding?.sucursalId, auth?.usuarioId, auth?.acceso]);
 
   return null;
 }

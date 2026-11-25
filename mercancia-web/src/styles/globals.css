@@ -36,3 +36,19 @@
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
 }
+
+/* Páginas con PIN (App.tsx → Protected): arriba va la barra con el nombre de
+   quien entró (BarraSesion, h-7 + zona segura). El encabezado fijo de cada
+   página se pega justo debajo de ella y ya no toma la zona segura (la toma la
+   barra); la página mide la pantalla menos la barra. Solo el encabezado de la
+   página: los de las ventanas que la tapan (fixed inset-0) quedan igual. */
+.con-barra-sesion {
+  --alto-barra-sesion: calc(1.75rem + env(safe-area-inset-top));
+}
+.con-barra-sesion > * > header.sticky {
+  top: var(--alto-barra-sesion);
+  padding-top: 0.5rem;
+}
+.con-barra-sesion > .min-h-dvh {
+  min-height: calc(100dvh - var(--alto-barra-sesion));
+}
