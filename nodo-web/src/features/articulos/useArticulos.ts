@@ -8,9 +8,11 @@ import {
   COL_NEGOCIOS,
   COL_ARTICULOS,
   canonicalStoragePath,
+  indiceCodigosVariacion,
   normalizarTexto,
   type Articulo,
   type Clasificable,
+  type VariacionPorCodigo,
 } from "@shared";
 import { podarCacheImagenes, posDisponible } from "@/lib/pos-bridge";
 
@@ -44,6 +46,9 @@ type State = {
   articulos: Articulo[];
   byId: Map<string, Articulo>;
   bySigla: Map<string, Articulo>;
+  /** Código de 8 dígitos de una variación (`codigoBarras`, artículos de
+   *  mayoreo) → su artículo y su variación. Es lo que trae su etiqueta. */
+  byCodigoVariacion: Map<string, VariacionPorCodigo>;
   /** Lista plana de items "vendibles" para el autocomplete. Cuando el padre
    *  tiene variaciones, no entra él sino sus variaciones. Cuando no las
    *  tiene, entra el padre. Construida en el mismo onSnapshot que `byId`.
@@ -63,6 +68,7 @@ export function useArticulos(): State {
     articulos: [],
     byId: new Map(),
     bySigla: new Map(),
+    byCodigoVariacion: new Map(),
     searchIndex: [],
     loading: true,
     fromCache: true,
@@ -129,6 +135,7 @@ export function useArticulos(): State {
             for (const sv of a.subvariaciones!) {
               blobParts.push(sv.nombre);
               if (sv.codigo) blobParts.push(sv.codigo);
+              if (sv.codigoBarras) blobParts.push(sv.codigoBarras);
               if (sv.referencia) blobParts.push(sv.referencia);
             }
           }
@@ -152,6 +159,7 @@ export function useArticulos(): State {
           articulos: arr,
           byId,
           bySigla,
+          byCodigoVariacion: indiceCodigosVariacion(arr),
           searchIndex,
           loading: false,
           fromCache: snap.metadata.fromCache,

@@ -172,7 +172,17 @@ export async function leerArticuloPorCodigo(
     return padre && variacion ? { articulo: padre, variacion } : null;
   }
   const art = await leerArticulo(s, codigo);
-  return art ? { articulo: art } : null;
+  if (art) return { articulo: art };
+  // Etiqueta de una variación de mayoreo: su propio código de 8 dígitos. No
+  // es el id de ningún doc, así que se busca entre los artículos que este
+  // teléfono ya conoce (los de fabricación y los ya escaneados); de los
+  // demás hay que escanear primero el artículo.
+  await articulosFabricados(s).catch(() => []);
+  for (const articulo of cache(s).porId.values()) {
+    const variacion = articulo.subvariaciones?.find((v) => v.codigoBarras === codigo);
+    if (variacion) return { articulo, variacion };
+  }
+  return null;
 }
 
 /** Busca entre los fabricados por nombre, sigla o código. */

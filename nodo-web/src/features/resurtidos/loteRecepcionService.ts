@@ -33,6 +33,7 @@ import {
   type Resurtido,
   type ResurtidoEstado,
   type ResumenLote,
+  type Sucursal,
   type UbicacionResuelta,
 } from "@shared";
 
@@ -57,6 +58,9 @@ export type MetaSesionLote = {
   /** Vendedor en turno al terminar. */
   vendedor?: string;
   nota?: string;
+  /** Sucursal de mayoreo: lo recibido entra a la bodega de la tienda en vez
+   *  de a la tienda. Ausente = tienda (lo de siempre). */
+  destino?: "bodega";
 };
 
 export type ResultadoSubidaLote = {
@@ -149,15 +153,26 @@ export async function subirSesionLote(args: {
 
         const negocioSnap = await tx.get(doc(db, paths.negocio(negocioId)));
         const negocio = negocioSnap.exists() ? (negocioSnap.data() as Negocio) : null;
-        const ubicacion: UbicacionResuelta = {
-          tipo: "sucursal",
-          sucursalId: lote.sucursalDestinoId,
-          esDefault: esSucursalDefault(
-            lote.sucursalDestinoId,
-            negocio?.sucursalDefaultId,
-            sucursalesIds[0],
-          ),
-        };
+        // A la bodega de la tienda solo en sucursales de mayoreo (se revisa
+        // contra el doc de la sucursal, no contra lo que diga la tablet).
+        let aBodega = false;
+        if (meta.destino === "bodega") {
+          const sucSnap = await tx.get(
+            doc(db, paths.sucursal(negocioId, lote.sucursalDestinoId)),
+          );
+          aBodega = sucSnap.exists() && (sucSnap.data() as Sucursal).modoMayoreo === true;
+        }
+        const ubicacion: UbicacionResuelta = aBodega
+          ? { tipo: "bodegaSucursal", sucursalId: lote.sucursalDestinoId }
+          : {
+              tipo: "sucursal",
+              sucursalId: lote.sucursalDestinoId,
+              esDefault: esSucursalDefault(
+                lote.sucursalDestinoId,
+                negocio?.sucursalDefaultId,
+                sucursalesIds[0],
+              ),
+            };
 
         const ids = articulosDelConteo(conteo, lote.paquetes);
         const snaps = await Promise.all(

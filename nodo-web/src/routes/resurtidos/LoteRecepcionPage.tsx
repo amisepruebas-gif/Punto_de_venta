@@ -33,6 +33,7 @@ import { useTecladoFisico } from "@/hooks/useTecladoFisico";
 import { useBackHandler } from "@/lib/back-handler";
 import { SinConexion } from "@/lib/sinInternet";
 import { useArticulos } from "@/features/articulos/useArticulos";
+import { useSucursal } from "@/features/sucursal/useSucursal";
 import { useCarrito } from "@/features/ventas/carritoStore";
 import { resolverCodigoExacto } from "@/features/ventas/elegirArticulo";
 import {
@@ -143,7 +144,11 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
   const location = useLocation();
   const { negocioId, nodoId } = useNodoSession();
   const enTurno = useCarrito((s) => s.enTurno);
-  const { byId, bySigla, loading: cargandoArticulos } = useArticulos();
+  const { byId, bySigla, byCodigoVariacion, loading: cargandoArticulos } = useArticulos();
+  // Sucursal de mayoreo: al terminar se elige si lo recibido entra a la
+  // tienda o a la bodega de la tienda.
+  const { sucursal } = useSucursal();
+  const manejaBodega = sucursal?.modoMayoreo === true;
   const hayTecladoFisico = useTecladoFisico();
   // Al abrir la pantalla se intenta subir lo pendiente (también va en App).
   useSubirSesiones();
@@ -212,6 +217,7 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
       bySigla,
       // En un lote cualquier variación existente vale (vienen declaradas así).
       (id) => (byId.get(id)?.subvariaciones?.length ?? 0) > 0,
+      byCodigoVariacion,
     );
     if (!r) return null;
     if (r.sub) {
@@ -294,7 +300,7 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
     setConteo(negocioId, lote.id, fn(conteoActual()));
   }
 
-  async function terminar(quien: string, nota: string) {
+  async function terminar(quien: string, nota: string, aBodega: boolean) {
     if (!negocioId || !nodoId) return;
     const meta: MetaSesionLote = {
       fecha: fechaISO_MX(),
@@ -302,6 +308,7 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
       nodoId,
       ...(enTurno ? { vendedor: enTurno } : {}),
       ...(nota.trim() ? { nota: nota.trim() } : {}),
+      ...(aBodega && manejaBodega ? { destino: "bodega" as const } : {}),
     };
     const sellada = useRecepcionLotes.getState().sellar(negocioId, lote.id, meta);
     setDialogo(null);
@@ -327,7 +334,9 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
         const faltan = r?.despues.totales.pendiente ?? 0;
         responder(
           "bien",
-          `Recepción guardada. Entraron ${pzas(entro)}. ${
+          `Recepción guardada. Entraron ${pzas(entro)}${
+            r?.sesion.destino === "bodega" ? " a la bodega" : ""
+          }. ${
             faltan > 0 ? `Faltan ${pzas(faltan)}.` : "Lote completo."
           }`,
           false,
@@ -596,6 +605,7 @@ export function LoteRecepcionPage({ lote }: { lote: Resurtido }) {
           byId={byId}
           nombre={nombre}
           enTurno={enTurno ?? ""}
+          manejaBodega={manejaBodega}
           onGuardar={terminar}
           onCerrar={() => setDialogo(null)}
         />
@@ -1082,6 +1092,7 @@ function TerminarDialogo({
   byId,
   nombre,
   enTurno,
+  manejaBodega,
   onGuardar,
   onCerrar,
 }: {
@@ -1090,11 +1101,14 @@ function TerminarDialogo({
   byId: ReadonlyMap<string, Articulo>;
   nombre: (clave: string) => string;
   enTurno: string;
-  onGuardar: (quien: string, nota: string) => void;
+  /** Sucursal de mayoreo: se elige si entra a la tienda o a su bodega. */
+  manejaBodega: boolean;
+  onGuardar: (quien: string, nota: string, aBodega: boolean) => void;
   onCerrar: () => void;
 }) {
   const [quien, setQuien] = useState(enTurno);
   const [nota, setNota] = useState("");
+  const [aBodega, setABodega] = useState(false);
   const [faltaNombre, setFaltaNombre] = useState(false);
   const quienRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -1112,6 +1126,7 @@ function TerminarDialogo({
         lote: vista,
         conteo,
         articulos: byId,
+        // Para la vista previa da igual el lugar: cuenta lo mismo.
         ubicacion: { tipo: "sucursal", sucursalId: vista.sucursalDestinoId, esDefault: false },
         meta: { fecha: fechaISO_MX(), quien: "-" },
       });
@@ -1138,7 +1153,7 @@ function TerminarDialogo({
       quienRef.current?.focus();
       return;
     }
-    onGuardar(quien, nota);
+    onGuardar(quien, nota, aBodega);
   }
 
   const s = vistaPrevia?.plan.sesion;
@@ -1166,7 +1181,17 @@ function TerminarDialogo({
             </p>
           ) : (
             <>
-              <Fila etiqueta="Entra al inventario" valor={pzas(vistaPrevia?.entra ?? 0)} fuerte />
+              <Fila
+                etiqueta={
+                  manejaBodega
+                    ? aBodega
+                      ? "Entra a la bodega"
+                      : "Entra a la tienda"
+                    : "Entra al inventario"
+                }
+                valor={pzas(vistaPrevia?.entra ?? 0)}
+                fuerte
+              />
               {(s?.paquetes?.length ?? 0) + (s?.paquetesDanados?.length ?? 0) > 0 && (
                 <Fila
                   etiqueta="Paquetes"
@@ -1207,6 +1232,34 @@ function TerminarDialogo({
           ) : null}
         </div>
         <div className="space-y-3">
+          {manejaBodega && (
+            <div className="space-y-1">
+              <Label>¿A dónde entra?</Label>
+              <div
+                className="grid grid-cols-2 gap-1 rounded-lg border bg-background p-1"
+                role="radiogroup"
+                aria-label="A dónde entra lo recibido"
+              >
+                {[false, true].map((valor) => (
+                  <button
+                    key={String(valor)}
+                    type="button"
+                    role="radio"
+                    aria-checked={aBodega === valor}
+                    onClick={() => setABodega(valor)}
+                    className={cn(
+                      "rounded-md px-3 py-2 text-sm font-semibold transition",
+                      aBodega === valor
+                        ? "bg-marca text-white"
+                        : "text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {valor ? "Bodega" : "Tienda"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="space-y-1">
             <Label htmlFor="quien-recibe">Quién recibe *</Label>
             <Input
@@ -1520,7 +1573,10 @@ function LoteSinRecibir({
               <p>
                 <b>{sesion.tipo === "no_llego" ? "No llegó (admin)" : "Recepción"}</b> ·{" "}
                 {sesion.fecha.slice(0, 16)} · {sesion.quien}
-                {sesion.tipo === "recepcion" && ` · entraron ${pzas(sumaPiezas(sesion.entro))}`}
+                {sesion.tipo === "recepcion" &&
+                  ` · entraron ${pzas(sumaPiezas(sesion.entro))}${
+                    sesion.destino === "bodega" ? " a la bodega" : ""
+                  }`}
                 {sesion.tipo === "no_llego" && ` · ${pzas(sumaPiezas(sesion.noLlego))}`}
               </p>
               {sesion.nota && <p className="text-xs text-muted-foreground">{sesion.nota}</p>}

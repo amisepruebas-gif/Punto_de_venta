@@ -65,7 +65,7 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
   function FiltrosArticulosPanel({ onCerrar, onPedirVariacion, onPedirSena }, ref) {
     const catalogo = useCatalogoArticulos();
     // Nombres de caja: la categoría antes del nombre ("Llavero vegueta").
-    const { byId, bySigla, searchIndex, loading } = useArticulosCaja(
+    const { byId, bySigla, byCodigoVariacion, searchIndex, loading } = useArticulosCaja(
       catalogo.nombreCategoria,
     );
     const { sucursal, loading: cargandoSucursal } = useSucursal();
@@ -256,6 +256,7 @@ export const FiltrosArticulosPanel = forwardRef<FiltrosPanelHandle, Props>(
         byId,
         bySigla,
         (id) => !!entryPorId.get(id)?.tieneVariaciones,
+        byCodigoVariacion,
       );
       if (r) {
         setTexto("");

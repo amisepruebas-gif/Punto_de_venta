@@ -21,6 +21,7 @@ import {
   RE_CODIGO_ARTICULO_ETIQUETA,
   RE_PRECIO_ETIQUETA,
   estadoImpresoraParaOrden,
+  nombreArticuloFinal,
   normalizarCodigoEscaneado,
   resolverPrecioEfectivo,
   textoEstadoTrabajo,
@@ -54,7 +55,7 @@ export function EtiquetasPrecioPage() {
   const navigate = useNavigate();
   const { negocioId, nodoId, sucursalId } = useNodoSession();
   const enTurno = useCarrito((s) => s.enTurno);
-  const { byId, bySigla, loading: cargandoArticulos } = useArticulos();
+  const { byId, bySigla, byCodigoVariacion, loading: cargandoArticulos } = useArticulos();
   const hayTecladoFisico = useTecladoFisico();
   const impresoras = useImpresorasSucursal(negocioId, sucursalId);
   const ahora = useAhora(15_000);
@@ -107,13 +108,31 @@ export function EtiquetasPrecioPage() {
       setAviso("Cargando artículos… vuelve a escanear en un momento");
       return;
     }
-    const r = resolverCodigoExacto(c, byId, bySigla, (id) => (byId.get(id)?.subvariaciones?.length ?? 0) > 0);
+    const r = resolverCodigoExacto(
+      c,
+      byId,
+      bySigla,
+      (id) => (byId.get(id)?.subvariaciones?.length ?? 0) > 0,
+      byCodigoVariacion,
+    );
     if (!r) {
       setAviso(`"${c}" no es de ningún artículo. Para algo sin código usa "No registrado".`);
       return;
     }
     if (r.sub) {
-      setAviso("Las variaciones todavía no se imprimen aquí: escanea el código del artículo.");
+      // Variación de mayoreo: su etiqueta lleva su propio código de 8 dígitos.
+      const codigoSub = r.sub.codigoBarras;
+      if (!codigoSub || !RE_CODIGO_ARTICULO_ETIQUETA.test(codigoSub)) {
+        setAviso("Esa variación no tiene código de 8 dígitos: no se puede imprimir su etiqueta.");
+        return;
+      }
+      agregarFila({
+        codigo: codigoSub,
+        nombre: nombreArticuloFinal(r.padre, r.sub),
+        precio: formatoPrecio(resolverPrecioEfectivo(r.padre, r.sub).precio),
+        piezas: "1",
+      });
+      enfocar();
       return;
     }
     if (!RE_CODIGO_ARTICULO_ETIQUETA.test(r.padre.id)) {

@@ -3,6 +3,7 @@ import {
   parseVariacionCodigo,
   type Articulo,
   type ArticuloSubvariacion,
+  type VariacionPorCodigo,
 } from "@shared";
 
 /**
@@ -57,15 +58,18 @@ export function useElegirArticulo({
 }
 
 /**
- * Coincidencia exacta del texto con un código: `v-NN-XXX` (solo si el padre
- * tiene variaciones V2), id de 8 dígitos o sigla. Es lo que manda el lector
- * al escanear una etiqueta.
+ * Coincidencia exacta del texto con un código: `v-NN-XXX` o el código de 8
+ * dígitos de una variación (los dos solo si el padre tiene variaciones V2),
+ * id de 8 dígitos o sigla. Es lo que manda el lector al escanear una
+ * etiqueta. El padre que devuelve siempre sale de `byId` (en la venta trae
+ * la categoría antes del nombre).
  */
 export function resolverCodigoExacto(
   texto: string,
   byId: ReadonlyMap<string, Articulo>,
   bySigla: ReadonlyMap<string, Articulo>,
   tieneVariacionesV2: (idPadre: string) => boolean,
+  byCodigoVariacion: ReadonlyMap<string, VariacionPorCodigo>,
 ): { padre: Articulo; sub?: ArticuloSubvariacion } | null {
   const limpio = texto.trim();
   if (!limpio) return null;
@@ -77,7 +81,14 @@ export function resolverCodigoExacto(
     return { padre, sub };
   }
   const padre = byId.get(limpio) ?? bySigla.get(limpio.toLowerCase());
-  return padre ? { padre } : null;
+  if (padre) return { padre };
+  // Etiqueta de una variación de mayoreo: su propio código de 8 dígitos (no
+  // choca con los ids: salen del mismo consecutivo).
+  const v = byCodigoVariacion.get(limpio);
+  const padreV = v ? byId.get(v.articulo.id) : undefined;
+  const sub = padreV?.subvariaciones?.find((s) => s.codigo === v!.subvariacion.codigo);
+  if (!padreV || !sub || !tieneVariacionesV2(padreV.id)) return null;
+  return { padre: padreV, sub };
 }
 
 /** Aviso cuando se escanea un artículo que no se vende en esta sucursal. */

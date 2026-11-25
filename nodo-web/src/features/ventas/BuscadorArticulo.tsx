@@ -77,7 +77,7 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
   function BuscadorArticulo({ onPedirVariacion, onPedirSena, onAbrirFiltros }, ref) {
   const catalogo = useCatalogoArticulos();
   // Nombres de caja: la categoría antes del nombre ("Llavero vegueta").
-  const { byId, bySigla, searchIndex, loading } = useArticulosCaja(
+  const { byId, bySigla, byCodigoVariacion, searchIndex, loading } = useArticulosCaja(
     catalogo.nombreCategoria,
   );
   const { items, limpiar } = useCarrito();
@@ -213,6 +213,7 @@ export const BuscadorArticulo = forwardRef<BuscadorArticuloHandle, Props>(
       byId,
       bySigla,
       (id) => !!entryPorId.get(id)?.tieneVariaciones,
+      byCodigoVariacion,
     );
     if (!r) {
       const t = texto.trim();
