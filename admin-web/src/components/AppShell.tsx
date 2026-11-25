@@ -24,6 +24,7 @@ import {
   MessagesSquare,
   Link2,
   HandCoins,
+  Warehouse,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/firebase/config";
@@ -49,6 +50,7 @@ const NAV: NavItem[] = [
   { to: "/articulos", label: "Artículos", icon: Package },
   { to: "/categorias", label: "Categorías y géneros", icon: FolderTree },
   { to: "/ingreso-mercancia", label: "Ingreso", icon: Truck },
+  { to: "/movimientos-existencias", label: "Movimientos bodega/tienda", icon: Warehouse },
   { to: "/resurtidos", label: "Resurtidos", icon: ArrowRightLeft, contador: "lotesListos" },
   { to: "/enlaces-lote", label: "Accesos por enlace", icon: Link2 },
   { to: "/fabricacion", label: "Fabricación", icon: Factory },

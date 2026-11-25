@@ -29,7 +29,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { Categoria, Genero, Subcategoria } from "@shared";
+import {
+  PrecioMayoreoModal,
+  textoPrecioMayoreo,
+} from "@/features/mayoreo/PrecioMayoreoModal";
+import {
+  guardarPrecioMayoreo,
+  usePreciosMayoreo,
+  type NivelPrecioMayoreo,
+} from "@/features/mayoreo/preciosMayoreoService";
+import {
+  nivelPrecioValido,
+  type Categoria,
+  type Genero,
+  type PrecioMayoreoNivel,
+  type Subcategoria,
+} from "@shared";
 
 const HUERFANO_KEY = "__huerfano__";
 
@@ -39,6 +54,17 @@ export function CategoriasPage() {
   const { generos, loading: cargandoGeneros } = useGeneros();
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<ModalState | null>(null);
+  // Precios de mayoreo en escalera: el de la categoría vale para todos sus
+  // artículos de mayoreo; una subcategoría puede tener el suyo.
+  const { precios } = usePreciosMayoreo();
+  const [precioDe, setPrecioDe] = useState<{
+    nivel: NivelPrecioMayoreo;
+    id: string;
+    nombre: string;
+    categoriaId?: string;
+  } | null>(null);
+  const precioValido = (n: unknown): PrecioMayoreoNivel | undefined =>
+    nivelPrecioValido(n) ? n : undefined;
 
   // Agrupar subcategorías por categoría padre. Las que apuntan a categorías
   // inexistentes (huérfanas tras borrado) van a la cubeta especial.
@@ -73,7 +99,13 @@ export function CategoriasPage() {
     ) {
       return;
     }
-    if (negocioId) await borrarCategoria(negocioId, c.categoriaId);
+    if (!negocioId) return;
+    await borrarCategoria(negocioId, c.categoriaId);
+    // Su precio de mayoreo se va con ella: una categoría nueva con el mismo
+    // nombre no debe revivirlo.
+    if (precios?.categorias?.[c.categoriaId]) {
+      await guardarPrecioMayoreo(negocioId, "categorias", c.categoriaId, null);
+    }
   }
 
   async function onBorrarSubcategoria(sc: Subcategoria) {
@@ -84,7 +116,11 @@ export function CategoriasPage() {
     ) {
       return;
     }
-    if (negocioId) await borrarSubcategoria(negocioId, sc.subcategoriaId);
+    if (!negocioId) return;
+    await borrarSubcategoria(negocioId, sc.subcategoriaId);
+    if (precios?.subcategorias?.[sc.subcategoriaId]) {
+      await guardarPrecioMayoreo(negocioId, "subcategorias", sc.subcategoriaId, null);
+    }
   }
 
   async function onBorrarGenero(g: Genero) {
@@ -164,6 +200,13 @@ export function CategoriasPage() {
                         : `${subs.length} subcategorías`}
                     </p>
                   </div>
+                  <BotonPrecio
+                    precio={precioValido(precios?.categorias?.[c.categoriaId])}
+                    sinPrecio="Precio de mayoreo"
+                    onClick={() =>
+                      setPrecioDe({ nivel: "categorias", id: c.categoriaId, nombre: c.nombre })
+                    }
+                  />
                   <Button
                     variant="ghost"
                     size="sm"
@@ -210,6 +253,15 @@ export function CategoriasPage() {
                           <SubcategoriaRow
                             key={sc.subcategoriaId}
                             sc={sc}
+                            precio={precioValido(precios?.subcategorias?.[sc.subcategoriaId])}
+                            onPrecio={() =>
+                              setPrecioDe({
+                                nivel: "subcategorias",
+                                id: sc.subcategoriaId,
+                                nombre: sc.nombre,
+                                categoriaId: sc.categoriaId,
+                              })
+                            }
                             onEditar={() =>
                               setModal({
                                 tipo: "editar-subcategoria",
@@ -317,6 +369,22 @@ export function CategoriasPage() {
         )}
       </section>
 
+      {precioDe && negocioId && (
+        <PrecioMayoreoModal
+          negocioId={negocioId}
+          nivel={precioDe.nivel}
+          id={precioDe.id}
+          nombre={precioDe.nombre}
+          actual={precioValido(precios?.[precioDe.nivel]?.[precioDe.id])}
+          deLaCategoria={
+            precioDe.categoriaId
+              ? precioValido(precios?.categorias?.[precioDe.categoriaId])
+              : undefined
+          }
+          onClose={() => setPrecioDe(null)}
+        />
+      )}
+
       {modal && negocioId && (
         <CategoriaModal
           state={modal}
@@ -329,13 +397,42 @@ export function CategoriasPage() {
   );
 }
 
+/** Botón con el precio de mayoreo de una categoría o subcategoría. */
+function BotonPrecio({
+  precio,
+  sinPrecio,
+  onClick,
+}: {
+  precio?: PrecioMayoreoNivel;
+  sinPrecio: string;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant={precio ? "outline" : "ghost"}
+      size="sm"
+      onClick={onClick}
+      className={precio ? "" : "text-muted-foreground"}
+      title="Precio de mayoreo y de menudeo de sus artículos de mayoreo"
+    >
+      {precio ? textoPrecioMayoreo(precio) : sinPrecio}
+    </Button>
+  );
+}
+
 function SubcategoriaRow({
   sc,
+  precio,
+  onPrecio,
   onEditar,
   onBorrar,
   huerfana = false,
 }: {
   sc: Subcategoria;
+  precio?: PrecioMayoreoNivel;
+  /** Sin esto no se ofrece el precio (subcategoría huérfana). */
+  onPrecio?: () => void;
   onEditar: () => void;
   onBorrar: () => void;
   huerfana?: boolean;
@@ -350,6 +447,9 @@ function SubcategoriaRow({
           {huerfana ? " · huérfana" : ""}
         </p>
       </div>
+      {onPrecio && (
+        <BotonPrecio precio={precio} sinPrecio="Usa el de la categoría" onClick={onPrecio} />
+      )}
       <Button variant="ghost" size="icon" onClick={onEditar} aria-label="Editar">
         <Pencil className="h-3 w-3" />
       </Button>

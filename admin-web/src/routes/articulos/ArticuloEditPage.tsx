@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChevronLeft, Save, Trash2, X as XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,6 @@ import {
 import {
   escalonesDeTexto,
   escalonesEditables,
-  PIEZAS_MAYOREO,
   resolverSucursalDefaultId,
   validarEscalones,
   validarPrecioMenudeo,
@@ -319,6 +318,12 @@ export function ArticuloEditPage() {
     );
   }
 
+  // Los artículos «Solo mayoreo» se editan en su propio registro, que no
+  // toca existencias y cuida la escalera de precios.
+  if (editing && articulo?.soloMayoreo) {
+    return <Navigate to={`/articulos/mayoreo/${articulo.id}`} replace />;
+  }
+
   return (
     <form
       onSubmit={onSubmit}
@@ -448,47 +453,15 @@ export function ArticuloEditPage() {
               onChange={(filas) => set("escalones", filas)}
               disabled={!!zonaActual}
             />
-            <label className="flex items-start gap-2">
-              <Checkbox
-                className="mt-0.5"
-                checked={form.soloMayoreo}
-                onChange={(e) =>
-                  setForm((s) => ({
-                    ...s,
-                    soloMayoreo: e.target.checked,
-                    // Sin «Solo mayoreo» no hay menudeo: se borra al guardar.
-                    ...(e.target.checked ? {} : { precioMenudeo: "" }),
-                  }))
-                }
-              />
-              <span className="text-sm">
-                Solo mayoreo
-                <span className="block text-[11px] text-muted-foreground">
-                  Solo lo ven y venden las sucursales de mayoreo.
-                </span>
-              </span>
-            </label>
-            {form.soloMayoreo && (
-              <div className="space-y-1.5 pl-6">
-                <Label htmlFor="precioMenudeo">Precio menudeo *</Label>
-                <Input
-                  id="precioMenudeo"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="any"
-                  value={form.precioMenudeo}
-                  onChange={(e) => set("precioMenudeo", e.target.value)}
-                  placeholder={nVenta > 0 ? `Mayor que $${nVenta}` : undefined}
-                  className="max-w-[12rem]"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Se cobra cuando el ticket lleva menos de {PIEZAS_MAYOREO}{" "}
-                  piezas. Desde {PIEZAS_MAYOREO} piezas se cobra el precio de
-                  venta.
-                </p>
-              </div>
-            )}
+            {/* Los artículos «Solo mayoreo» tienen su propio registro (los de
+                una sucursal de mayoreo): aquí ya no se marcan. */}
+            <p className="text-[11px] text-muted-foreground">
+              ¿Es para las sucursales de mayoreo?{" "}
+              <Link to="/articulos/mayoreo/nuevo" className="underline">
+                Usa el registro de mayoreo
+              </Link>
+              .
+            </p>
           </div>
           {form.subvariaciones.length === 0 && (
             <>
@@ -713,7 +686,7 @@ export function ArticuloEditPage() {
 // Chips de etiquetas (tags libres por artículo)
 // ============================================================
 
-function EtiquetasChips({
+export function EtiquetasChips({
   etiquetas,
   onChange,
 }: {

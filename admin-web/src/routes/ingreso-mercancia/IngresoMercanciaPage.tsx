@@ -29,8 +29,11 @@ import {
   type UbicacionResuelta,
 } from "@shared";
 
-/** Destino del ingreso: "bodega" o un sucursalId. Se recuerda el último
- *  por navegador (comodidad; si el almacenamiento falla, se pregunta). */
+/** Destino del ingreso: "bodega" (la general, el taller), un sucursalId (su
+ *  tienda) o "bodega:{sucursalId}" (la bodega de esa tienda; solo sucursales
+ *  de mayoreo). Se recuerda el último por navegador (comodidad; si el
+ *  almacenamiento falla, se pregunta). */
+const PREFIJO_BODEGA_TIENDA = "bodega:";
 const LS_DESTINO = "admin.ingreso.destino";
 function leerDestinoGuardado(): string {
   try {
@@ -61,9 +64,16 @@ export function IngresoMercanciaPage() {
   const [destino, setDestino] = useState<string>(leerDestinoGuardado);
   // Ubicación resuelta del destino (null hasta tener negocio y sucursales,
   // o si el destino guardado ya no existe).
+  const sucursalBodega = destino.startsWith(PREFIJO_BODEGA_TIENDA)
+    ? destino.slice(PREFIJO_BODEGA_TIENDA.length)
+    : null;
   const ubicacion: UbicacionResuelta | null =
     destino === "bodega"
       ? { tipo: "bodega" }
+      : sucursalBodega
+        ? sucursales.some((s) => s.sucursalId === sucursalBodega && s.modoMayoreo)
+          ? { tipo: "bodegaSucursal", sucursalId: sucursalBodega }
+          : null
       : !cargandoNegocio &&
           !cargandoSucursales &&
           sucursales.some((s) => s.sucursalId === destino)
@@ -105,7 +115,7 @@ export function IngresoMercanciaPage() {
     const mensajes: Record<typeof r.razon, string> = {
       "no-encontrado": `Código no encontrado: ${r.codigo}`,
       "padre-con-variaciones":
-        "Este artículo tiene variaciones. Escanea el código v-NN-XXX de la específica.",
+        "Este artículo tiene variaciones. Escanea la etiqueta de la variación.",
       "subvariacion-no-encontrada": `Subvariación no existe en el padre`,
     };
     setToast({ tipo: "err", texto: mensajes[r.razon] });
@@ -209,7 +219,17 @@ export function IngresoMercanciaPage() {
                 Tienda · {s.nombre}
               </option>
             ))}
-            <option value="bodega">Bodega</option>
+            {sucursales
+              .filter((s) => s.modoMayoreo)
+              .map((s) => (
+                <option
+                  key={`b-${s.sucursalId}`}
+                  value={`${PREFIJO_BODEGA_TIENDA}${s.sucursalId}`}
+                >
+                  Bodega de la tienda · {s.nombre}
+                </option>
+              ))}
+            <option value="bodega">Bodega general (taller)</option>
           </select>
         </div>
 

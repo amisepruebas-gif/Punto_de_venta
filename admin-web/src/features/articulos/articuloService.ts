@@ -19,10 +19,12 @@ import {
   COL_ARTICULOS,
   COL_DATOS,
   DOC_ARTICULOS_AC,
+  DOC_CONTADOR_ARTICULOS,
   fechaISO_MX,
   generarID,
   generarVariacionCodigo,
-  siguienteArticuloId,
+  maxCodigoArticulos,
+  siguientesIdsArticulo,
   type Articulo,
   type ArticuloSubvariacion,
   type RegistroImagenProcesada,
@@ -54,27 +56,37 @@ import {
 // sobreescritura silenciosa.
 // ============================================================
 
-async function siguienteId(negocioId: string): Promise<string> {
+/**
+ * Aparta `cuantos` números seguidos del consecutivo de artículos y los
+ * devuelve en orden. Del mismo consecutivo salen los ids de artículo y los
+ * `codigoBarras` de las variaciones de mayoreo, así que ningún código de 8
+ * dígitos se repite en el negocio.
+ */
+export async function reservarIdsArticulo(
+  negocioId: string,
+  cuantos: number,
+): Promise<string[]> {
+  if (cuantos <= 0) return [];
   const ref = doc(
     db,
-    `${paths.negocio(negocioId)}/${COL_DATOS}/_contadorArticulos`,
+    `${paths.negocio(negocioId)}/${COL_DATOS}/${DOC_CONTADOR_ARTICULOS}`,
   );
 
   // Scan max real fuera de la TX. Indispensable contra "counter stale".
+  // Cuenta también los códigos de las variaciones.
   const colArticulos = collection(
     db,
     `${paths.negocio(negocioId)}/${COL_ARTICULOS}`,
   );
   const todos = await getDocs(colArticulos);
-  let scanMaxNum = 0;
-  todos.forEach((d) => {
-    if (/^\d+$/.test(d.id)) {
-      const n = parseInt(d.id, 10);
-      if (n > scanMaxNum) scanMaxNum = n;
-    }
-  });
+  const scanMaxNum = maxCodigoArticulos(
+    todos.docs.map((d) => ({
+      id: d.id,
+      subvariaciones: (d.data() as Articulo).subvariaciones,
+    })),
+  );
 
-  let nuevo = "";
+  let nuevos: string[] = [];
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     const prev = snap.exists()
@@ -87,9 +99,14 @@ async function siguienteId(negocioId: string): Promise<string> {
     //   - scan vacío (catálogo recién vaciado) → gana counterNum
     const baseNum = Math.max(counterNum, scanMaxNum);
     const base = baseNum > 0 ? String(baseNum) : null;
-    nuevo = siguienteArticuloId(base);
-    tx.set(ref, { ultimoId: nuevo }, { merge: true });
+    nuevos = siguientesIdsArticulo(base, cuantos);
+    tx.set(ref, { ultimoId: nuevos[nuevos.length - 1] }, { merge: true });
   });
+  return nuevos;
+}
+
+async function siguienteId(negocioId: string): Promise<string> {
+  const [nuevo] = await reservarIdsArticulo(negocioId, 1);
   return nuevo;
 }
 
@@ -246,6 +263,15 @@ async function resolverSubvariaciones(
           : sv.cantidadPorSucursal
             ? { cantidadPorSucursal: sv.cantidadPorSucursal }
             : {}),
+        // La bodega de cada tienda y el código de 8 dígitos (mayoreo) no los
+        // maneja este editor: se conservan los del doc actual, igual que el
+        // stock de las otras sucursales.
+        ...(existenteSv?.cantidadBodegaSucursal
+          ? { cantidadBodegaSucursal: existenteSv.cantidadBodegaSucursal }
+          : {}),
+        ...(existenteSv?.codigoBarras
+          ? { codigoBarras: existenteSv.codigoBarras }
+          : {}),
         ...(sv.precioDescuento
           ? { precioDescuento: sv.precioDescuento }
           : {}),

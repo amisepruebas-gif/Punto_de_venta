@@ -1,6 +1,7 @@
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDocs,
   onSnapshot,
@@ -17,6 +18,7 @@ import {
   generarID,
   hashPin,
   paths,
+  type AccesoMercancia,
   type UsuarioMercancia,
 } from "@shared";
 
@@ -93,6 +95,9 @@ export type CrearUsuarioInput = {
   nombre: string;
   pin: string;
   habilitado: boolean;
+  /** Ausente o "completo": el usuario de siempre. "existencias": encargado
+   *  de tienda (solo ve existencias y mueve piezas entre bodega y tienda). */
+  acceso?: AccesoMercancia;
   creadoPor?: string;
 };
 
@@ -112,6 +117,7 @@ export async function crearUsuarioMercancia(
     nombre: input.nombre.trim(),
     pinHash,
     habilitado: input.habilitado,
+    ...(input.acceso === "existencias" ? { acceso: "existencias" as const } : {}),
     fechaCreacion: fechaISO_MX(),
     ...(input.creadoPor ? { creadoPor: input.creadoPor } : {}),
   };
@@ -128,6 +134,9 @@ export type ActualizarUsuarioInput = {
   /** PIN nuevo en plano (opcional — si no se cambia, no se toca el hash). */
   pinNuevo?: string;
   habilitado?: boolean;
+  /** Cambia el tipo de acceso. Aplica la próxima vez que la persona entre
+   *  (la app de mercancía la saca al notar el cambio). */
+  acceso?: AccesoMercancia;
 };
 
 export async function actualizarUsuarioMercancia(
@@ -140,6 +149,9 @@ export async function actualizarUsuarioMercancia(
   };
   if (input.nombre !== undefined) patch.nombre = input.nombre.trim();
   if (input.habilitado !== undefined) patch.habilitado = input.habilitado;
+  if (input.acceso !== undefined) {
+    patch.acceso = input.acceso === "existencias" ? "existencias" : deleteField();
+  }
   if (input.pinNuevo) {
     const pinHash = await hashPin(input.pinNuevo);
     const libre = await pinDisponible(

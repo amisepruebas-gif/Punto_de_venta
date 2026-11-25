@@ -28,7 +28,12 @@ import {
 /** Filtro por tipo: con precio de mayoreo (incluye el legacy de un
  *  escalón, para revisarlo), "solo mayoreo" o fabricados. */
 type FiltroTipo = "" | "mayoreo" | "solo" | "fabricado";
-import { resolverTrios, StockTrio } from "@/features/articulos/stockHelpers";
+import {
+  resolverTrios,
+  StockTrio,
+  sumarTrios,
+  TRIO_VACIO,
+} from "@/features/articulos/stockHelpers";
 import { ArticulosSearchBar } from "@/features/articulos/ArticulosSearchBar";
 import { ExistenciasSucursalEditor } from "@/features/articulos/ExistenciasSucursalEditor";
 import { AsignarEnBloqueDialog } from "@/features/articulos/AsignarEnBloqueDialog";
@@ -285,6 +290,13 @@ export function ArticulosPage() {
               <ListChecks className="mr-2 h-4 w-4" /> Seleccionar
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={() => navigate("/articulos/mayoreo/nuevo")}
+            title="Registro simplificado para las sucursales de mayoreo"
+          >
+            <Plus className="mr-2 h-4 w-4" /> Nuevo de mayoreo
+          </Button>
           <Button onClick={() => navigate("/articulos/nuevo")}>
             <Plus className="mr-2 h-4 w-4" /> Nuevo artículo
           </Button>
@@ -463,6 +475,7 @@ export function ArticulosPage() {
           articulos={resultados}
           ubicacion={ubicacionFiltro}
           sucursalNombre={sucursalFiltro.nombre}
+          permiteBodega={!!sucursalFiltro.modoMayoreo}
           onCerrar={() => setEditandoExistencias(false)}
         />
       ) : loading ? (
@@ -618,15 +631,8 @@ function ArticuloConVariaciones({
 }) {
   const subs = articulo.subvariaciones ?? [];
   const trio = subs.reduce(
-    (acc, sv) => {
-      const t = resolverTrios(sv, filtroSucursal, defaultSucursalId);
-      return {
-        suc: acc.suc + t.suc,
-        bod: acc.bod + t.bod,
-        tot: acc.tot + t.tot,
-      };
-    },
-    { suc: 0, bod: 0, tot: 0 },
+    (acc, sv) => sumarTrios(acc, resolverTrios(sv, filtroSucursal, defaultSucursalId)),
+    TRIO_VACIO,
   );
   return (
     <section

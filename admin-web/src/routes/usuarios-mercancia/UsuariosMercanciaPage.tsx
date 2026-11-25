@@ -20,7 +20,7 @@ import {
   eliminarUsuarioMercancia,
   useUsuariosMercancia,
 } from "@/features/usuarios-mercancia/usuariosMercanciaService";
-import { isValidPin, type UsuarioMercancia } from "@shared";
+import { isValidPin, type AccesoMercancia, type UsuarioMercancia } from "@shared";
 
 export function UsuariosMercanciaPage() {
   const { negocioId } = useNegocio();
@@ -97,7 +97,9 @@ export function UsuariosMercanciaPage() {
           <p className="text-xs text-muted-foreground">
             Acceso por PIN de 5 dígitos a la app{" "}
             <code className="font-mono">mercancia-web</code> (CRUD móvil de
-            artículos). PIN único por sucursal.
+            artículos). PIN único por sucursal. El «encargado de tienda» solo
+            ve existencias y mueve piezas entre la bodega y la tienda: no puede
+            aumentar cantidades ni cambiar el catálogo.
           </p>
         </div>
         <Button onClick={abrirNuevo} disabled={!sucursalId} className="shrink-0">
@@ -152,7 +154,8 @@ export function UsuariosMercanciaPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{u.nombre}</p>
                   <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <KeyRound className="h-3 w-3" /> PIN configurado
+                    <KeyRound className="h-3 w-3" /> PIN configurado ·{" "}
+                    {u.acceso === "existencias" ? "Encargado de tienda" : "Mercancía (todo)"}
                   </p>
                 </div>
                 <button
@@ -228,6 +231,7 @@ function UsuarioFormModal({
   const [nombre, setNombre] = useState(existente?.nombre ?? "");
   const [pin, setPin] = useState("");
   const [habilitado, setHabilitado] = useState(existente?.habilitado ?? true);
+  const [acceso, setAcceso] = useState<AccesoMercancia>(existente?.acceso ?? "completo");
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e: FormEvent) {
@@ -252,6 +256,7 @@ function UsuarioFormModal({
           uid: existente!.id,
           nombre,
           habilitado,
+          acceso,
           ...(pin ? { pinNuevo: pin } : {}),
         });
       } else {
@@ -259,6 +264,7 @@ function UsuarioFormModal({
           nombre,
           pin,
           habilitado,
+          acceso,
           creadoPor,
         });
       }
@@ -326,6 +332,25 @@ function UsuarioFormModal({
           <p className="text-[11px] text-muted-foreground">
             Único dentro de esta sucursal. No se guarda en plano (hash SHA-256).
           </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="um-acceso">Qué puede hacer</Label>
+          <select
+            id="um-acceso"
+            value={acceso}
+            onChange={(e) => setAcceso(e.target.value as AccesoMercancia)}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+          >
+            <option value="completo">Mercancía (todo: artículos, ingreso, resurtidos)</option>
+            <option value="existencias">Encargado de tienda (solo ver y mover existencias)</option>
+          </select>
+          {acceso === "existencias" && (
+            <p className="text-[11px] text-muted-foreground">
+              Ve las existencias de su tienda y mueve piezas entre bodega y tienda. Cada
+              movimiento queda registrado con su nombre.
+            </p>
+          )}
         </div>
 
         <label className="flex items-center gap-2">

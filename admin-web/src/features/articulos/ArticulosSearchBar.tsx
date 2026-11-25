@@ -6,7 +6,7 @@ import { useSucursales } from "@/features/sucursales/useSucursales";
 import { useNegocio } from "@/hooks/useNegocio";
 import { Input } from "@/components/ui/input";
 import type { Articulo } from "@shared";
-import { resolverTrios, StockTrio } from "./stockHelpers";
+import { resolverTrios, StockTrio, TRIO_VACIO } from "./stockHelpers";
 
 const MAX_SUGERENCIAS = 6;
 
@@ -238,7 +238,7 @@ export function ArticulosSearchBar({
                   const item = sv ?? padre;
                   const trio = item
                     ? resolverTrios(item, filtroSucursal, defaultSucursalId)
-                    : { suc: 0, bod: 0, tot: 0 };
+                    : TRIO_VACIO;
                   const imagen = sv?.imagenUrl ?? padre?.imagenUrl;
                   return (
                     <li

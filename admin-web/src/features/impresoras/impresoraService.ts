@@ -13,11 +13,14 @@ import {
 import { auth, db } from "@/firebase/config";
 import {
   IMPRESION_TOPE_ADMIN,
+  IMPRESION_TOPE_RENGLONES,
   codigoVinculacionImpresora,
   generarSecretoEnlace,
   hashSecretoEnlace,
   paths,
+  validarRenglonesPrecio,
   type EnlaceLote,
+  type RenglonEtiquetaPrecio,
 } from "@shared";
 
 // ============================================================
@@ -182,6 +185,63 @@ export async function mandarEtiquetasLote(
     });
   }).catch(traducirPermiso);
   return ref.id;
+}
+
+/** Ids para las órdenes de etiquetas de precio de unos renglones: una orden
+ *  por cada `IMPRESION_TOPE_RENGLONES`. La pantalla los guarda y los reusa
+ *  al reintentar, así una orden que sí llegó no sale doble. */
+export function idsOrdenesPrecio(negocioId: string, renglones: number): string[] {
+  const ordenes = Math.ceil(renglones / IMPRESION_TOPE_RENGLONES);
+  return Array.from({ length: ordenes }, () => doc(collection(db, paths.impresionesCol(negocioId))).id);
+}
+
+/**
+ * Manda etiquetas de precio de artículos finales (código de 8 dígitos y
+ * precio). Parte los renglones en órdenes de a lo más
+ * `IMPRESION_TOPE_RENGLONES`, con los ids de `idsOrdenesPrecio`. Devuelve
+ * los ids de las órdenes.
+ */
+export async function mandarEtiquetasPrecio(
+  negocioId: string,
+  impresoraId: string,
+  renglones: RenglonEtiquetaPrecio[],
+  quien: string,
+  trabajoIds: string[],
+): Promise<string[]> {
+  const uid = uidActual();
+  const partes: RenglonEtiquetaPrecio[][] = [];
+  for (let i = 0; i < renglones.length; i += IMPRESION_TOPE_RENGLONES) {
+    partes.push(renglones.slice(i, i + IMPRESION_TOPE_RENGLONES));
+  }
+  if (partes.length === 0) throw new Error("No hay etiquetas que imprimir");
+  if (trabajoIds.length !== partes.length) throw new Error("Vuelve a preparar las etiquetas");
+  for (const parte of partes) {
+    const problemas = validarRenglonesPrecio(parte);
+    if (problemas.length > 0) throw new Error(problemas.join(". "));
+  }
+  for (const [i, parte] of partes.entries()) {
+    const ref = doc(db, paths.impresion(negocioId, trabajoIds[i]!));
+    await runTransaction(db, async (tx) => {
+      const ya = await tx.get(ref);
+      if (ya.exists()) return;
+      tx.set(ref, {
+        tipo: "etiquetas_precio",
+        impresoraId,
+        estado: "pendiente",
+        origen: "admin",
+        creadoPor: uid,
+        ...(quien.trim() ? { quien: quien.trim().slice(0, 80) } : {}),
+        creadoEn: serverTimestamp(),
+        // Solo lo que se imprime (el nombre es de la pantalla).
+        renglones: parte.map((r) => ({
+          ...(r.codigo ? { codigo: r.codigo } : {}),
+          precio: r.precio,
+          piezas: r.piezas,
+        })),
+      });
+    }).catch(traducirPermiso);
+  }
+  return trabajoIds;
 }
 
 /** "Reimprimir": la regresa a la cola con sus mismos números. */

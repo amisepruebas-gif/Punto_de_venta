@@ -12,6 +12,7 @@ import { cargarUbicacionStock } from "@/features/sucursales/ubicacionStock";
 import {
   planearExistencias,
   type CambioExistencia,
+  type LugarExistencia,
   type PlanExistencias,
 } from "./planearExistencias";
 
@@ -21,8 +22,9 @@ const TX_EN_PARALELO = 8;
 export type ResultadoExistencias = Omit<PlanExistencias, "patch">;
 
 /**
- * Fija las existencias de tienda de varios artículos / variaciones en la
- * sucursal `ubicacion`. Cada artículo va en su propia transacción: lee el
+ * Fija las existencias de tienda (o de la bodega de esa tienda, con
+ * `lugar: "bodega"`) de varios artículos / variaciones en la sucursal
+ * `ubicacion`. Cada artículo va en su propia transacción: lee el
  * doc, valida que el stock siga en `base` y escribe sólo el campo de esa
  * sucursal (ver `planearExistencias`). Lo que cambió mientras el admin
  * editaba vuelve en `conflictos` sin escribirse.
@@ -35,6 +37,7 @@ export async function guardarExistenciasSucursal(
   negocioId: string,
   ubicacion: UbicacionStock,
   cambios: CambioExistencia[],
+  lugar: LugarExistencia = "tienda",
 ): Promise<ResultadoExistencias> {
   const fresca = await cargarUbicacionStock(negocioId, ubicacion.sucursalId);
   if (fresca.esDefault !== ubicacion.esDefault) {
@@ -60,7 +63,7 @@ export async function guardarExistenciasSucursal(
     const lote = grupos.slice(i, i + TX_EN_PARALELO);
     const parciales = await Promise.all(
       lote.map(([articuloId, cambiosArt]) =>
-        aplicarEnArticulo(negocioId, articuloId, cambiosArt, ubicacion),
+        aplicarEnArticulo(negocioId, articuloId, cambiosArt, ubicacion, lugar),
       ),
     );
     for (const p of parciales) {
@@ -91,6 +94,7 @@ async function aplicarEnArticulo(
   articuloId: string,
   cambios: CambioExistencia[],
   ubicacion: UbicacionStock,
+  lugar: LugarExistencia,
 ): Promise<ResultadoExistencias> {
   const ref = doc(db, paths.articulo(negocioId, articuloId));
   try {
@@ -110,6 +114,7 @@ async function aplicarEnArticulo(
         snap.data() as Articulo,
         cambios,
         ubicacion,
+        lugar,
       );
       if (patch) tx.update(ref, patch as Record<string, unknown>);
       return resto;

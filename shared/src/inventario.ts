@@ -99,6 +99,20 @@ export function leerExistenciasTienda(
   };
 }
 
+/** ¿Tiene piezas en CUALQUIER ubicación (taller, tiendas o bodegas de
+ *  tienda)? Para no quitar una variación, ni cambiar si un artículo lleva
+ *  variaciones, mientras haya existencias que se perderían de vista. */
+export function tieneExistencias(obj: StockShape): boolean {
+  const alguno = (mapa?: { [sid: string]: string }) =>
+    Object.values(mapa ?? {}).some((v) => (Number(v) || 0) > 0);
+  return (
+    (Number(obj.cantidad) || 0) > 0 ||
+    (Number(obj.cantidadBodega) || 0) > 0 ||
+    alguno(obj.cantidadPorSucursal) ||
+    alguno(obj.cantidadBodegaSucursal)
+  );
+}
+
 export type PlanMovimientoStock = {
   /** Campos a escribir en el doc del artículo (`tx.update(ref, patch)`). */
   patch: Partial<Articulo>;

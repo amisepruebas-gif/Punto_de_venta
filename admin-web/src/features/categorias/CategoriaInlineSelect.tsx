@@ -13,17 +13,21 @@ const SELECT_CLS =
 /**
  * Categoría + subcategoría (opcional) con "+ Nueva" para crearlas en el
  * momento. Escribir un nombre que ya existe la selecciona (mismo slug).
+ * `subcategoriaRequerida`: en el registro de mayoreo las dos son
+ * obligatorias.
  */
 export function CategoriaInlineSelect({
   categoriaId,
   subcategoriaId,
   onChange,
   categoriaRequerida = false,
+  subcategoriaRequerida = false,
 }: {
   categoriaId: string;
   subcategoriaId: string;
   onChange: (v: { categoriaId: string; subcategoriaId: string }) => void;
   categoriaRequerida?: boolean;
+  subcategoriaRequerida?: boolean;
 }) {
   const { negocioId } = useNegocio();
   const { categorias, subcategorias } = useCategorias();
@@ -48,14 +52,14 @@ export function CategoriaInlineSelect({
         }}
       />
       <CampoConNuevo
-        etiqueta="Subcategoría (opcional)"
-        placeholderNuevo="Ej. Anime"
+        etiqueta={subcategoriaRequerida ? "Subcategoría *" : "Subcategoría (opcional)"}
+        placeholderNuevo={subcategoriaRequerida ? "Ej. Metálico" : "Ej. Anime"}
         valor={subcategoriaId}
         opciones={subsDeCategoria.map((sc) => ({
           id: sc.subcategoriaId,
           nombre: sc.nombre,
         }))}
-        vacio="— Sin subcategoría —"
+        vacio={subcategoriaRequerida ? "— Elige una subcategoría —" : "— Sin subcategoría —"}
         deshabilitado={!categoriaId}
         ayudaDeshabilitado="Elige una categoría primero"
         onElegir={(id) => onChange({ categoriaId, subcategoriaId: id })}

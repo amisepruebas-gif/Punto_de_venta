@@ -12,6 +12,9 @@ import { useArticulos } from "@/features/articulos/useArticulos";
 import { ImageUpload } from "@/features/articulos/ImageUpload";
 import { crearArticulo } from "@/features/articulos/articuloService";
 import { CategoriaInlineSelect } from "@/features/categorias/CategoriaInlineSelect";
+import { useCategorias } from "@/features/categorias/useCategorias";
+import { PrecioCategoriaInline } from "@/features/mayoreo/PrecioCategoriaInline";
+import { usePreciosMayoreo } from "@/features/mayoreo/preciosMayoreoService";
 import { GeneroInlineSelect } from "@/features/categorias/GeneroInlineSelect";
 import { ZonaPrecioSelect } from "@/features/zonas-precio/ZonaPrecioSelect";
 import { useZonasPrecio } from "@/features/zonas-precio/useZonasPrecio";
@@ -21,7 +24,9 @@ import { TALLER_ID, useUbicaciones } from "@/features/fabricacion/useFabricacion
 import type { PrefillResurtido } from "@/features/resurtidos/prefill";
 import {
   PIEZAS_MAYOREO,
-  validarPrecioMenudeo,
+  camposPrecioMayoreo,
+  nombreAutomaticoArticulo,
+  resolverPrecioHeredado,
   ymdPaddedMX,
   type LoteProduccion,
 } from "@shared";
@@ -56,7 +61,6 @@ export function RegistrarProduccionPage() {
   const [zonaPrecioId, setZonaPrecioId] = useState("");
   const [costo, setCosto] = useState("");
   const [soloMayoreo, setSoloMayoreo] = useState(true);
-  const [precioMenudeo, setPrecioMenudeo] = useState("");
   const [imagenFile, setImagenFile] = useState<File | null>(null);
   const [imagenViaNanobanana, setImagenViaNanobanana] = useState(false);
   // Lote
@@ -88,16 +92,39 @@ export function RegistrarProduccionPage() {
   }, [fabricados, busqueda]);
   const existente = fabricados.find((a) => a.id === articuloId) ?? null;
   const zona = zonas.find((z) => z.zonaId === zonaPrecioId) ?? null;
+  // «Solo mayoreo»: categoría y subcategoría obligatorias, y el precio sale
+  // de la escalera categoría → subcategoría (no de una zona).
+  const { categorias, subcategorias } = useCategorias();
+  const { precios, loading: cargandoPrecios } = usePreciosMayoreo();
+  const categoriaElegida = categorias.find((c) => c.categoriaId === categoria.categoriaId);
+  const subcategoriaElegida = subcategorias.find(
+    (s) => s.subcategoriaId === categoria.subcategoriaId,
+  );
+  const heredado = resolverPrecioHeredado(categoria, precios);
+  const nombreSugerido = subcategoriaElegida
+    ? nombreAutomaticoArticulo(
+        subcategoriaElegida.nombre,
+        articulos.map((a) => a.nombre ?? ""),
+      )
+    : "";
 
   function validar(): string | null {
     const n = Number(cantidad);
     if (!Number.isInteger(n) || n <= 0) return "Indica cuántas piezas se produjeron";
     if (!fecha) return "Indica la fecha de producción";
     if (modo === "existente") return existente ? null : "Elige el artículo";
+    if (soloMayoreo) {
+      if (!categoria.categoriaId) return "Elige o crea la categoría";
+      if (!categoria.subcategoriaId) return "Elige o crea la subcategoría";
+      if (!heredado) {
+        return "Esa categoría todavía no tiene precio de mayoreo: captúralo en el recuadro amarillo";
+      }
+      return null;
+    }
     if (!nombre.trim()) return "Escribe el nombre del artículo (ej. Llavero Goku M1)";
     if (!categoria.categoriaId) return "Elige o crea la categoría";
     if (!zona) return "Elige o crea la zona de precios";
-    return validarPrecioMenudeo(soloMayoreo, precioMenudeo, zona.precioVenta);
+    return null;
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -117,31 +144,45 @@ export function RegistrarProduccionPage() {
     setError(null);
 
     let idArticulo = existente?.id ?? "";
-    if (modo === "nuevo" && zona) {
+    if (modo === "nuevo" && (soloMayoreo ? heredado : zona)) {
       try {
-        const precio = zona.precioVenta;
         const compra = Number(costo) || 0;
-        const nuevo = await crearArticulo(negocioId, {
-          nombre: nombre.trim(),
+        const comunes = {
           sigla: sigla.trim(),
           referencia: "",
           // El stock entra con el lote (abajo), no con el alta.
           cantidad: "0",
           cantidadBodega: "0",
           preciCompra: String(compra),
-          precioVenta: String(precio),
-          utilidad: String(precio - compra),
-          utilidadTotal: "0",
           categoriaId: categoria.categoriaId,
           ...(categoria.subcategoriaId
             ? { subcategoriaId: categoria.subcategoriaId }
             : {}),
           ...(generoId ? { generoId } : {}),
           ...(etiquetas.length > 0 ? { etiquetas } : {}),
-          zonaPrecioId: zona.zonaId,
-          escalonesMayoreo: zona.escalones,
-          soloMayoreo,
-          ...(soloMayoreo ? { precioMenudeo: precioMenudeo.trim() } : {}),
+        };
+        const nuevo = await crearArticulo(negocioId, {
+          ...comunes,
+          ...(soloMayoreo && heredado
+            ? {
+                // De mayoreo: el nombre es opcional y el precio (mayoreo y
+                // menudeo) es el de su subcategoría o categoría.
+                nombre: nombre.trim() || nombreSugerido,
+                ...camposPrecioMayoreo(heredado, {
+                  preciCompra: String(compra),
+                  cantidad: "0",
+                }),
+                soloMayoreo: true,
+              }
+            : {
+                nombre: nombre.trim(),
+                precioVenta: String(zona!.precioVenta),
+                utilidad: String(zona!.precioVenta - compra),
+                utilidadTotal: "0",
+                zonaPrecioId: zona!.zonaId,
+                escalonesMayoreo: zona!.escalones,
+                soloMayoreo: false,
+              }),
           fabricado: true,
           imagenFile,
           imagenViaNanobanana,
@@ -320,12 +361,20 @@ export function RegistrarProduccionPage() {
           <h2 className="text-base font-semibold">Artículo nuevo</h2>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="fab-nombre">Nombre y modelo *</Label>
+              <Label htmlFor="fab-nombre">
+                {soloMayoreo ? "Nombre (opcional)" : "Nombre y modelo *"}
+              </Label>
               <Input
                 id="fab-nombre"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
-                placeholder="Ej. Llavero Goku M1"
+                placeholder={
+                  soloMayoreo
+                    ? nombreSugerido
+                      ? `Si lo dejas vacío: ${nombreSugerido}`
+                      : "Elige la subcategoría"
+                    : "Ej. Llavero Goku M1"
+                }
               />
             </div>
             <div className="space-y-1.5">
@@ -343,16 +392,47 @@ export function RegistrarProduccionPage() {
             subcategoriaId={categoria.subcategoriaId}
             onChange={setCategoria}
             categoriaRequerida
+            subcategoriaRequerida={soloMayoreo}
           />
           <div className="sm:w-1/2 sm:pr-1.5">
             <GeneroInlineSelect generoId={generoId} onChange={setGeneroId} />
           </div>
-          <ZonaPrecioSelect
-            value={zonaPrecioId}
-            onChange={(z) => setZonaPrecioId(z?.zonaId ?? "")}
-            categoriaId={categoria.categoriaId || undefined}
-            requerida
-          />
+          {soloMayoreo ? (
+            heredado ? (
+              <div className="rounded-md bg-muted px-3 py-2 text-sm">
+                <p className="font-medium">
+                  Mayoreo ${heredado.precio} · Menudeo ${heredado.menudeo}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {heredado.origen === "subcategoria"
+                    ? `Es el precio de la subcategoría ${subcategoriaElegida?.nombre ?? ""}.`
+                    : `Es el precio de la categoría ${categoriaElegida?.nombre ?? ""}.`}{" "}
+                  Se cambia en{" "}
+                  <Link to="/categorias" className="underline">
+                    Categorías
+                  </Link>
+                  . El menudeo se cobra con menos de {PIEZAS_MAYOREO} piezas.
+                </p>
+              </div>
+            ) : categoria.categoriaId && !cargandoPrecios && negocioId ? (
+              <PrecioCategoriaInline
+                negocioId={negocioId}
+                categoriaId={categoria.categoriaId}
+                categoriaNombre={categoriaElegida?.nombre ?? "la categoría"}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Elige la categoría para ver su precio de mayoreo.
+              </p>
+            )
+          ) : (
+            <ZonaPrecioSelect
+              value={zonaPrecioId}
+              onChange={(z) => setZonaPrecioId(z?.zonaId ?? "")}
+              categoriaId={categoria.categoriaId || undefined}
+              requerida
+            />
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="fab-costo">Costo por pieza (opcional)</Label>
@@ -371,37 +451,16 @@ export function RegistrarProduccionPage() {
                 <Checkbox
                   className="mt-0.5"
                   checked={soloMayoreo}
-                  onChange={(e) => {
-                    setSoloMayoreo(e.target.checked);
-                    if (!e.target.checked) setPrecioMenudeo("");
-                  }}
+                  onChange={(e) => setSoloMayoreo(e.target.checked)}
                 />
                 <span className="text-sm">
                   Solo mayoreo
                   <span className="block text-[11px] text-muted-foreground">
-                    Solo lo ven y venden las sucursales de mayoreo.
+                    Solo lo ven y venden las sucursales de mayoreo. Su precio es el de
+                    su categoría o subcategoría.
                   </span>
                 </span>
               </label>
-              {soloMayoreo && (
-                <div className="space-y-1.5 pl-6">
-                  <Label htmlFor="fab-menudeo">Precio menudeo *</Label>
-                  <Input
-                    id="fab-menudeo"
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="any"
-                    value={precioMenudeo}
-                    onChange={(e) => setPrecioMenudeo(e.target.value)}
-                    placeholder={zona ? `Mayor que $${zona.precioVenta}` : undefined}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Se cobra cuando el ticket lleva menos de {PIEZAS_MAYOREO}{" "}
-                    piezas.
-                  </p>
-                </div>
-              )}
             </div>
           </div>
           <div className="space-y-1.5">

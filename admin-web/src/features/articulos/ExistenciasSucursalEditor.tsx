@@ -3,9 +3,15 @@ import { AlertTriangle, Layers, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { leerStockTienda, type Articulo, type UbicacionStock } from "@shared";
+import {
+  leerBodegaSucursal,
+  leerStockTienda,
+  type Articulo,
+  type ArticuloSubvariacion,
+  type UbicacionStock,
+} from "@shared";
 import { guardarExistenciasSucursal } from "./existenciasSucursalService";
-import type { CambioExistencia } from "./planearExistencias";
+import type { CambioExistencia, LugarExistencia } from "./planearExistencias";
 
 type Fila = {
   clave: string;
@@ -56,6 +62,8 @@ type Props = {
   articulos: Articulo[];
   ubicacion: UbicacionStock;
   sucursalNombre: string;
+  /** Sucursal de mayoreo: también se puede fijar la bodega de la tienda. */
+  permiteBodega?: boolean;
   onCerrar: () => void;
 };
 
@@ -73,8 +81,11 @@ export function ExistenciasSucursalEditor({
   articulos,
   ubicacion,
   sucursalNombre,
+  permiteBodega = false,
   onCerrar,
 }: Props) {
+  // Qué se edita: la tienda (lo de siempre) o la bodega de esa tienda.
+  const [lugar, setLugar] = useState<LugarExistencia>("tienda");
   const [borradores, setBorradores] = useState<Record<string, Borrador>>({});
   // Mensaje por fila tras guardar (conflicto o error).
   const [avisos, setAvisos] = useState<Record<string, string>>({});
@@ -87,6 +98,10 @@ export function ExistenciasSucursalEditor({
 
   const bloques = useMemo<Bloque[]>(() => {
     const { sucursalId, esDefault } = ubicacion;
+    const leer = (o: Articulo | ArticuloSubvariacion) =>
+      lugar === "bodega"
+        ? leerBodegaSucursal(o, sucursalId)
+        : leerStockTienda(o, sucursalId, esDefault);
     return articulos.map((a) => {
       const subs = a.subvariaciones ?? [];
       if (subs.length === 0) {
@@ -101,7 +116,7 @@ export function ExistenciasSucursalEditor({
               detalle: a.fabricado
                 ? `#${a.id} · fabricado: se mueve en Fabricación`
                 : `#${a.id}${a.sigla ? ` · ${a.sigla}` : ""}`,
-              actual: leerStockTienda(a, sucursalId, esDefault),
+              actual: leer(a),
               // Lo fabricado solo se mueve con lotes, embarques y
               // reducciones con motivo (Fabricación).
               editable: !a.fabricado,
@@ -118,12 +133,12 @@ export function ExistenciasSucursalEditor({
           subvariacionCodigo: sv.codigo,
           nombre: sv.nombre,
           detalle: sv.codigo ?? "Sin código: guarda el artículo para asignarlo",
-          actual: leerStockTienda(sv, sucursalId, esDefault),
+          actual: leer(sv),
           editable: !!sv.codigo && !a.fabricado,
         })),
       };
     });
-  }, [articulos, ubicacion]);
+  }, [articulos, ubicacion, lugar]);
 
   const pendientes = Object.values(borradores).filter(
     (b) => parsearCantidad(b.texto) !== b.base,
@@ -176,7 +191,7 @@ export function ExistenciasSucursalEditor({
     setGuardando(true);
     setMensaje(null);
     try {
-      const r = await guardarExistenciasSucursal(negocioId, ubicacion, cambios);
+      const r = await guardarExistenciasSucursal(negocioId, ubicacion, cambios, lugar);
       setBorradores((prev) => {
         const next = { ...prev };
         for (const c of r.aplicados) {
@@ -205,7 +220,7 @@ export function ExistenciasSucursalEditor({
         texto:
           problemas > 0
             ? `${r.aplicados.length} guardados. ${r.conflictos.length} con conflicto y ${r.errores.length} con error: revisa las filas marcadas.`
-            : `${r.aplicados.length} ${r.aplicados.length === 1 ? "existencia guardada" : "existencias guardadas"} en ${sucursalNombre}.`,
+            : `${r.aplicados.length} ${r.aplicados.length === 1 ? "existencia guardada" : "existencias guardadas"} en ${lugar === "bodega" ? "la bodega de " : ""}${sucursalNombre}.`,
       });
     } catch (e) {
       setMensaje({ tipo: "error", texto: (e as Error).message });
@@ -289,13 +304,52 @@ export function ExistenciasSucursalEditor({
   return (
     <div className="space-y-3">
       <div className="rounded-lg border bg-muted/40 p-3">
+        {permiteBodega && (
+          <div
+            className="mb-2 grid max-w-sm grid-cols-2 gap-1 rounded-lg border bg-background p-1"
+            role="radiogroup"
+            aria-label="Qué existencias se editan"
+          >
+            {(["tienda", "bodega"] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                role="radio"
+                aria-checked={lugar === l}
+                disabled={pendientes.length > 0 && lugar !== l}
+                title={
+                  pendientes.length > 0 && lugar !== l
+                    ? "Guarda o descarta los cambios antes de cambiar"
+                    : undefined
+                }
+                onClick={() => {
+                  setLugar(l);
+                  setBorradores({});
+                  setAvisos({});
+                  setMensaje(null);
+                }}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  lugar === l
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {l === "tienda" ? "Tienda" : "Bodega de la tienda"}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="text-sm font-medium">
-          Existencias de tienda en {sucursalNombre}
+          {lugar === "bodega"
+            ? `Existencias en la bodega de ${sucursalNombre}`
+            : `Existencias de tienda en ${sucursalNombre}`}
         </p>
         <p className="text-xs text-muted-foreground">
-          {ubicacion.esDefault
-            ? "Es la sucursal default: se guarda en el stock principal del artículo, y el de un artículo con variaciones queda como la suma de sus variaciones."
-            : "Se guarda solo para esta sucursal: no cambia el stock de la sucursal default ni la bodega."}{" "}
+          {lugar === "bodega"
+            ? "Es la bodega de esta tienda: no cambia lo que hay en tienda ni la bodega general (taller)."
+            : ubicacion.esDefault
+              ? "Es la sucursal default: se guarda en el stock principal del artículo, y el de un artículo con variaciones queda como la suma de sus variaciones."
+              : "Se guarda solo para esta sucursal: no cambia el stock de la sucursal default ni la bodega."}{" "}
           Enter pasa a la siguiente fila. Los cambios en artículos que ocultes
           con la búsqueda o los filtros se conservan hasta que guardes.
         </p>

@@ -4,6 +4,8 @@ import { Login } from "./routes/Login";
 import { Dashboard } from "./routes/Dashboard";
 import { ArticulosPage } from "./routes/articulos/ArticulosPage";
 import { ArticuloEditPage } from "./routes/articulos/ArticuloEditPage";
+import { ArticuloMayoreoPage } from "@/routes/articulos/ArticuloMayoreoPage";
+import { MovimientosExistenciasPage } from "@/routes/existencias/MovimientosExistenciasPage";
 import { CategoriasPage } from "./routes/categorias/CategoriasPage";
 import { IngresoMercanciaPage } from "./routes/ingreso-mercancia/IngresoMercanciaPage";
 import { SucursalesPage } from "./routes/sucursales/SucursalesPage";
@@ -80,9 +82,12 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="articulos" element={<ArticulosPage />} />
           <Route path="articulos/nuevo" element={<ArticuloEditPage />} />
+          <Route path="articulos/mayoreo/nuevo" element={<ArticuloMayoreoPage />} />
+          <Route path="articulos/mayoreo/:id" element={<ArticuloMayoreoPage />} />
           <Route path="articulos/:id" element={<ArticuloEditPage />} />
           <Route path="categorias" element={<CategoriasPage />} />
           <Route path="ingreso-mercancia" element={<IngresoMercanciaPage />} />
+          <Route path="movimientos-existencias" element={<MovimientosExistenciasPage />} />
           <Route path="sucursales" element={<SucursalesPage />} />
           <Route path="cashback-mayoreo" element={<CashbackMayoreoPage />} />
           <Route

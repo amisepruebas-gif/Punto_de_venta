@@ -13,6 +13,7 @@ import {
   resolverPrecioHeredado,
   resolverPrecioMayoreo,
   siguientesIdsArticulo,
+  tieneExistencias,
   ubicacionPersistible,
   validarArticuloMayoreo,
   validarPrecioNivel,
@@ -311,6 +312,17 @@ describe("bodega de tienda (ubicación bodegaSucursal)", () => {
     });
     expect(leerExistenciasTienda(a, "S2", false)).toEqual({ bodega: 5, tienda: 4 });
     expect(leerExistenciasTienda(a, "S1", true)).toEqual({ bodega: 0, tienda: 7 });
+  });
+
+  it("tieneExistencias mira todas las ubicaciones", () => {
+    expect(tieneExistencias(art())).toBe(false);
+    expect(tieneExistencias(art({ cantidad: "1" }))).toBe(true);
+    expect(tieneExistencias(art({ cantidadBodega: "2" }))).toBe(true);
+    expect(tieneExistencias(art({ cantidadPorSucursal: { S2: "0", S3: "1" } }))).toBe(true);
+    expect(tieneExistencias(art({ cantidadBodegaSucursal: { S2: "3" } }))).toBe(true);
+    expect(
+      tieneExistencias({ cantidad: "0", cantidadPorSucursal: { S2: "0" }, cantidadBodegaSucursal: {} }),
+    ).toBe(false);
   });
 
   it("la ubicación se guarda sin esDefault", () => {

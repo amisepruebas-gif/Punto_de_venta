@@ -122,4 +122,75 @@ describe("planearExistencias", () => {
     expect(plan.patch).toBeNull();
     expect(plan.errores).toHaveLength(4);
   });
+
+  describe("bodega de la tienda (lugar: bodega)", () => {
+    it("sin variaciones: escribe solo cantidadBodegaSucursal[sid]", () => {
+      const art = articulo({
+        cantidadPorSucursal: { "suc-b": "4" },
+        cantidadBodegaSucursal: { "suc-c": "9" },
+      });
+      const plan = planearExistencias(
+        art,
+        [{ articuloId: art.id, base: 0, valor: 12 }],
+        OTRA,
+        "bodega",
+      );
+      expect(plan.patch).toEqual({
+        cantidadBodegaSucursal: { "suc-c": "9", "suc-b": "12" },
+      });
+      expect(plan.aplicados).toHaveLength(1);
+    });
+
+    it("con variaciones: cambia la variación, no la tienda ni las sumas del padre", () => {
+      const art = conSubs();
+      const plan = planearExistencias(
+        art,
+        [{ articuloId: art.id, subvariacionCodigo: "v-01-AAA", base: 0, valor: 6 }],
+        OTRA,
+        "bodega",
+      );
+      expect(Object.keys(plan.patch!)).toEqual(["subvariaciones"]);
+      expect(plan.patch!.subvariaciones![0]).toEqual({
+        codigo: "v-01-AAA",
+        nombre: "Rojo",
+        cantidad: "2",
+        cantidadPorSucursal: { "suc-b": "1" },
+        cantidadBodegaSucursal: { "suc-b": "6" },
+      });
+    });
+
+    it("en la sucursal default tampoco toca `cantidad`", () => {
+      const art = conSubs();
+      const plan = planearExistencias(
+        art,
+        [{ articuloId: art.id, subvariacionCodigo: "v-02-BBB", base: 0, valor: 4 }],
+        DEFAULT,
+        "bodega",
+      );
+      expect(Object.keys(plan.patch!)).toEqual(["subvariaciones"]);
+      expect(plan.patch!.subvariaciones![1]).toEqual({
+        codigo: "v-02-BBB",
+        nombre: "Azul",
+        cantidad: "3",
+        cantidadBodegaSucursal: { "suc-a": "4" },
+      });
+    });
+
+    it("la base se compara contra la bodega, no contra la tienda", () => {
+      const art = articulo({
+        cantidadPorSucursal: { "suc-b": "4" },
+        cantidadBodegaSucursal: { "suc-b": "10" },
+      });
+      const plan = planearExistencias(
+        art,
+        [{ articuloId: art.id, base: 4, valor: 1 }],
+        OTRA,
+        "bodega",
+      );
+      expect(plan.patch).toBeNull();
+      expect(plan.conflictos).toEqual([
+        { cambio: { articuloId: art.id, base: 4, valor: 1 }, actual: 10 },
+      ]);
+    });
+  });
 });

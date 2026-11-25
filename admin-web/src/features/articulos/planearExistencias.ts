@@ -1,9 +1,14 @@
 import {
-  conStockTienda,
-  leerStockTienda,
+  conStockUbicacion,
+  leerStockUbicacion,
   type Articulo,
+  type UbicacionResuelta,
   type UbicacionStock,
 } from "@shared";
+
+/** Qué existencia de la sucursal se fija: su tienda (lo de siempre) o la
+ *  bodega de esa tienda (sucursales de mayoreo). */
+export type LugarExistencia = "tienda" | "bodega";
 
 /**
  * Existencia de tienda que el admin fija en una sucursal: la del padre
@@ -22,7 +27,10 @@ export type CambioExistencia = {
 };
 
 export type PatchExistencias = Partial<
-  Pick<Articulo, "cantidad" | "cantidadPorSucursal" | "subvariaciones">
+  Pick<
+    Articulo,
+    "cantidad" | "cantidadPorSucursal" | "cantidadBodegaSucursal" | "subvariaciones"
+  >
 >;
 
 export type PlanExistencias = {
@@ -43,13 +51,20 @@ export type PlanExistencias = {
  *     padre queda como la suma de `subvariaciones[].cantidad`.
  *   - Otra sucursal: escribe `cantidadPorSucursal[sid]` del padre (sin
  *     variaciones) o de cada subvariación. `cantidad` no se toca.
+ *   - Bodega de la tienda (`lugar: "bodega"`): escribe
+ *     `cantidadBodegaSucursal[sid]`; el padre no guarda suma.
  */
 export function planearExistencias(
   art: Articulo,
   cambios: CambioExistencia[],
   ubicacion: UbicacionStock,
+  lugar: LugarExistencia = "tienda",
 ): PlanExistencias {
   const { sucursalId, esDefault } = ubicacion;
+  const donde: UbicacionResuelta =
+    lugar === "bodega"
+      ? { tipo: "bodegaSucursal", sucursalId }
+      : { tipo: "sucursal", sucursalId, esDefault };
   const subs = [...(art.subvariaciones ?? [])];
   let padre = art;
   let subsTocadas = false;
@@ -69,12 +84,12 @@ export function planearExistencias(
         errores.push({ cambio, mensaje: "La variación ya no existe" });
         continue;
       }
-      const actual = leerStockTienda(subs[idx]!, sucursalId, esDefault);
+      const actual = leerStockUbicacion(subs[idx]!, donde);
       if (actual !== cambio.base) {
         conflictos.push({ cambio, actual });
         continue;
       }
-      subs[idx] = conStockTienda(subs[idx]!, sucursalId, esDefault, cambio.valor);
+      subs[idx] = conStockUbicacion(subs[idx]!, donde, cambio.valor);
       subsTocadas = true;
     } else {
       if (subs.length > 0) {
@@ -84,12 +99,12 @@ export function planearExistencias(
         });
         continue;
       }
-      const actual = leerStockTienda(padre, sucursalId, esDefault);
+      const actual = leerStockUbicacion(padre, donde);
       if (actual !== cambio.base) {
         conflictos.push({ cambio, actual });
         continue;
       }
-      padre = conStockTienda(padre, sucursalId, esDefault, cambio.valor);
+      padre = conStockUbicacion(padre, donde, cambio.valor);
       padreTocado = true;
     }
     aplicados.push(cambio);
@@ -98,13 +113,14 @@ export function planearExistencias(
   const patch: PatchExistencias = {};
   if (subsTocadas) {
     patch.subvariaciones = subs;
-    if (esDefault) {
+    if (lugar === "tienda" && esDefault) {
       const suma = subs.reduce((acc, s) => acc + (Number(s.cantidad) || 0), 0);
       patch.cantidad = String(suma);
     }
   }
   if (padreTocado) {
-    if (esDefault) patch.cantidad = padre.cantidad;
+    if (lugar === "bodega") patch.cantidadBodegaSucursal = padre.cantidadBodegaSucursal;
+    else if (esDefault) patch.cantidad = padre.cantidad;
     else patch.cantidadPorSucursal = padre.cantidadPorSucursal;
   }
 

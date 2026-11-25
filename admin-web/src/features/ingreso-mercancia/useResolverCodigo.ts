@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useArticulos } from "@/features/articulos/useArticulos";
 import {
+  indiceCodigosVariacion,
   parseVariacionCodigo,
   type Articulo,
   type ArticuloSubvariacion,
@@ -44,6 +45,12 @@ export function useResolverCodigo() {
     return m;
   }, [articulos]);
 
+  // Códigos de 8 dígitos de las variaciones de mayoreo (`codigoBarras`).
+  const porCodigoVariacion = useMemo(
+    () => indiceCodigosVariacion(articulos),
+    [articulos],
+  );
+
   const resolver = useCallback(
     (codigo: string): ResolveResult => {
       const limpio = codigo.trim();
@@ -74,9 +81,11 @@ export function useResolverCodigo() {
         return { ok: true, articulo: padre, subvariacion: sv };
       }
 
-      // Id 8-dig de un padre
+      // Id 8-dig de un padre, o el código de 8 dígitos de una variación.
       const padre = byId.get(limpio);
       if (!padre) {
+        const v = porCodigoVariacion.get(limpio);
+        if (v) return { ok: true, articulo: v.articulo, subvariacion: v.subvariacion };
         return { ok: false, codigo: limpio, razon: "no-encontrado" };
       }
       if ((padre.subvariaciones?.length ?? 0) > 0) {
@@ -84,7 +93,7 @@ export function useResolverCodigo() {
       }
       return { ok: true, articulo: padre };
     },
-    [byId],
+    [byId, porCodigoVariacion],
   );
 
   return { resolver };
