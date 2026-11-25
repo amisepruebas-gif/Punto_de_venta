@@ -25,6 +25,8 @@ import {
   normalizarCodigoEscaneado,
   resolverPrecioEfectivo,
   textoEstadoTrabajo,
+  type Articulo,
+  type ArticuloSubvariacion,
   type RenglonEtiquetaPrecio,
 } from "@shared";
 
@@ -32,6 +34,12 @@ import {
 type Fila = { id: number; codigo?: string; nombre: string; precio: string; piezas: string };
 
 const sinFoco = (e: MouseEvent) => e.preventDefault();
+
+/** La variación lleva su propio código de 8 dígitos (las de mayoreo): su
+ *  etiqueta es suya, no la del artículo. */
+function tieneEtiquetaPropia(s: ArticuloSubvariacion): boolean {
+  return !!s.codigoBarras && RE_CODIGO_ARTICULO_ETIQUETA.test(s.codigoBarras);
+}
 
 function formatoPrecio(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
@@ -63,6 +71,12 @@ export function EtiquetasPrecioPage() {
   const [codigo, setCodigo] = useState("");
   const [filas, setFilas] = useState<Fila[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Se escaneó un artículo cuyas variaciones llevan cada una su etiqueta:
+  // se ofrecen para elegir cuál imprimir.
+  const [porElegir, setPorElegir] = useState<{
+    padre: Articulo;
+    subs: ArticuloSubvariacion[];
+  } | null>(null);
   const [mandando, setMandando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trabajoId, setTrabajoId] = useState<string | null>(null);
@@ -99,10 +113,21 @@ export function EtiquetasPrecioPage() {
     });
   }
 
+  function agregarVariacion(padre: Articulo, sub: ArticuloSubvariacion) {
+    agregarFila({
+      codigo: sub.codigoBarras!,
+      nombre: nombreArticuloFinal(padre, sub),
+      precio: formatoPrecio(resolverPrecioEfectivo(padre, sub).precio),
+      piezas: "1",
+    });
+    enfocar();
+  }
+
   function alEscanear(valor: string) {
     const c = normalizarCodigoEscaneado(valor);
     setCodigo("");
     setAviso(null);
+    setPorElegir(null);
     if (!c) return;
     if (cargandoArticulos) {
       setAviso("Cargando artículos… vuelve a escanear en un momento");
@@ -121,18 +146,20 @@ export function EtiquetasPrecioPage() {
     }
     if (r.sub) {
       // Variación de mayoreo: su etiqueta lleva su propio código de 8 dígitos.
-      const codigoSub = r.sub.codigoBarras;
-      if (!codigoSub || !RE_CODIGO_ARTICULO_ETIQUETA.test(codigoSub)) {
-        setAviso("Esa variación no tiene código de 8 dígitos: no se puede imprimir su etiqueta.");
+      if (!tieneEtiquetaPropia(r.sub)) {
+        // Las demás variaciones comparten la etiqueta del artículo.
+        setAviso("Esa variación no tiene etiqueta propia: escanea el código del artículo.");
         return;
       }
-      agregarFila({
-        codigo: codigoSub,
-        nombre: nombreArticuloFinal(r.padre, r.sub),
-        precio: formatoPrecio(resolverPrecioEfectivo(r.padre, r.sub).precio),
-        piezas: "1",
-      });
-      enfocar();
+      agregarVariacion(r.padre, r.sub);
+      return;
+    }
+    // Artículo cuyas variaciones llevan cada una su código (mayoreo): la
+    // etiqueta es de la variación, no del artículo. Se pregunta cuál.
+    const conEtiqueta = (r.padre.subvariaciones ?? []).filter(tieneEtiquetaPropia);
+    if (conEtiqueta.length > 0) {
+      setAviso(`"${r.padre.nombre}" tiene variaciones y cada una lleva su etiqueta. Elige cuál:`);
+      setPorElegir({ padre: r.padre, subs: conEtiqueta });
       return;
     }
     if (!RE_CODIGO_ARTICULO_ETIQUETA.test(r.padre.id)) {
@@ -286,6 +313,24 @@ export function EtiquetasPrecioPage() {
           <p className="rounded-md bg-amber-500/10 p-2 text-sm text-amber-900 dark:text-amber-200" role="status">
             {aviso}
           </p>
+        )}
+        {porElegir && (
+          <section
+            className="flex flex-wrap gap-2 rounded-xl border bg-card p-3"
+            aria-label={`Variaciones de ${porElegir.padre.nombre}`}
+          >
+            {porElegir.subs.map((s) => (
+              <Button
+                key={s.codigo}
+                variant="outline"
+                onMouseDown={sinFoco}
+                onClick={() => agregarVariacion(porElegir.padre, s)}
+                data-variacion={s.codigoBarras}
+              >
+                {s.nombre} <span className="ml-2 font-mono text-xs text-muted-foreground">{s.codigoBarras}</span>
+              </Button>
+            ))}
+          </section>
         )}
 
         <section className="rounded-xl border bg-card">

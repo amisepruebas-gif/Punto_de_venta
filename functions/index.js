@@ -2375,6 +2375,28 @@ exports.moverExistencias = onCall(
       const negocioRef = db.collection(COL_NEGOCIOS).doc(negocioId);
       const sucDataRef = negocioRef
           .collection(`sucursales_data${SUFFIX}`).doc(sucursalId);
+      const movRef = sucDataRef
+          .collection(`movimientos_existencias${SUFFIX}`).doc(peticion.movimientoId);
+
+      // La misma llamada repetida (se perdió la respuesta): no mueve otra
+      // vez y contesta lo que ya quedó. Si ese id es de otra persona, no es
+      // un reintento.
+      const yaHecho = (previo) => {
+        if (previo.usuarioId !== usuarioId) {
+          throw new HttpsError("already-exists", "Ese movimiento ya existe");
+        }
+        return {
+          ok: true, ya: true,
+          direccion: previo.direccion,
+          piezas: previo.piezas,
+          renglones: previo.renglones,
+        };
+      };
+      // Se revisa ANTES que lo demás: un reintento debe enterarse de que su
+      // movimiento sí se aplicó aunque después hayan deshabilitado a la
+      // persona o cambiado la sucursal. Si no, la app no sabría si se movió.
+      const aplicado = await movRef.get();
+      if (aplicado.exists) return yaHecho(aplicado.data());
 
       // La persona sigue habilitada (el token dura una hora) y la sucursal
       // maneja bodega y tienda (las de mayoreo).
@@ -2391,8 +2413,6 @@ exports.moverExistencias = onCall(
       }
       const usuarioNombre = String(usuarioSnap.get("nombre") || "");
       const ubicacion = await cargarUbicacionStock(negocioRef, sucursalId);
-      const movRef = sucDataRef
-          .collection(`movimientos_existencias${SUFFIX}`).doc(peticion.movimientoId);
       const artRef = (id) =>
         negocioRef.collection("articulos_n_web_new_version").doc(id);
 
@@ -2433,19 +2453,9 @@ exports.moverExistencias = onCall(
               hay: typeof f.hay === "number" ? f.hay : null,
             }))});
       }
-      if (r.previo) {
-        // La misma llamada repetida (se perdió la respuesta): no mueve otra
-        // vez. Si ese id es de otra persona, no es un reintento.
-        if (r.previo.usuarioId !== usuarioId) {
-          throw new HttpsError("already-exists", "Ese movimiento ya existe");
-        }
-        return {
-          ok: true, ya: true,
-          direccion: r.previo.direccion,
-          piezas: r.previo.piezas,
-          renglones: r.previo.renglones,
-        };
-      }
+      // Dos llamadas iguales a la vez: la segunda encuentra lo que dejó la
+      // primera dentro de la transacción.
+      if (r.previo) return yaHecho(r.previo);
       logger.info("moverExistencias", {
         negocioId, sucursalId, usuarioId,
         movimientoId: peticion.movimientoId,
@@ -2459,6 +2469,44 @@ exports.moverExistencias = onCall(
         piezas: r.movimiento.piezas,
         renglones: r.movimiento.renglones,
       };
+    },
+);
+
+// ============================================================
+// cortarSesionMercancia — la sesión de mercancía sigue a su usuario
+// ============================================================
+// El rol (`mercancia` o `encargado`) va en el token desde que la persona
+// entra con su PIN, y un token se renueva solo. Si admin la deshabilita, la
+// borra o le cambia el tipo de acceso, aquí se revocan sus sesiones: tiene
+// que volver a entrar y toma el permiso nuevo. Las reglas además revisan en
+// vivo cada escritura de mercancía (`mercanciaVigente`), así que el corte de
+// lo que puede escribir es inmediato.
+exports.cortarSesionMercancia = onDocumentWritten(
+    {
+      document: "negocios_web_new_version/{negocioId}/" +
+        "sucursales_data_web_new_version/{sucursalId}/" +
+        "usuariosMercancia_web_new_version/{uid}",
+    },
+    async (event) => {
+      const antes = event.data && event.data.before.exists ?
+        event.data.before.data() : null;
+      const despues = event.data && event.data.after.exists ?
+        event.data.after.data() : null;
+      if (!antes) return; // alta: todavía no hay sesión que cortar
+      const acceso = (d) => (d.acceso === "existencias" ? "existencias" : "completo");
+      const cortar = !despues ||
+        (antes.habilitado === true && despues.habilitado !== true) ||
+        acceso(antes) !== acceso(despues);
+      if (!cortar) return;
+      const {negocioId, sucursalId, uid} = event.params;
+      try {
+        await admin.auth().revokeRefreshTokens(uid);
+        logger.info("cortarSesionMercancia", {negocioId, sucursalId, uid});
+      } catch (e) {
+        // Nunca entró: no hay sesión.
+        if (e && e.code === "auth/user-not-found") return;
+        throw e;
+      }
     },
 );
 
@@ -3191,16 +3239,15 @@ exports.asegurarPrecioZona = onDocumentWritten(
       }
 
       // Misma red de seguridad para la escalera de mayoreo (categoría →
-      // subcategoría): un artículo «Solo mayoreo» sin precio propio ni zona
-      // siempre queda con el precio de su nivel. Con zona manda la zona, así
-      // que los dos caminos no se cruzan.
+      // subcategoría): un artículo «Solo mayoreo» que hereda (`heredaPrecio`)
+      // y no tiene zona siempre queda con el precio de su nivel. Con zona
+      // manda la zona, así que los dos caminos no se cruzan.
       if (!preciosMayoreo.requiereVerificarPrecio(antes, despues)) return;
-      const preciosSnap = await negocioRef
-          .collection("datos_web_new_version").doc("_preciosMayoreo").get();
-      const patch = preciosMayoreo.calcularPatchPrecio(
-          despues, preciosSnap.exists ? preciosSnap.data() : null);
+      // Con el artículo y los precios RECIÉN leídos, en una transacción: si
+      // entre el aviso y este momento admin le puso precio propio o lo
+      // cambió de categoría, no se le pisa con un precio viejo.
+      const patch = await aplicarPrecioEscalera(negocioRef, event.data.after.ref);
       if (!patch) return;
-      await event.data.after.ref.update(patch);
       console.log(
           `asegurarPrecioZona ${negocioId}/${articuloId}: precio de mayoreo ` +
           `restaurado ($${patch.precioVenta} / $${patch.precioMenudeo})`);
@@ -3211,10 +3258,36 @@ exports.asegurarPrecioZona = onDocumentWritten(
 // precio de una categoría o subcategoría en `datos/_preciosMayoreo`,
 // reescribe solo los artículos «Solo mayoreo» que lo heredan y difieren. Si
 // se borra el doc, los artículos conservan su último precio.
+/**
+ * Deja un artículo con el precio de su nivel de la escalera, si hereda y
+ * difiere. Lee el artículo y los precios dentro de una transacción: lo que
+ * escribe siempre corresponde a lo que hay en ese momento (dos avisos fuera
+ * de orden, o un guardado de admin a la vez, no dejan un precio viejo).
+ * @param {FirebaseFirestore.DocumentReference} negocioRef
+ * @param {FirebaseFirestore.DocumentReference} articuloRef
+ * @return {Promise<object|null>} los campos escritos, o null si no hizo falta
+ */
+function aplicarPrecioEscalera(negocioRef, articuloRef) {
+  const preciosRef = negocioRef
+      .collection("datos_web_new_version").doc("_preciosMayoreo");
+  return db.runTransaction(async (tx) => {
+    const [artSnap, preciosSnap] = await tx.getAll(articuloRef, preciosRef);
+    if (!artSnap.exists) return null;
+    const patch = preciosMayoreo.calcularPatchPrecio(
+        artSnap.data(), preciosSnap.exists ? preciosSnap.data() : null);
+    if (!patch) return null;
+    tx.update(articuloRef, patch);
+    return patch;
+  });
+}
+
 exports.sincronizarPreciosMayoreo = onDocumentWritten(
     {
       document: "negocios_web_new_version/{negocioId}/" +
         "datos_web_new_version/_preciosMayoreo",
+      // Cada artículo se escribe en su propia transacción: con un catálogo
+      // grande tarda más que el minuto que se da por omisión.
+      timeoutSeconds: 300,
     },
     async (event) => {
       const {negocioId} = event.params;
@@ -3223,19 +3296,24 @@ exports.sincronizarPreciosMayoreo = onDocumentWritten(
       if (!despues) return;
 
       const base = db.collection(COL_NEGOCIOS).doc(negocioId);
+      // Solo los que heredan (`heredaPrecio`): los de precio propio y los de
+      // antes de la escalera ni se leen.
       const arts = await base.collection("articulos_n_web_new_version")
-          .where("soloMayoreo", "==", true).get();
+          .where("heredaPrecio", "==", true).get();
       if (arts.empty) return;
 
-      const writer = db.bulkWriter();
+      // Los que con esta foto ya coinciden se saltan; cada uno de los demás
+      // se revisa y escribe en su propia transacción (`aplicarPrecioEscalera`).
+      const porRevisar = arts.docs.filter(
+          (d) => preciosMayoreo.calcularPatchPrecio(d.data(), despues));
       let escritos = 0;
-      arts.forEach((d) => {
-        const patch = preciosMayoreo.calcularPatchPrecio(d.data(), despues);
-        if (!patch) return;
-        writer.update(d.ref, patch);
-        escritos++;
-      });
-      await writer.close();
+      const A_LA_VEZ = 50;
+      for (let i = 0; i < porRevisar.length; i += A_LA_VEZ) {
+        const hechos = await Promise.all(
+            porRevisar.slice(i, i + A_LA_VEZ)
+                .map((d) => aplicarPrecioEscalera(base, d.ref)));
+        escritos += hechos.filter(Boolean).length;
+      }
       if (escritos > 0) {
         await base.collection("datos_web_new_version").doc("articulos_ac")
             .set({huella: generarHuella()}, {merge: true});

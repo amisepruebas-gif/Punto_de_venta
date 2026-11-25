@@ -29,6 +29,7 @@ import {
   leerExistenciasTienda,
   nombrarVariaciones,
   nombreAutomaticoArticulo,
+  resolverPrecioEfectivo,
   resolverPrecioHeredado,
   resolverSucursalDefaultId,
   tieneExistencias,
@@ -76,6 +77,9 @@ function filaNueva(): VariacionForm {
 }
 
 function formDe(a: Articulo): FormState {
+  // Sin `heredaPrecio` el precio es del artículo (también los de antes de la
+  // escalera): se carga como «precio diferente» y guardar no lo pierde.
+  const propio = a.heredaPrecio !== true;
   return {
     categoriaId: a.categoriaId ?? "",
     subcategoriaId: a.subcategoriaId ?? "",
@@ -91,9 +95,9 @@ function formDe(a: Articulo): FormState {
       viaNanobanana: false,
       quitarImagen: false,
     })),
-    precioPropio: !!a.precioPropio,
-    precio: a.precioPropio ? (a.precioVenta ?? "") : "",
-    menudeo: a.precioPropio ? (a.precioMenudeo ?? "") : "",
+    precioPropio: propio,
+    precio: propio ? (a.precioVenta ?? "") : "",
+    menudeo: propio ? (a.precioMenudeo ?? "") : "",
     costo: Number(a.preciCompra) ? String(a.preciCompra) : "",
     generoId: a.generoId ?? "",
     etiquetas: a.etiquetas ?? [],
@@ -116,7 +120,7 @@ export function ArticuloMayoreoPage() {
 
 function FormularioMayoreo() {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { negocioId, negocio } = useNegocio();
   const { user } = useAuth();
@@ -147,16 +151,23 @@ function FormularioMayoreo() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(searchParams.get("guardado") === "1");
+  // El aviso es de una sola vez: se quita de la dirección para que recargar
+  // la página no lo repita.
+  useEffect(() => {
+    if (searchParams.get("guardado") === "1") setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // El formulario se llena UNA vez por artículo: un cambio remoto (una venta
   // mueve existencias) no borra lo que se está escribiendo.
   const inicializado = useRef<string | null>(null);
+  const [cargado, setCargado] = useState(!editing);
   function cargar(a: Articulo) {
     inicializado.current = a.id;
     setForm(formDe(a));
     setImagenFile(null);
     setImagenViaNanobanana(false);
     setQuitarImagen(false);
+    setCargado(true);
   }
   useEffect(() => {
     if (articulo && inicializado.current !== articulo.id) cargar(articulo);
@@ -182,14 +193,18 @@ function FormularioMayoreo() {
     setForm((s) => ({ ...s, [k]: v }));
     setGuardado(false);
   }
+  /** Cambia las variaciones a partir del estado MÁS RECIENTE: la foto de una
+   *  fila llega tarde (se comprime, o pasa por «Quitar fondo») y no debe pisar
+   *  lo que se escribió o agregó mientras tanto. */
+  function cambiarVariaciones(fn: (actuales: VariacionForm[]) => VariacionForm[]) {
+    setForm((s) => ({ ...s, variaciones: fn(s.variaciones) }));
+    setGuardado(false);
+  }
   function setVariacion(key: string, cambio: Partial<VariacionForm>) {
-    set(
-      "variaciones",
-      form.variaciones.map((v) => (v.key === key ? { ...v, ...cambio } : v)),
-    );
+    cambiarVariaciones((vs) => vs.map((v) => (v.key === key ? { ...v, ...cambio } : v)));
   }
   function agregarVariaciones(n: number) {
-    set("variaciones", [...form.variaciones, ...Array.from({ length: n }, filaNueva)]);
+    cambiarVariaciones((vs) => [...vs, ...Array.from({ length: n }, filaNueva)]);
   }
 
   /** Una variación con piezas no se puede quitar (el servidor de datos
@@ -279,7 +294,7 @@ function FormularioMayoreo() {
     }
   }
 
-  if (editing && loading && !articulo) {
+  if (editing && ((loading && !articulo) || (articulo?.soloMayoreo && !cargado))) {
     return <p className="py-8 text-center text-sm text-muted-foreground">Cargando artículo…</p>;
   }
   if (editing && !loading && !articulo) {
@@ -367,10 +382,12 @@ function FormularioMayoreo() {
               role="radio"
               aria-checked={form.tieneVariaciones === valor}
               onClick={() => {
-                set("tieneVariaciones", valor);
-                if (valor && form.variaciones.length === 0) {
-                  setForm((s) => ({ ...s, tieneVariaciones: true, variaciones: [filaNueva()] }));
-                }
+                setForm((s) => ({
+                  ...s,
+                  tieneVariaciones: valor,
+                  variaciones: valor && s.variaciones.length === 0 ? [filaNueva()] : s.variaciones,
+                }));
+                setGuardado(false);
               }}
               className={`rounded-md px-3 py-2 text-sm font-medium transition ${
                 form.tieneVariaciones === valor
@@ -429,12 +446,7 @@ function FormularioMayoreo() {
                         : "Quitar variación"
                     }
                     aria-label={`Quitar la variación ${v.nombre || nombresVista[i]}`}
-                    onClick={() =>
-                      set(
-                        "variaciones",
-                        form.variaciones.filter((x) => x.key !== v.key),
-                      )
-                    }
+                    onClick={() => cambiarVariaciones((vs) => vs.filter((x) => x.key !== v.key))}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -497,6 +509,7 @@ function FormularioMayoreo() {
             </div>
           ) : form.categoriaId && !cargandoPrecios && negocioId ? (
             <PrecioCategoriaInline
+              key={form.categoriaId}
               negocioId={negocioId}
               categoriaId={form.categoriaId}
               categoriaNombre={categoria?.nombre ?? "la categoría"}
@@ -636,8 +649,11 @@ function FormularioMayoreo() {
             <h3 className="text-sm font-semibold">Imprimir etiquetas</h3>
             <EtiquetasFinales
               negocioId={negocioId}
-              finales={finales.map((f) => ({ codigo: f.codigo, nombre: f.nombre }))}
-              precio={articulo.precioVenta}
+              finales={finales.map((f) => ({
+                codigo: f.codigo,
+                nombre: f.nombre,
+                precio: resolverPrecioEfectivo(f.articulo, f.subvariacion).precio,
+              }))}
             />
           </div>
         </section>

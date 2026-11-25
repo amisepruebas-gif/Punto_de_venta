@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SIN_CAMBIOS_CLASIFICACION,
   calcularCambioClasificacion,
+  clasificacionMayoreoProtegida,
   hayCambiosClasificacion,
   limpiarEtiqueta,
   type CambiosClasificacion,
@@ -168,6 +169,97 @@ describe("calcularCambioClasificacion", () => {
     expect(
       calcularCambioClasificacion({ categoriaId: "", generoId: "" }, cambios({ genero: { accion: "quitar" } }), padres),
     ).toBeNull();
+  });
+});
+
+describe("artículos «Solo mayoreo» en la asignación en bloque", () => {
+  // Siempre llevan categoría y subcategoría: de ahí sale su precio.
+  const mayoreo = { soloMayoreo: true, categoriaId: "llavero", subcategoriaId: "metal" };
+
+  it("quitar la categoría no les toca ninguna de las dos", () => {
+    const c = cambios({ categoria: { accion: "quitar" } });
+    expect(calcularCambioClasificacion(mayoreo, c, padres)).toBeNull();
+    expect(clasificacionMayoreoProtegida(mayoreo, c, padres)).toBe(true);
+  });
+
+  it("quitar la subcategoría no se la quita", () => {
+    const c = cambios({ subcategoria: { accion: "quitar" } });
+    expect(calcularCambioClasificacion(mayoreo, c, padres)).toBeNull();
+    expect(clasificacionMayoreoProtegida(mayoreo, c, padres)).toBe(true);
+  });
+
+  it("cambiar solo la categoría (se quedaría sin subcategoría) no los mueve", () => {
+    const c = cambios({ categoria: { accion: "poner", id: "peluche" } });
+    expect(calcularCambioClasificacion(mayoreo, c, padres)).toBeNull();
+    expect(clasificacionMayoreoProtegida(mayoreo, c, padres)).toBe(true);
+  });
+
+  it("categoría y una subcategoría suya sí los cambia", () => {
+    const c = cambios({
+      categoria: { accion: "poner", id: "peluche" },
+      subcategoria: { accion: "poner", id: "grande" },
+    });
+    expect(calcularCambioClasificacion(mayoreo, c, padres)).toEqual({
+      poner: { categoriaId: "peluche", subcategoriaId: "grande" },
+      borrar: [],
+    });
+    expect(clasificacionMayoreoProtegida(mayoreo, c, padres)).toBe(false);
+  });
+
+  it("otra subcategoría de la misma categoría sí la cambia", () => {
+    const c = cambios({
+      categoria: { accion: "poner", id: "llavero" },
+      subcategoria: { accion: "poner", id: "anime-sub" },
+    });
+    expect(calcularCambioClasificacion(mayoreo, c, padres)).toEqual({
+      poner: { subcategoriaId: "anime-sub" },
+      borrar: [],
+    });
+  });
+
+  it("el género y las etiquetas sí cambian aunque la categoría se conserve", () => {
+    const c = cambios({
+      categoria: { accion: "quitar" },
+      genero: { accion: "poner", id: "anime" },
+      agregarEtiquetas: ["Nuevo"],
+    });
+    expect(calcularCambioClasificacion(mayoreo, c, padres)).toEqual({
+      poner: { generoId: "anime", etiquetas: ["nuevo"] },
+      borrar: [],
+    });
+    expect(clasificacionMayoreoProtegida(mayoreo, c, padres)).toBe(true);
+  });
+
+  it("solo género: no hay nada que proteger", () => {
+    const c = cambios({ genero: { accion: "poner", id: "anime" } });
+    expect(clasificacionMayoreoProtegida(mayoreo, c, padres)).toBe(false);
+  });
+
+  it("uno de antes, sin subcategoría: se completa con categoría y subcategoría", () => {
+    const viejo = { soloMayoreo: true, categoriaId: "llavero" };
+    expect(
+      calcularCambioClasificacion(viejo, cambios({ categoria: { accion: "quitar" } }), padres),
+    ).toBeNull();
+    expect(
+      calcularCambioClasificacion(
+        viejo,
+        cambios({
+          categoria: { accion: "poner", id: "llavero" },
+          subcategoria: { accion: "poner", id: "metal" },
+        }),
+        padres,
+      ),
+    ).toEqual({ poner: { subcategoriaId: "metal" }, borrar: [] });
+  });
+
+  it("a los artículos normales les sigue quitando la categoría", () => {
+    const normal = { categoriaId: "llavero", subcategoriaId: "metal" };
+    const c = cambios({ categoria: { accion: "quitar" } });
+    expect(calcularCambioClasificacion(normal, c, padres)).toEqual({
+      poner: {},
+      borrar: ["categoriaId", "subcategoriaId"],
+    });
+    expect(clasificacionMayoreoProtegida(normal, c, padres)).toBe(false);
   });
 });
 

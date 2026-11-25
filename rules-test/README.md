@@ -6,7 +6,7 @@ reales (nodo, admin, mercancia, **superadmin sin negocioId**, colaborador, googl
 ## Correr
 ```
 npm install                 # instala @firebase/rules-unit-testing + firebase (una vez)
-npx firebase emulators:exec --project demo-test --only firestore "node test.mjs && node lotes.test.mjs && node impresion.test.mjs"
+npx firebase emulators:exec --project demo-test --only firestore "node test.mjs && node lotes.test.mjs && node impresion.test.mjs && node mayoreo.test.mjs"
 ```
 Requiere Java (para el emulador) y firebase-tools. Debe imprimir `OK: N/N reglas verificadas`.
 

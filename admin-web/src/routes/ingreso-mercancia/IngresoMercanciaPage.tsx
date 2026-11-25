@@ -115,7 +115,7 @@ export function IngresoMercanciaPage() {
     const mensajes: Record<typeof r.razon, string> = {
       "no-encontrado": `Código no encontrado: ${r.codigo}`,
       "padre-con-variaciones":
-        "Este artículo tiene variaciones. Escanea la etiqueta de la variación.",
+        "Este artículo tiene variaciones. Escanea la etiqueta de la variación (su código de 8 dígitos o v-NN-XXX).",
       "subvariacion-no-encontrada": `Subvariación no existe en el padre`,
     };
     setToast({ tipo: "err", texto: mensajes[r.razon] });

@@ -4,9 +4,11 @@
 // ============================================================
 // Categoría → subcategoría → artículo: gana el más específico. Los precios
 // de categoría y subcategoría viven en `datos/_preciosMayoreo` (solo admin).
-// Un artículo «Solo mayoreo» sin `precioPropio` ni zona guarda una COPIA del
-// nivel que le toca en `precioVenta` y `precioMenudeo`, para que la caja, los
-// tickets y las etiquetas sigan leyendo solo el artículo.
+// Un artículo «Solo mayoreo» con `heredaPrecio` y sin zona guarda una COPIA
+// del nivel que le toca en `precioVenta` y `precioMenudeo`, para que la caja,
+// los tickets y las etiquetas sigan leyendo solo el artículo. Sin esa marca
+// el precio es del artículo y aquí no se toca: así un artículo de antes de la
+// escalera nunca pierde su precio.
 //
 // La usan los triggers `sincronizarPreciosMayoreo` (precios → artículos) y
 // `asegurarPrecioZona` (red de seguridad sobre cada artículo) en index.js.
@@ -37,11 +39,11 @@ function resolverPrecioHeredado(articulo, precios) {
   return null;
 }
 
-/** ¿El artículo toma su precio de la escalera? Solo los «Solo mayoreo» sin
- *  precio propio y sin zona (con zona manda la zona). */
+/** ¿El artículo toma su precio de la escalera? Solo los «Solo mayoreo»
+ *  marcados con `heredaPrecio` y sin zona (con zona manda la zona). */
 function heredaPrecio(articulo) {
   return !!articulo && articulo.soloMayoreo === true &&
-    articulo.precioPropio !== true && !articulo.zonaPrecioId;
+    articulo.heredaPrecio === true && !articulo.zonaPrecioId;
 }
 
 /**

@@ -4,11 +4,16 @@
 // ============================================================
 //
 // Un artículo «Solo mayoreo» lleva categoría y subcategoría obligatorias. Su
-// precio (mayoreo y menudeo) sale de una escalera: el del artículo si tiene
-// `precioPropio`, si no el de su subcategoría, si no el de su categoría
-// (`PreciosMayoreo`, doc `datos/_preciosMayoreo`). El artículo guarda copia
-// del precio vigente en `precioVenta`/`precioMenudeo`, igual que con las
-// zonas, para que la caja, el ticket y las etiquetas lean solo el artículo.
+// precio (mayoreo y menudeo) sale de una escalera: si el artículo tiene
+// `heredaPrecio`, el de su subcategoría y, si no hay, el de su categoría
+// (`PreciosMayoreo`, doc `datos/_preciosMayoreo`); sin esa marca el precio
+// es del artículo. El artículo guarda copia del precio vigente en
+// `precioVenta`/`precioMenudeo`, igual que con las zonas, para que la caja,
+// el ticket y las etiquetas lean solo el artículo.
+//
+// La marca es `heredaPrecio` y no al revés a propósito: un artículo de antes
+// de la escalera no la trae, así que su precio se queda como estaba aunque
+// después se le ponga precio a su categoría.
 //
 // "Artículo final" = lo que se etiqueta, se cuenta y se vende: el artículo
 // si no tiene variaciones, o cada variación. Todos tienen un código de 8
@@ -68,16 +73,16 @@ export function resolverPrecioHeredado(
   return null;
 }
 
-/** Precio vigente de un artículo de mayoreo y de dónde sale. Con
- *  `precioPropio` es el del artículo (o `null` si lo tiene mal). */
+/** Precio vigente de un artículo de mayoreo y de dónde sale. Sin
+ *  `heredaPrecio` es el del artículo (o `null` si lo tiene mal). */
 export function resolverPrecioMayoreo(
   art: Pick<
     Articulo,
-    "categoriaId" | "subcategoriaId" | "precioPropio" | "precioVenta" | "precioMenudeo"
+    "categoriaId" | "subcategoriaId" | "heredaPrecio" | "precioVenta" | "precioMenudeo"
   >,
   precios: PreciosMayoreo | null | undefined,
 ): PrecioMayoreoResuelto | null {
-  if (art.precioPropio) {
+  if (art.heredaPrecio !== true) {
     const nivel = {
       precio: Number(art.precioVenta),
       menudeo: Number(art.precioMenudeo),

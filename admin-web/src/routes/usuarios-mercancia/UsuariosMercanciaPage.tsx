@@ -197,6 +197,7 @@ export function UsuariosMercanciaPage() {
         <UsuarioFormModal
           negocioId={negocioId}
           sucursalId={sucursalId}
+          esMayoreo={!!sucursales.find((s) => s.sucursalId === sucursalId)?.modoMayoreo}
           existente={
             editandoUid ? usuarios.find((u) => u.id === editandoUid) : undefined
           }
@@ -213,6 +214,7 @@ export function UsuariosMercanciaPage() {
 function UsuarioFormModal({
   negocioId,
   sucursalId,
+  esMayoreo,
   existente,
   creadoPor,
   onClose,
@@ -221,6 +223,8 @@ function UsuarioFormModal({
 }: {
   negocioId: string;
   sucursalId: string;
+  /** Solo las sucursales de mayoreo manejan bodega y tienda. */
+  esMayoreo: boolean;
   existente?: UsuarioMercancia;
   creadoPor?: string;
   onClose: () => void;
@@ -343,8 +347,16 @@ function UsuarioFormModal({
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm"
           >
             <option value="completo">Mercancía (todo: artículos, ingreso, resurtidos)</option>
-            <option value="existencias">Encargado de tienda (solo ver y mover existencias)</option>
+            <option value="existencias" disabled={!esMayoreo && acceso !== "existencias"}>
+              Encargado de tienda (solo ver y mover existencias)
+            </option>
           </select>
+          {!esMayoreo && (
+            <p className="text-[11px] text-amber-800 dark:text-amber-300">
+              El encargado de tienda es para sucursales de mayoreo (las que manejan bodega y
+              tienda). Esta sucursal no lo es: márcala en Sucursales.
+            </p>
+          )}
           {acceso === "existencias" && (
             <p className="text-[11px] text-muted-foreground">
               Ve las existencias de su tienda y mueve piezas entre bodega y tienda. Cada

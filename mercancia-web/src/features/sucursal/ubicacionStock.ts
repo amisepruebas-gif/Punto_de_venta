@@ -32,22 +32,45 @@ export async function cargarUbicacionStock(
 }
 
 /** Ubicación de stock de la sucursal a la que está ligado este teléfono
- *  (null mientras resuelve o si no hay sucursal ligada). */
+ *  (null mientras resuelve o si no hay sucursal ligada). Si no se pudo leer
+ *  (la página se abrió sin internet) se vuelve a intentar sola, y de
+ *  inmediato cuando regresa la conexión. */
 export function useUbicacionStock(): UbicacionStock | null {
   const { binding } = useSession();
+  const negocioId = binding?.negocioId;
+  const sucursalId = binding?.sucursalId;
   const [ubicacion, setUbicacion] = useState<UbicacionStock | null>(null);
   useEffect(() => {
-    if (!binding) {
-      setUbicacion(null);
-      return;
-    }
+    // Otra sucursal: la ubicación anterior ya no vale.
+    setUbicacion(null);
+    if (!negocioId || !sucursalId) return;
     let vivo = true;
-    cargarUbicacionStock(binding.negocioId, binding.sucursalId)
-      .then((u) => vivo && setUbicacion(u))
-      .catch((e) => console.warn("useUbicacionStock:", e));
+    let listo = false;
+    let espera = 2000;
+    let reintento: number | undefined;
+    const cargar = () => {
+      if (!vivo || listo) return;
+      window.clearTimeout(reintento);
+      cargarUbicacionStock(negocioId, sucursalId)
+        .then((u) => {
+          if (!vivo) return;
+          listo = true;
+          setUbicacion(u);
+        })
+        .catch((e) => {
+          console.warn("useUbicacionStock:", e);
+          if (!vivo) return;
+          reintento = window.setTimeout(cargar, espera);
+          espera = Math.min(espera * 2, 15_000);
+        });
+    };
+    cargar();
+    window.addEventListener("online", cargar);
     return () => {
       vivo = false;
+      window.clearTimeout(reintento);
+      window.removeEventListener("online", cargar);
     };
-  }, [binding]);
+  }, [negocioId, sucursalId]);
   return ubicacion;
 }

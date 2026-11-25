@@ -408,12 +408,14 @@ export type Articulo = {
    *  artículo: la zona de precios no lo toca. */
   precioMenudeo?: string;
   /** Solo con `soloMayoreo`. `true` → `precioVenta` y `precioMenudeo` son
-   *  de este artículo. Ausente → son copia viva del precio de su
-   *  subcategoría o de su categoría (`PreciosMayoreo`, ver
-   *  `resolverPrecioMayoreo`); las mantienen las functions
-   *  `sincronizarPreciosMayoreo` y `asegurarPrecioZona`. Con `zonaPrecioId`
-   *  manda la zona. */
-  precioPropio?: boolean;
+   *  copia viva del precio de su subcategoría o de su categoría
+   *  (`PreciosMayoreo`, ver `resolverPrecioMayoreo`); las mantienen las
+   *  functions `sincronizarPreciosMayoreo` y `asegurarPrecioZona`. Ausente →
+   *  el precio es DEL ARTÍCULO: el que marcó «precio diferente» y también
+   *  todo artículo de antes de la escalera, que así nunca pierde su precio
+   *  porque alguien le ponga uno a su categoría. Con `zonaPrecioId` manda la
+   *  zona. */
+  heredaPrecio?: boolean;
   /** Dado de alta desde Fabricación (mercancía propia). Su stock solo se
    *  mueve con lotes de producción, ajustes con motivo, embarques y
    *  ventas — los editores generales lo muestran de solo lectura. */
@@ -1070,7 +1072,7 @@ export type PrecioMayoreoNivel = {
 /**
  * Precios de mayoreo en escalera: categoría → subcategoría → artículo. Vive
  * en `datos_web_new_version/_preciosMayoreo` (solo admin lo escribe). Los
- * artículos «Solo mayoreo» sin `precioPropio` ni zona guardan copia del
+ * artículos «Solo mayoreo» con `heredaPrecio` y sin zona guardan copia del
  * nivel que les toca (ver `resolverPrecioMayoreo`).
  */
 export type PreciosMayoreo = {

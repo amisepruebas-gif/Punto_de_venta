@@ -69,6 +69,9 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(db, P.ventaS1), venta);
   await setDoc(doc(db, P.articulo), { nombre: "X", precio: 50, cantidad: 10, subvariaciones: {} });
   await setDoc(doc(db, P.usuMerc), { id: "M1", nombre: "Juan", pinHash: "abc", habilitado: true });
+  // El registro de la sesión `merc` (uid m1): las reglas lo leen en vivo
+  // antes de dejarla escribir.
+  await setDoc(doc(db, `${N}/sucursales_data_web_new_version/${S1}/usuariosMercancia_web_new_version/m1`), { id: "m1", nombre: "Merc", pinHash: "def", habilitado: true });
   await setDoc(doc(db, P.negocio), { usaSubvariacionesV2: true });
   await setDoc(doc(db, P.sucursal), { nombre: "Suc 1", direccion: "x" });
   await setDoc(doc(db, P.nodoDoc), { nombre: "Nodo 1" });

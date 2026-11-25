@@ -176,7 +176,9 @@ export async function crearArticuloMayoreo(
     categoriaId: input.categoriaId,
     subcategoriaId: input.subcategoriaId,
     soloMayoreo: true,
-    ...(input.precioPropio ? { precioPropio: true } : {}),
+    // Sin «precio diferente» el artículo sigue el precio de su subcategoría
+    // o categoría (lo mantienen las functions).
+    ...(input.precioPropio ? {} : { heredaPrecio: true }),
     ...(input.generoId ? { generoId: input.generoId } : {}),
     ...(input.etiquetas.length > 0 ? { etiquetas: input.etiquetas } : {}),
     ...(imagenUrl ? { imagenUrl } : {}),
@@ -306,8 +308,8 @@ export async function actualizarArticuloMayoreo(
     else quitar.push("generoId");
     if (input.etiquetas.length > 0) campos.etiquetas = input.etiquetas;
     else quitar.push("etiquetas");
-    if (input.precioPropio) campos.precioPropio = true;
-    else quitar.push("precioPropio");
+    if (input.precioPropio) quitar.push("heredaPrecio");
+    else campos.heredaPrecio = true;
     if (subvariaciones.length > 0) campos.subvariaciones = subvariaciones;
     else quitar.push("subvariaciones");
     if (imagenPrincipal) {

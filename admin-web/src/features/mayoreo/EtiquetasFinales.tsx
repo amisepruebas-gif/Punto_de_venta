@@ -12,6 +12,7 @@ import {
   type RenglonEtiquetaPrecio,
 } from "@shared";
 import {
+  MAX_ETIQUETAS_IMPRESORA,
   idsOrdenesPrecio,
   mandarEtiquetasPrecio,
 } from "@/features/impresoras/impresoraService";
@@ -28,27 +29,27 @@ function guardada(): string {
 }
 
 /** Precio como lo pide la etiqueta: hasta dos decimales, sin ceros de más. */
-function precioEtiqueta(precio: string): string {
+function precioEtiqueta(precio: string | number): string {
   const n = Number(precio);
   if (!Number.isFinite(n) || n <= 0) return "";
   return n.toFixed(2).replace(/\.?0+$/, "");
 }
 
-export type FinalParaEtiqueta = { codigo: string; nombre: string };
+/** `precio`: el que cobra la caja por ese artículo final (el guardado, con
+ *  su promoción si la tiene), no lo que esté a medio escribir en la ficha. */
+export type FinalParaEtiqueta = { codigo: string; nombre: string; precio: string | number };
 
 /**
  * Manda a una impresora de etiquetas una etiqueta de precio por cada
- * artículo final (su código de 8 dígitos y el precio de mayoreo), con las
- * copias que se indiquen.
+ * artículo final (su código de 8 dígitos y su precio), con las copias que
+ * se indiquen. Todas las órdenes entran juntas o no entra ninguna.
  */
 export function EtiquetasFinales({
   negocioId,
   finales,
-  precio,
 }: {
   negocioId: string;
   finales: FinalParaEtiqueta[];
-  precio: string;
 }) {
   const { impresoras, loading } = useImpresoras();
   const { user } = useAuth();
@@ -75,13 +76,12 @@ export function EtiquetasFinales({
     () => finales.filter((f) => esCodigoArticuloFinal(f.codigo)),
     [finales],
   );
-  const precioTxt = precioEtiqueta(precio);
   const elegida = impresoras.find((i) => i.id === impresoraId);
 
   const renglones: RenglonEtiquetaPrecio[] = conCodigo
     .map((f) => ({
       codigo: f.codigo,
-      precio: precioTxt,
+      precio: precioEtiqueta(f.precio),
       piezas: Number(copias[f.codigo] ?? "1"),
       nombre: f.nombre,
     }))
@@ -90,6 +90,13 @@ export function EtiquetasFinales({
     (r) => !Number.isInteger(r.piezas) || r.piezas < 1 || r.piezas > IMPRESION_TOPE_PIEZAS,
   );
   const total = invalido ? 0 : renglones.reduce((s, r) => s + r.piezas, 0);
+  // Sin precio no hay etiqueta: se avisa en vez de imprimir "$0".
+  const sinPrecio = renglones.some((r) => !r.precio);
+  const pasado = total > MAX_ETIQUETAS_IMPRESORA;
+  // Si todas llevan el mismo precio, el botón lo dice.
+  const precios = new Set(renglones.map((r) => r.precio));
+  const precioUnico = precios.size === 1 ? [...precios][0]! : "";
+  const noSePuede = !elegida || invalido || total === 0 || sinPrecio || pasado;
 
   function ponerATodas(valor: string) {
     setCopias(Object.fromEntries(conCodigo.map((f) => [f.codigo, valor])));
@@ -97,7 +104,7 @@ export function EtiquetasFinales({
   }
 
   async function mandar() {
-    if (!elegida || invalido || total === 0 || !precioTxt) return;
+    if (!elegida || noSePuede) return;
     setMandando(true);
     setError(null);
     setEnviadas(null);
@@ -181,7 +188,10 @@ export function EtiquetasFinales({
           <li key={f.codigo} className="flex items-center gap-3 px-3 py-2">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm">{f.nombre}</p>
-              <p className="font-mono text-xs text-muted-foreground">{f.codigo}</p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-mono">{f.codigo}</span>
+                {precioEtiqueta(f.precio) ? ` · $${precioEtiqueta(f.precio)}` : " · sin precio"}
+              </p>
             </div>
             <Input
               type="number"
@@ -200,12 +210,18 @@ export function EtiquetasFinales({
         ))}
       </ul>
 
-      {!precioTxt && (
+      {sinPrecio && (
         <p className="text-sm text-destructive">Este artículo todavía no tiene precio.</p>
       )}
       {invalido && (
         <p className="text-sm text-destructive">
           Las copias van de 0 a {IMPRESION_TOPE_PIEZAS} por artículo.
+        </p>
+      )}
+      {pasado && (
+        <p className="text-sm text-destructive">
+          Son {total} etiquetas: se mandan a lo más {MAX_ETIQUETAS_IMPRESORA} a la vez. Baja las
+          copias y manda el resto después.
         </p>
       )}
       {error && (
@@ -219,17 +235,14 @@ export function EtiquetasFinales({
         </p>
       )}
 
-      <Button
-        type="button"
-        onClick={mandar}
-        disabled={mandando || !elegida || invalido || total === 0 || !precioTxt}
-      >
+      <Button type="button" onClick={mandar} disabled={mandando || noSePuede}>
         {mandando ? (
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
         ) : (
           <Printer className="mr-2 h-4 w-4" />
         )}
-        Imprimir {total} {total === 1 ? "etiqueta" : "etiquetas"} a ${precioTxt || "—"}
+        Imprimir {total} {total === 1 ? "etiqueta" : "etiquetas"}
+        {precioUnico ? ` a $${precioUnico}` : ""}
       </Button>
     </div>
   );

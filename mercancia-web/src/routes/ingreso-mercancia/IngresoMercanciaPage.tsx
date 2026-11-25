@@ -32,22 +32,32 @@ import {
   type UbicacionStock,
 } from "@shared";
 
-/** A dónde entra la mercancía: la tienda de la sucursal ligada a este
- *  teléfono o la bodega. En una sucursal de mayoreo la bodega es la de ESA
- *  tienda (`cantidadBodegaSucursal`); en las demás, la bodega general. */
-type Destino = "tienda" | "bodega";
+/**
+ * A dónde entra la mercancía:
+ *  - `tienda`: el piso de la sucursal ligada a este teléfono.
+ *  - `bodegaTienda`: la bodega de ESA tienda (`cantidadBodegaSucursal`);
+ *    solo existe en las sucursales de mayoreo.
+ *  - `bodegaGeneral`: la bodega general (el taller, `cantidadBodega`).
+ */
+type Destino = "tienda" | "bodegaTienda" | "bodegaGeneral";
+
+/** Lo que se sabe de la sucursal ligada: mientras no se sepa (`conocida`)
+ *  no se ofrece ninguna bodega, para no sumar a la que no es. */
+type SucursalDestino = { conocida: boolean; bodegaDeTienda: boolean };
 
 /** Dónde se suma según el destino elegido (null mientras se resuelve la
- *  sucursal). */
+ *  sucursal, o si ese destino no existe en esta sucursal). */
 function ubicacionDestino(
   destino: Destino,
   tienda: UbicacionStock | null,
-  sucursal: { cargando: boolean; bodegaDeTienda: boolean },
+  sucursal: SucursalDestino,
 ): UbicacionResuelta | null {
   if (destino === "tienda") return tienda ? { tipo: "sucursal", ...tienda } : null;
-  if (sucursal.cargando) return null;
-  if (!sucursal.bodegaDeTienda) return { tipo: "bodega" };
-  return tienda ? { tipo: "bodegaSucursal", sucursalId: tienda.sucursalId } : null;
+  if (!sucursal.conocida) return null;
+  if (destino === "bodegaGeneral") return { tipo: "bodega" };
+  return sucursal.bodegaDeTienda && tienda
+    ? { tipo: "bodegaSucursal", sucursalId: tienda.sucursalId }
+    : null;
 }
 
 type ResueltoOk = Extract<ResolveResult, { ok: true }>;
@@ -65,11 +75,28 @@ export function IngresoMercanciaPage() {
   const { resolver } = useResolverCodigo();
   const ubicacionTienda = useUbicacionStock();
   const { sucursal, cargando: cargandoSucursal } = useSucursalActual();
+  const sucursalConocida = !cargandoSucursal && sucursal !== null;
   const bodegaDeTienda = sucursal?.modoMayoreo === true;
-  const nombreBodega = bodegaDeTienda ? "Bodega de la tienda" : "Bodega";
+  // En una sucursal de mayoreo hay dos bodegas (la de la tienda y la
+  // general); en las demás, solo la general, que se llama «Bodega» a secas.
+  const destinos: Array<{ id: Destino; nombre: string }> = [
+    {
+      id: "tienda",
+      nombre: bodegaDeTienda ? "Tienda" : `Tienda · ${binding?.sucursalNombre ?? "sucursal"}`,
+    },
+    ...(bodegaDeTienda
+      ? [
+          { id: "bodegaTienda" as const, nombre: "Bodega de la tienda" },
+          { id: "bodegaGeneral" as const, nombre: "Bodega general" },
+        ]
+      : [{ id: "bodegaGeneral" as const, nombre: "Bodega" }]),
+  ];
   const [destino, setDestino] = useState<Destino>("tienda");
+  const nombreDestino = (destinos.find((d) => d.id === destino)?.nombre ?? "tienda")
+    .split(" · ")[0]!
+    .toLowerCase();
   const ubicacion = ubicacionDestino(destino, ubicacionTienda, {
-    cargando: cargandoSucursal,
+    conocida: sucursalConocida,
     bodegaDeTienda,
   });
 
@@ -143,7 +170,7 @@ export function IngresoMercanciaPage() {
         tipo: "ok",
         texto: `${n > 0 ? "+" : ""}${n} a ${
           resuelto.subvariacion?.nombre ?? resuelto.articulo.nombre
-        } (${destino === "bodega" ? nombreBodega.toLowerCase() : "tienda"})`,
+        } (${nombreDestino})`,
         detalle: `${res.cantidadAnterior} → ${res.cantidadNueva}`,
       });
       setResuelto(null);
@@ -179,26 +206,45 @@ export function IngresoMercanciaPage() {
       </header>
 
       <main className="flex-1 space-y-3 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        <div className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-1" role="radiogroup" aria-label="A dónde entra la mercancía">
-          {(["tienda", "bodega"] as const).map((d) => (
+        <div
+          className={`grid gap-2 rounded-lg border bg-card p-1 ${
+            destinos.length === 3 ? "grid-cols-3" : "grid-cols-2"
+          }`}
+          role="radiogroup"
+          aria-label="A dónde entra la mercancía"
+        >
+          {destinos.map((d) => (
             <button
-              key={d}
+              key={d.id}
               type="button"
               role="radio"
-              aria-checked={destino === d}
-              onClick={() => setDestino(d)}
-              className={`truncate rounded-md px-3 py-2 text-sm font-medium transition ${
-                destino === d
+              aria-checked={destino === d.id}
+              // Las bodegas, hasta saber de qué sucursal se trata.
+              disabled={d.id !== "tienda" && !sucursalConocida}
+              onClick={() => setDestino(d.id)}
+              className={`rounded-md px-2 py-2 text-sm font-medium leading-tight transition disabled:opacity-50 ${
+                destinos.length === 3 ? "" : "truncate"
+              } ${
+                destino === d.id
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted"
               }`}
             >
-              {d === "bodega"
-                ? nombreBodega
-                : `Tienda · ${binding?.sucursalNombre ?? "sucursal"}`}
+              {d.nombre}
             </button>
           ))}
         </div>
+        {bodegaDeTienda && (
+          <p className="text-xs text-muted-foreground">
+            Sucursal {binding?.sucursalNombre ?? ""} · «Bodega general» es la del taller.
+          </p>
+        )}
+        {!cargandoSucursal && !sucursal && (
+          <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+            No se pudo leer la sucursal: por ahora solo se puede ingresar a la tienda. Revisa el
+            internet y vuelve a abrir esta página.
+          </p>
+        )}
 
         <form
           onSubmit={onManualSubmit}

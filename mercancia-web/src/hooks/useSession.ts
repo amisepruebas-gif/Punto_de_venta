@@ -5,7 +5,8 @@ import type { AccesoMercancia } from "@shared";
  * Sesión local de mercancia-web. Persiste en `localStorage`. Dos partes:
  *
  *  - `binding` (negocioId + sucursalId): se elige una vez en FirstRun y
- *    sobrevive a logouts. Reseteable desde el botón "Cambiar sucursal".
+ *    sobrevive a logouts. Reseteable desde el botón "Cambiar sucursal";
+ *    cambiarlo cierra la sesión.
  *  - `auth` (usuarioId + nombre + acceso): se establece tras login PIN
  *    exitoso. Se limpia en logout.
  */
@@ -59,8 +60,18 @@ export function getBinding(): Binding | null {
   return readJson<Binding>(KEY_BINDING);
 }
 
+/**
+ * Liga el teléfono a una sucursal (o lo desliga). Cambiar de sucursal CIERRA
+ * la sesión: el PIN y el permiso son de la persona EN esa sucursal. Sin
+ * esto, quien ya entró y abre «Elegir sucursal» quedaría viendo otra
+ * sucursal con su sesión de la anterior.
+ */
 export function setBinding(b: Binding | null) {
+  const antes = getBinding();
+  const misma =
+    !!antes && !!b && antes.negocioId === b.negocioId && antes.sucursalId === b.sucursalId;
   writeJson(KEY_BINDING, b);
+  if (!misma) writeJson(KEY_AUTH, null);
   window.dispatchEvent(new Event("mercancia-session-change"));
 }
 

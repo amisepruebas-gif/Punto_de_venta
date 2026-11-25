@@ -173,6 +173,7 @@ export function RegistrarProduccionPage() {
                   cantidad: "0",
                 }),
                 soloMayoreo: true,
+                heredaPrecio: true,
               }
             : {
                 nombre: nombre.trim(),
@@ -416,6 +417,7 @@ export function RegistrarProduccionPage() {
               </div>
             ) : categoria.categoriaId && !cargandoPrecios && negocioId ? (
               <PrecioCategoriaInline
+                key={categoria.categoriaId}
                 negocioId={negocioId}
                 categoriaId={categoria.categoriaId}
                 categoriaNombre={categoriaElegida?.nombre ?? "la categoría"}

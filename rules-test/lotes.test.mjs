@@ -95,6 +95,8 @@ const SESION = { tipo: "recepcion", fecha: "2026-11-18 12:00:00", quien: "Ana", 
 await env.withSecurityRulesDisabled(async (c) => {
   const db = c.firestore();
   const e = (extra) => ({ tipo: "armar", activo: true, gen: 0, letra: "A", secretoHash: HASH, creadoPor: "a1", ...extra });
+  // El registro de la sesión `merc` (uid m1): las reglas lo leen en vivo.
+  await setDoc(doc(db, `${N}/sucursales_data_web_new_version/${S1}/usuariosMercancia_web_new_version/m1`), { nombre: "Merc", pinHash: HASH, habilitado: true });
   await setDoc(doc(db, enl("E1")), e({}));
   await setDoc(doc(db, enl("E2")), e({ letra: "B" }));
   await setDoc(doc(db, enl("EOFF")), e({ activo: false }));

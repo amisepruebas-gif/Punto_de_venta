@@ -37,6 +37,16 @@ service cloud.firestore {
     function esNodoSuc(nid, sid) { return esNodo(nid) && request.auth.token.sucursalId == sid; }
     function esMercancia(nid) { return enNegocio(nid) && rol() == 'mercancia'; }
     function miembro(nid) { return esAdmin(nid) || esNodo(nid) || esMercancia(nid) || esSuperAdmin(); }
+    // Para ESCRIBIR no basta el rol del token (se puso al entrar con el PIN y
+    // un token se renueva solo): se lee EN VIVO el registro de la persona. Si
+    // admin la deshabilita o la pasa a «encargado de tienda», deja de poder
+    // escribir al instante aunque su sesión siga abierta. El id de la sesión
+    // es el id de su registro (functions loginMercanciaConPin).
+    function mercanciaVigente(nid) {
+      let u = get(/databases/$(database)/documents/negocios_web_new_version/$(nid)/sucursales_data_web_new_version/$(request.auth.token.sucursalId)/usuariosMercancia_web_new_version/$(request.auth.uid)).data;
+      return u.habilitado == true && u.get('acceso', 'completo') == 'completo';
+    }
+    function esMercanciaEscribe(nid) { return esMercancia(nid) && mercanciaVigente(nid); }
     function esEncargado(nid) { return enNegocio(nid) && rol() == 'encargado'; }
     function esEncargadoSuc(nid, sid) { return esEncargado(nid) && request.auth.token.sucursalId == sid; }
 
@@ -99,9 +109,19 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
-      // Artículos: el nodo SOLO ajusta stock; mercancia CRUD; admin full. El
-      // encargado de tienda solo los lee.
+      // Artículos: el nodo SOLO ajusta stock; mercancia CRUD de los normales;
+      // admin full. El encargado de tienda solo los lee.
+      // Los «Solo mayoreo» se registran y editan solo en admin (su precio
+      // sale de la escalera de categorías): mercancía no los crea, no los
+      // borra, no convierte uno normal en uno de mayoreo ni al revés, y de
+      // los que existen solo mueve existencias (ingreso y resurtidos).
       match /articulos_n_web_new_version/{artId} {
+        function deMayoreo(d) { return d.get('soloMayoreo', false) == true; }
+        function soloExistencias() {
+          return request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['cantidad', 'subvariaciones', 'cantidadBodega', 'cantidadPorSucursal',
+                      'cantidadBodegaSucursal']);
+        }
         allow read: if miembro(nid) || esEncargado(nid);
         // Enlace de armar: la lista de los fabricados (`where fabricado == true`)
         // y, por su código, otro artículo solo si tiene piezas en el taller (lo
@@ -113,28 +133,31 @@ service cloud.firestore {
               || resource.data.get('fabricado', false) == true
               || int(resource.data.get('cantidadBodega', '0')) > 0);
         allow list: if esEnlace(nid, 'armar') && resource.data.fabricado == true;
-        allow create, delete: if esAdmin(nid) || esMercancia(nid);
-        allow update: if esAdmin(nid) || esMercancia(nid)
-          || (esNodo(nid)
-              && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['cantidad', 'subvariaciones', 'cantidadBodega', 'cantidadPorSucursal',
-                           'cantidadBodegaSucursal']));
+        allow create: if esAdmin(nid)
+          || (esMercanciaEscribe(nid) && !deMayoreo(request.resource.data));
+        allow delete: if esAdmin(nid)
+          || (esMercanciaEscribe(nid) && !deMayoreo(resource.data));
+        allow update: if esAdmin(nid)
+          || (esMercanciaEscribe(nid)
+              && ((!deMayoreo(resource.data) && !deMayoreo(request.resource.data))
+                  || soloExistencias()))
+          || (esNodo(nid) && soloExistencias());
       }
 
       // G1/G2: categorías y subcategorías (mercancia + admin).
       match /categorias_web_new_version/{cid} {
         allow read: if miembro(nid) || esEncargado(nid);
-        allow write: if esAdmin(nid) || esMercancia(nid);
+        allow write: if esAdmin(nid) || esMercanciaEscribe(nid);
       }
       match /subcategorias_web_new_version/{scid} {
         allow read: if miembro(nid) || esEncargado(nid);
-        allow write: if esAdmin(nid) || esMercancia(nid);
+        allow write: if esAdmin(nid) || esMercanciaEscribe(nid);
       }
       // Géneros (temáticas: Anime, K-pop…): mismo trato que categorías. La
       // caja los lee para sus filtros.
       match /generos_web_new_version/{gid} {
         allow read: if miembro(nid) || esEncargado(nid);
-        allow write: if esAdmin(nid) || esMercancia(nid);
+        allow write: if esAdmin(nid) || esMercanciaEscribe(nid);
       }
 
       // datos: config (admin), huellas *_ac (nodo), tallas (mercancia).
@@ -145,7 +168,7 @@ service cloud.firestore {
       match /datos_web_new_version/{k} {
         allow read: if miembro(nid);
         allow write: if esAdmin(nid)
-          || ((esNodo(nid) || esMercancia(nid))
+          || ((esNodo(nid) || esMercanciaEscribe(nid))
               && k != '_contadorFabricacion' && k != '_contadorEtiquetasLote'
               && k != '_preciosMayoreo');
         // El programa de una impresora (acceso `imprimir`) aparta números de
@@ -214,7 +237,7 @@ service cloud.firestore {
         allow list: if esEnlace(nid, 'armar') && mio();
 
         allow create: if esAdmin(nid)
-          || (esMercancia(nid) && !esLote(request.resource.data))
+          || (esMercanciaEscribe(nid) && !esLote(request.resource.data))
           || (esEnlace(nid, 'armar') && loteDeEnlace(request.resource.data)
               && request.resource.data.creadoPorUid == request.auth.uid
               && request.resource.data.folio == rid
@@ -222,7 +245,7 @@ service cloud.firestore {
 
         // Un lote ya enviado no se borra.
         allow delete: if (esAdmin(nid) && (!esLote(resource.data) || resource.data.estado == 'creando'))
-          || (esMercancia(nid) && !esLote(resource.data))
+          || (esMercanciaEscribe(nid) && !esLote(resource.data))
           || (esEnlace(nid, 'armar') && mio() && armandose(resource.data));
 
         allow update: if
@@ -241,7 +264,7 @@ service cloud.firestore {
                                             'sucursalDestinoId', 'sucursalDestinoNombre'])))))
           && (
             esAdmin(nid)
-            || (esMercancia(nid) && !esLote(resource.data) && !esLote(request.resource.data))
+            || (esMercanciaEscribe(nid) && !esLote(resource.data) && !esLote(request.resource.data))
             // La caja: solo lo de su sucursal, y solo recibir. En un lote, UNA
             // sesión nueva por escritura. Uno cerrado sigue cerrado: todavía
             // recibe lo que aparezca después de "no llegó".
@@ -581,7 +604,7 @@ service cloud.firestore {
       // G9: log de auditoría de ingreso de mercancía (best-effort).
       match /ingresos_mercancia_web_new_version/{id} {
         allow read: if esAdmin(nid);
-        allow create: if esAdmin(nid) || esMercancia(nid);
+        allow create: if esAdmin(nid) || esMercanciaEscribe(nid);
       }
 
       // G6/G7: whitelist de delegados + colaboradores (lo escribe la CF).

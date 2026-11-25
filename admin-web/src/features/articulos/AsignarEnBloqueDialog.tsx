@@ -8,6 +8,7 @@ import { EtiquetasInput } from "@/features/fabricacion/EtiquetasInput";
 import {
   SIN_CAMBIOS_CLASIFICACION,
   calcularCambioClasificacion,
+  clasificacionMayoreoProtegida,
   normalizarEtiqueta,
   type Articulo,
   type CambioCampo,
@@ -72,6 +73,13 @@ export function AsignarEnBloqueDialog({
     }
     return out;
   }, [articulos, cambios, padres]);
+
+  // Los de mayoreo siempre llevan categoría y subcategoría (de ahí sale su
+  // precio): si el cambio los dejaría sin alguna, conservan las dos.
+  const protegidos = useMemo(
+    () => articulos.filter((a) => clasificacionMayoreoProtegida(a, cambios, padres)).length,
+    [articulos, cambios, padres],
+  );
 
   // Etiquetas que ya tienen los seleccionados, para quitarlas con un toque.
   const etiquetasEnSeleccion = useMemo(() => {
@@ -253,6 +261,15 @@ export function AsignarEnBloqueDialog({
               ? "Elige qué cambiar."
               : `Cambiarán ${pendientes.length.toLocaleString("es-MX")} de ${articulos.length.toLocaleString("es-MX")} artículos.`}
         </p>
+        {protegidos > 0 && !guardando && (
+          <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+            {protegidos === 1
+              ? "1 artículo de mayoreo conserva su categoría y subcategoría"
+              : `${protegidos.toLocaleString("es-MX")} artículos de mayoreo conservan su categoría y subcategoría`}
+            : siempre llevan las dos. Para cambiarlas, elige aquí la categoría y una subcategoría
+            de ella.
+          </p>
+        )}
         {error && (
           <p className="text-sm text-destructive" role="alert">
             {error}

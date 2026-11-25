@@ -8,9 +8,11 @@ const PRECIOS = {
   subcategorias: {metalico: {precio: 28, menudeo: 40}},
 };
 
+// Un artículo registrado con la escalera: lleva `heredaPrecio`.
 const art = (over = {}) => ({
   nombre: "Metálico 1",
   soloMayoreo: true,
+  heredaPrecio: true,
   categoriaId: "llavero",
   subcategoriaId: "metalico",
   preciCompra: "8",
@@ -19,6 +21,13 @@ const art = (over = {}) => ({
   precioMenudeo: "30",
   ...over,
 });
+
+// Uno con precio propio, o de antes de la escalera: NO trae la marca.
+const propio = (over = {}) => {
+  const a = art(over);
+  delete a.heredaPrecio;
+  return a;
+};
 
 test("un nivel sirve solo con precio > 0 y menudeo mayor", () => {
   assert.equal(pm.nivelValido({precio: 22, menudeo: 30}), true);
@@ -52,12 +61,24 @@ test("sin precios no hay nada que heredar", () => {
       null);
 });
 
-test("solo heredan los de mayoreo sin precio propio y sin zona", () => {
+test("solo heredan los de mayoreo marcados con heredaPrecio y sin zona", () => {
   assert.equal(pm.heredaPrecio(art()), true);
   assert.equal(pm.heredaPrecio(art({soloMayoreo: false})), false);
-  assert.equal(pm.heredaPrecio(art({precioPropio: true})), false);
+  assert.equal(pm.heredaPrecio(propio()), false);
+  assert.equal(pm.heredaPrecio(art({heredaPrecio: false})), false);
+  assert.equal(pm.heredaPrecio(art({heredaPrecio: "true"})), false);
   assert.equal(pm.heredaPrecio(art({zonaPrecioId: "llaveros"})), false);
   assert.equal(pm.heredaPrecio(null), false);
+});
+
+test("un artículo de antes de la escalera nunca pierde su precio", () => {
+  // «Solo mayoreo» con categoría (que ahora tiene precio) pero sin la marca.
+  const viejo = propio({precioVenta: "35", precioMenudeo: "45"});
+  delete viejo.subcategoriaId;
+  assert.equal(pm.calcularPatchPrecio(viejo, PRECIOS), null);
+  assert.equal(pm.requiereVerificarPrecio(null, viejo), false);
+  assert.equal(pm.requiereVerificarPrecio(viejo, {...viejo, precioVenta: "36"}), false);
+  assert.equal(pm.requiereVerificarPrecio(viejo, {...viejo, subcategoriaId: "metalico"}), false);
 });
 
 test("el patch copia los dos precios y recalcula la utilidad", () => {
@@ -82,7 +103,7 @@ test("un artículo sin menudeo guardado sí recibe el patch", () => {
 });
 
 test("con precio propio, con zona o sin precio en la escalera no se toca", () => {
-  assert.equal(pm.calcularPatchPrecio(art({precioPropio: true}), PRECIOS), null);
+  assert.equal(pm.calcularPatchPrecio(propio({precioVenta: "50", precioMenudeo: "65"}), PRECIOS), null);
   assert.equal(pm.calcularPatchPrecio(art({zonaPrecioId: "z"}), PRECIOS), null);
   assert.equal(pm.calcularPatchPrecio(art({soloMayoreo: false}), PRECIOS), null);
   assert.equal(
@@ -102,12 +123,12 @@ test("pide verificar al crear, al cambiar clasificación o precio, y al empezar 
   assert.equal(pm.requiereVerificarPrecio(art(), art({categoriaId: "pin"})), true);
   assert.equal(pm.requiereVerificarPrecio(art(), art({precioVenta: "99"})), true);
   assert.equal(pm.requiereVerificarPrecio(art(), art({precioMenudeo: "99"})), true);
-  assert.equal(pm.requiereVerificarPrecio(art({precioPropio: true}), art()), true);
+  assert.equal(pm.requiereVerificarPrecio(propio(), art()), true);
   assert.equal(pm.requiereVerificarPrecio(art({soloMayoreo: false}), art()), true);
 });
 
 test("no pide verificar si no hereda o si se borró", () => {
-  assert.equal(pm.requiereVerificarPrecio(art(), art({precioPropio: true, precioVenta: "50"})), false);
+  assert.equal(pm.requiereVerificarPrecio(art(), propio({precioVenta: "50"})), false);
   assert.equal(pm.requiereVerificarPrecio(art(), null), false);
   assert.equal(pm.requiereVerificarPrecio(null, art({soloMayoreo: false})), false);
 });

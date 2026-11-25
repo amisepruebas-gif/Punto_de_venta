@@ -91,21 +91,47 @@ describe("precios en escalera", () => {
     expect(resolverPrecioHeredado(art(), null)).toBeNull();
   });
 
-  it("el precio propio del artículo gana a todo", () => {
+  it("con heredaPrecio el artículo toma el precio de la escalera", () => {
     expect(
       resolverPrecioMayoreo(
-        art({ precioPropio: true, precioVenta: "50", precioMenudeo: "65" }),
+        art({ heredaPrecio: true, precioVenta: "50", precioMenudeo: "65" }),
         PRECIOS,
       ),
+    ).toEqual({ precio: 28, menudeo: 40, origen: "subcategoria" });
+    expect(
+      resolverPrecioMayoreo(art({ heredaPrecio: true, subcategoriaId: "acrilico" }), PRECIOS),
+    ).toEqual({ precio: 22, menudeo: 30, origen: "categoria" });
+  });
+
+  it("con heredaPrecio y sin precio en la escalera no hay precio", () => {
+    expect(
+      resolverPrecioMayoreo(
+        art({ heredaPrecio: true, categoriaId: "pin", subcategoriaId: "x" }),
+        PRECIOS,
+      ),
+    ).toBeNull();
+  });
+
+  it("sin heredaPrecio el precio es el del artículo (precio propio)", () => {
+    expect(
+      resolverPrecioMayoreo(art({ precioVenta: "50", precioMenudeo: "65" }), PRECIOS),
     ).toEqual({ precio: 50, menudeo: 65, origen: "articulo" });
+  });
+
+  it("un artículo de antes de la escalera conserva su precio aunque su categoría ya tenga uno", () => {
+    // Sin la marca `heredaPrecio` (no existía): manda lo que trae guardado.
+    const viejo = art({ precioVenta: "35", precioMenudeo: "45", subcategoriaId: undefined });
+    expect(resolverPrecioMayoreo(viejo, PRECIOS)).toEqual({
+      precio: 35,
+      menudeo: 45,
+      origen: "articulo",
+    });
+    expect(resolverPrecioMayoreo({ ...viejo, heredaPrecio: false }, PRECIOS)?.origen).toBe("articulo");
   });
 
   it("un precio propio mal capturado no vale", () => {
     expect(
-      resolverPrecioMayoreo(
-        art({ precioPropio: true, precioVenta: "50", precioMenudeo: "50" }),
-        PRECIOS,
-      ),
+      resolverPrecioMayoreo(art({ precioVenta: "50", precioMenudeo: "50" }), PRECIOS),
     ).toBeNull();
   });
 

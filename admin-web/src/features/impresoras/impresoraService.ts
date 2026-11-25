@@ -198,8 +198,10 @@ export function idsOrdenesPrecio(negocioId: string, renglones: number): string[]
 /**
  * Manda etiquetas de precio de artículos finales (código de 8 dígitos y
  * precio). Parte los renglones en órdenes de a lo más
- * `IMPRESION_TOPE_RENGLONES`, con los ids de `idsOrdenesPrecio`. Devuelve
- * los ids de las órdenes.
+ * `IMPRESION_TOPE_RENGLONES`, con los ids de `idsOrdenesPrecio`, y las crea
+ * TODAS en una sola transacción: o entran todas o no entra ninguna (nunca
+ * se queda media tanda en la cola). A lo más `MAX_ETIQUETAS_IMPRESORA`
+ * etiquetas por envío. Devuelve los ids de las órdenes.
  */
 export async function mandarEtiquetasPrecio(
   negocioId: string,
@@ -219,12 +221,18 @@ export async function mandarEtiquetasPrecio(
     const problemas = validarRenglonesPrecio(parte);
     if (problemas.length > 0) throw new Error(problemas.join(". "));
   }
-  for (const [i, parte] of partes.entries()) {
-    const ref = doc(db, paths.impresion(negocioId, trabajoIds[i]!));
-    await runTransaction(db, async (tx) => {
-      const ya = await tx.get(ref);
-      if (ya.exists()) return;
-      tx.set(ref, {
+  const total = renglones.reduce((s, r) => s + r.piezas, 0);
+  if (total > MAX_ETIQUETAS_IMPRESORA) {
+    throw new Error(`Se mandan a lo más ${MAX_ETIQUETAS_IMPRESORA} etiquetas a la vez`);
+  }
+  const refs = trabajoIds.map((id) => doc(db, paths.impresion(negocioId, id)));
+  await runTransaction(db, async (tx) => {
+    const ya = await Promise.all(refs.map((ref) => tx.get(ref)));
+    // Reintento (se perdió la respuesta o el SDK repitió): las que ya
+    // quedaron no se vuelven a crear, así ninguna sale doble.
+    partes.forEach((parte, i) => {
+      if (ya[i]!.exists()) return;
+      tx.set(refs[i]!, {
         tipo: "etiquetas_precio",
         impresoraId,
         estado: "pendiente",
@@ -239,8 +247,8 @@ export async function mandarEtiquetasPrecio(
           piezas: r.piezas,
         })),
       });
-    }).catch(traducirPermiso);
-  }
+    });
+  }).catch(traducirPermiso);
   return trabajoIds;
 }
 

@@ -64,25 +64,22 @@ function mismasEtiquetas(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((t, i) => t === b[i]);
 }
 
+/** Lo que la asignación en bloque necesita saber de un artículo. */
+export type ClasificableEnBloque = Clasificable & Pick<Articulo, "soloMayoreo">;
+
 /**
- * El cambio que la asignación en bloque le hace a un artículo, o `null` si
- * queda igual.
- * - Sin categoría no hay subcategoría.
- * - Si la categoría cambia, la subcategoría anterior solo se queda si es de
- *   la nueva categoría.
- * - "igual" nunca toca el campo (aunque hoy esté inconsistente).
- * - Las etiquetas solo se reescriben si hay algo que agregar o quitar.
- *
- * @param padreDeSubcategoria subcategoriaId → categoriaId del catálogo.
+ * Categoría y subcategoría con las que queda un artículo.
+ * `protegido`: es «Solo mayoreo» y el cambio pedido lo dejaría sin categoría
+ * o sin una subcategoría de esa categoría. Los de mayoreo siempre llevan las
+ * dos (de ahí sale su precio), así que a ese artículo no se le toca ninguna.
  */
-export function calcularCambioClasificacion(
-  a: Clasificable,
+function categoriaYSubcategoriaDespues(
+  a: ClasificableEnBloque,
   c: CambiosClasificacion,
   padreDeSubcategoria: ReadonlyMap<string, string>,
-): PatchClasificacion | null {
+): { cat: string | undefined; sub: string | undefined; protegido: boolean } {
   const catAntes = a.categoriaId || undefined;
   const subAntes = a.subcategoriaId || undefined;
-  const genAntes = a.generoId || undefined;
 
   const catDespues =
     c.categoria.accion === "igual"
@@ -106,6 +103,55 @@ export function calcularCambioClasificacion(
   } else {
     subDespues = esDe(subAntes, catDespues) ? subAntes : undefined;
   }
+
+  const cambia = catDespues !== catAntes || subDespues !== subAntes;
+  if (a.soloMayoreo && cambia && !esDe(subDespues, catDespues)) {
+    return { cat: catAntes, sub: subAntes, protegido: true };
+  }
+  return { cat: catDespues, sub: subDespues, protegido: false };
+}
+
+/**
+ * `true` si la asignación en bloque NO le cambia la categoría ni la
+ * subcategoría a este artículo porque es «Solo mayoreo» y quedaría sin
+ * alguna de las dos (ver `calcularCambioClasificacion`). Para avisarlo.
+ */
+export function clasificacionMayoreoProtegida(
+  a: ClasificableEnBloque,
+  c: CambiosClasificacion,
+  padreDeSubcategoria: ReadonlyMap<string, string>,
+): boolean {
+  return categoriaYSubcategoriaDespues(a, c, padreDeSubcategoria).protegido;
+}
+
+/**
+ * El cambio que la asignación en bloque le hace a un artículo, o `null` si
+ * queda igual.
+ * - Sin categoría no hay subcategoría.
+ * - Si la categoría cambia, la subcategoría anterior solo se queda si es de
+ *   la nueva categoría.
+ * - "igual" nunca toca el campo (aunque hoy esté inconsistente).
+ * - Un artículo «Solo mayoreo» nunca queda sin categoría o sin subcategoría:
+ *   si el cambio lo dejaría así, conserva las dos (género y etiquetas sí
+ *   cambian).
+ * - Las etiquetas solo se reescriben si hay algo que agregar o quitar.
+ *
+ * @param padreDeSubcategoria subcategoriaId → categoriaId del catálogo.
+ */
+export function calcularCambioClasificacion(
+  a: ClasificableEnBloque,
+  c: CambiosClasificacion,
+  padreDeSubcategoria: ReadonlyMap<string, string>,
+): PatchClasificacion | null {
+  const catAntes = a.categoriaId || undefined;
+  const subAntes = a.subcategoriaId || undefined;
+  const genAntes = a.generoId || undefined;
+
+  const { cat: catDespues, sub: subDespues } = categoriaYSubcategoriaDespues(
+    a,
+    c,
+    padreDeSubcategoria,
+  );
 
   const genDespues =
     c.genero.accion === "igual"
