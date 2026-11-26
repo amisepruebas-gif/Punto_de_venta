@@ -10,19 +10,22 @@ import { useGeneros } from "./useGeneros";
 export function GeneroInlineSelect({
   generoId,
   onChange,
+  requerido = false,
 }: {
   generoId: string;
   onChange: (generoId: string) => void;
+  /** En el registro de mayoreo el género es obligatorio. */
+  requerido?: boolean;
 }) {
   const { negocioId } = useNegocio();
   const { generos } = useGeneros();
   return (
     <CampoConNuevo
-      etiqueta="Género (opcional)"
+      etiqueta={requerido ? "Género *" : "Género (opcional)"}
       placeholderNuevo="Ej. Anime"
       valor={generoId}
       opciones={generos.map((g) => ({ id: g.generoId, nombre: g.nombre }))}
-      vacio="— Sin género —"
+      vacio={requerido ? "— Elige —" : "— Sin género —"}
       textoNuevo="Nuevo"
       onElegir={onChange}
       onCrear={async (nombre) => {

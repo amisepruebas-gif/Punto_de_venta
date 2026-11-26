@@ -180,24 +180,35 @@ export function nombreAutomaticoArticulo(
 export type ArticuloMayoreoEntrada = {
   categoriaId: string;
   subcategoriaId: string;
+  generoId: string;
   tieneVariaciones: boolean;
   /** Cuántas variaciones trae el formulario. */
   variaciones: number;
+  /** Precio de compra, como texto. Obligatorio y mayor que 0. */
+  costo: string;
   precioPropio: boolean;
   /** Solo con `precioPropio`: los dos precios como texto. */
   precio: string;
   menudeo: string;
 };
 
-/** Valida el registro simplificado. Devuelve el mensaje o `null`. */
+/** Valida el registro simplificado: categoría, subcategoría y género
+ *  obligatorios, precio de compra y precio de venta (el de la escalera o el
+ *  propio). Devuelve el mensaje o `null`. */
 export function validarArticuloMayoreo(
   e: ArticuloMayoreoEntrada,
   precios: PreciosMayoreo | null | undefined,
 ): string | null {
   if (!e.categoriaId) return "Elige la categoría";
   if (!e.subcategoriaId) return "Elige la subcategoría";
+  if (!e.generoId) return "Elige el género";
   if (e.tieneVariaciones && e.variaciones < 1) {
     return "Agrega al menos una variación, o marca que no tiene";
+  }
+  const costoTxt = (e.costo ?? "").trim();
+  const costo = Number(costoTxt);
+  if (!costoTxt || !Number.isFinite(costo) || costo <= 0) {
+    return "Falta el precio de compra";
   }
   if (e.precioPropio) return validarPrecioNivel(e.precio, e.menudeo);
   if (!resolverPrecioHeredado(e, precios)) {

@@ -17,6 +17,7 @@ import {
   mandarEtiquetasPrecio,
 } from "@/features/impresoras/impresoraService";
 import { useImpresoras } from "@/features/impresoras/useImpresoras";
+import { Miniatura } from "@/features/articulos/Miniatura";
 
 const LS_IMPRESORA = "admin.etiquetas.impresora";
 
@@ -37,7 +38,13 @@ function precioEtiqueta(precio: string | number): string {
 
 /** `precio`: el que cobra la caja por ese artículo final (el guardado, con
  *  su promoción si la tiene), no lo que esté a medio escribir en la ficha. */
-export type FinalParaEtiqueta = { codigo: string; nombre: string; precio: string | number };
+export type FinalParaEtiqueta = {
+  codigo: string;
+  nombre: string;
+  precio: string | number;
+  /** Foto de la variación (o del artículo), para la miniatura. */
+  imagenUrl?: string;
+};
 
 /**
  * Manda a una impresora de etiquetas una etiqueta de precio por cada
@@ -186,6 +193,7 @@ export function EtiquetasFinales({
       <ul className="divide-y rounded-md border">
         {conCodigo.map((f) => (
           <li key={f.codigo} className="flex items-center gap-3 px-3 py-2">
+            <Miniatura url={f.imagenUrl} alt={f.nombre} size={36} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm">{f.nombre}</p>
               <p className="text-xs text-muted-foreground">

@@ -38,15 +38,19 @@ import {
 // ============================================================
 // Registro simplificado de artículos «Solo mayoreo»
 // ============================================================
-// Categoría y subcategoría obligatorias; el nombre del artículo y el de cada
-// variación son opcionales (el sistema los pone). El precio sale de la
-// escalera categoría → subcategoría → artículo. Cada artículo final (el
-// artículo, o cada variación) recibe un código de 8 dígitos.
+// Categoría, subcategoría y género obligatorios, igual que el precio de
+// compra; el nombre del artículo y el de cada variación son opcionales (el
+// sistema los pone). El precio de venta sale de la escalera categoría →
+// subcategoría → artículo. Cada artículo final (el artículo, o cada
+// variación) recibe un código de 8 dígitos.
 //
-// Este registro NO captura existencias y NUNCA las pisa: al editar arma las
+// Este servicio NO escribe existencias y NUNCA las pisa: al editar arma las
 // variaciones dentro de una transacción a partir del doc recién leído, así
 // que una venta o un movimiento que ocurra mientras el formulario está
-// abierto no se pierde.
+// abierto no se pierde. Las cantidades que captura la ficha se guardan
+// aparte, después, con `guardarExistenciasSucursal` (que tampoco pisa: si la
+// cantidad ya es otra, avisa). Por eso lo que devuelven estas funciones trae
+// las variaciones en el mismo orden en que llegaron.
 
 export type VariacionMayoreoInput = {
   /** Código interno `v-NN-XXX` si la variación ya existe. */
@@ -67,13 +71,16 @@ export type ArticuloMayoreoInput = {
   subcategoriaNombre: string;
   /** Vacío → nombre automático. */
   nombre: string;
+  /** Opcionales. */
+  sigla: string;
+  referencia: string;
   tieneVariaciones: boolean;
   variaciones: VariacionMayoreoInput[];
   precioPropio: boolean;
   /** Solo con `precioPropio`. */
   precio: string;
   menudeo: string;
-  /** Costo de compra (opcional). */
+  /** Precio de compra: obligatorio y mayor que 0. */
   costo: string;
   generoId: string;
   etiquetas: string[];
@@ -88,8 +95,10 @@ function validar(input: ArticuloMayoreoInput, precios: PreciosMayoreo | null): v
     {
       categoriaId: input.categoriaId,
       subcategoriaId: input.subcategoriaId,
+      generoId: input.generoId,
       tieneVariaciones: input.tieneVariaciones,
       variaciones: input.variaciones.length,
+      costo: input.costo,
       precioPropio: input.precioPropio,
       precio: input.precio,
       menudeo: input.menudeo,
@@ -97,10 +106,6 @@ function validar(input: ArticuloMayoreoInput, precios: PreciosMayoreo | null): v
     precios,
   );
   if (error) throw new Error(error);
-  const costo = Number(input.costo || 0);
-  if (!Number.isFinite(costo) || costo < 0) {
-    throw new Error("El costo debe ser un número mayor o igual a 0");
-  }
 }
 
 function nivelDe(
@@ -167,8 +172,8 @@ export async function crearArticuloMayoreo(
     id,
     codigo: id,
     nombre: nombreFinal(input, otrosNombres),
-    sigla: "",
-    referencia: "",
+    sigla: input.sigla.trim(),
+    referencia: input.referencia.trim(),
     cantidad: "0",
     preciCompra: costo,
     ...camposPrecioMayoreo(nivelDe(input, precios), { preciCompra: costo, cantidad: "0" }),
@@ -293,6 +298,8 @@ export async function actualizarArticuloMayoreo(
     const costo = String(Number(input.costo || 0));
     const campos: Partial<Articulo> = {
       nombre: nombreFinal(input, otrosNombres),
+      sigla: input.sigla.trim(),
+      referencia: input.referencia.trim(),
       categoriaId: input.categoriaId,
       subcategoriaId: input.subcategoriaId,
       preciCompra: costo,

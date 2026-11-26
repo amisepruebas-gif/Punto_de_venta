@@ -4,6 +4,8 @@ import { ArrowRightLeft, ChevronDown, Loader2 } from "lucide-react";
 import { db } from "@/firebase/config";
 import { Label } from "@/components/ui/label";
 import { useNegocio } from "@/hooks/useNegocio";
+import { useArticulos } from "@/features/articulos/useArticulos";
+import { Miniatura } from "@/features/articulos/Miniatura";
 import { useSucursales } from "@/features/sucursales/useSucursales";
 import {
   paths,
@@ -46,6 +48,20 @@ export function MovimientosExistenciasPage() {
   const { negocioId } = useNegocio();
   const { sucursales, loading: cargandoSucursales } = useSucursales();
   const tiendas = useMemo(() => sucursales.filter((s) => s.modoMayoreo), [sucursales]);
+  // Foto de cada artículo final (la de la variación o, si no tiene, la del
+  // artículo), para la miniatura de cada renglón.
+  const { articulos } = useArticulos();
+  const fotos = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of articulos) {
+      if (a.imagenUrl) m.set(a.id, a.imagenUrl);
+      for (const sv of a.subvariaciones ?? []) {
+        const url = sv.imagenUrl ?? a.imagenUrl;
+        if (url && sv.codigo) m.set(`${a.id}|${sv.codigo}`, url);
+      }
+    }
+    return m;
+  }, [articulos]);
   const [sucursalId, setSucursalId] = useState("");
   const [movimientos, setMovimientos] = useState<MovimientoExistencias[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -204,7 +220,20 @@ export function MovimientosExistenciasPage() {
                           key={`${r.articuloId}|${r.subvariacionCodigo ?? ""}`}
                           className="border-b last:border-0"
                         >
-                          <td className="py-1.5 pr-3">{r.nombre}</td>
+                          <td className="py-1.5 pr-3">
+                            <span className="flex items-center gap-2">
+                              <Miniatura
+                                url={fotos.get(
+                                  r.subvariacionCodigo
+                                    ? `${r.articuloId}|${r.subvariacionCodigo}`
+                                    : r.articuloId,
+                                )}
+                                alt={r.nombre}
+                                size={32}
+                              />
+                              <span className="min-w-0">{r.nombre}</span>
+                            </span>
+                          </td>
                           <td className="py-1.5 pr-3 font-mono">{r.codigo}</td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">{r.piezas}</td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">

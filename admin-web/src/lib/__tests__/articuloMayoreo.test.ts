@@ -191,16 +191,30 @@ describe("validarArticuloMayoreo", () => {
   const base = {
     categoriaId: "llavero",
     subcategoriaId: "metalico",
+    generoId: "unisex",
     tieneVariaciones: false,
     variaciones: 0,
+    costo: "8",
     precioPropio: false,
     precio: "",
     menudeo: "",
   };
 
-  it("pide categoría y subcategoría", () => {
+  it("completo pasa", () => {
+    expect(validarArticuloMayoreo(base, PRECIOS)).toBeNull();
+  });
+
+  it("pide categoría, subcategoría y género", () => {
     expect(validarArticuloMayoreo({ ...base, categoriaId: "" }, PRECIOS)).toMatch(/categoría/);
     expect(validarArticuloMayoreo({ ...base, subcategoriaId: "" }, PRECIOS)).toMatch(/subcategoría/);
+    expect(validarArticuloMayoreo({ ...base, generoId: "" }, PRECIOS)).toMatch(/género/);
+  });
+
+  it("pide el precio de compra, mayor que 0", () => {
+    for (const costo of ["", "  ", "0", "-3", "abc"]) {
+      expect(validarArticuloMayoreo({ ...base, costo }, PRECIOS)).toMatch(/precio de compra/);
+    }
+    expect(validarArticuloMayoreo({ ...base, costo: "0.5" }, PRECIOS)).toBeNull();
   });
 
   it("con variaciones pide al menos una", () => {
