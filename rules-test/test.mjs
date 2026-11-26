@@ -3,7 +3,7 @@ import {
   assertFails,
   assertSucceeds,
 } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField } from "firebase/firestore";
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, deleteField } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 
 // Las reglas del MISMO checkout (antes era una ruta fija al checkout
@@ -130,7 +130,9 @@ await check("nodo NO cambia precio del articulo", "fail", updateDoc(doc(nodo1, P
 // ============ MERCANCIA ============
 await check("mercancia actualiza articulo", "ok", updateDoc(doc(merc, P.articulo), { precio: 60 }));
 await check("nodo NO escribe usuariosMercancia", "fail", updateDoc(doc(nodo1, P.usuMerc), { habilitado: false }));
-await check("mercancia lee su usuariosMercancia (AuthWatcher)", "ok", getDoc(doc(merc, P.usuMerc)));
+await check("mercancia lee SU usuariosMercancia (AuthWatcher)", "ok", getDoc(doc(merc, `${N}/sucursales_data_web_new_version/${S1}/usuariosMercancia_web_new_version/m1`)));
+await check("mercancia NO lee el usuariosMercancia de otra persona (trae la huella de su PIN)", "fail", getDoc(doc(merc, P.usuMerc)));
+await check("mercancia NO lista usuariosMercancia", "fail", getDocs(collection(merc, `${N}/sucursales_data_web_new_version/${S1}/usuariosMercancia_web_new_version`)));
 
 // ============ ADMIN ============
 await check("admin escribe usuariosMercancia", "ok", updateDoc(doc(adminC, P.usuMerc), { habilitado: false }));

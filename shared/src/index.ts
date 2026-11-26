@@ -20,4 +20,3 @@ export * from "./impresion";
 export * from "./tspl";
 export * from "./cashbackMayoreo";
 export * from "./articuloMayoreo";
-export * from "./movimientoPendiente";

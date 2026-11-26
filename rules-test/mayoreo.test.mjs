@@ -199,6 +199,21 @@ await check("mercancía NO cambia precio junto con un ingreso", "fail", updateDo
 await check("mercancía NO borra uno de mayoreo", "fail", deleteDoc(doc(merc2, MAY)));
 await check("mercancía NO crea uno de mayoreo", "fail", setDoc(doc(merc2, articulo("12300031")), { id: "12300031", nombre: "X", soloMayoreo: true, precioVenta: "1" }));
 await check("mercancía NO vuelve de mayoreo uno normal", "fail", updateDoc(doc(merc2, NORMAL), { soloMayoreo: true, precioVenta: "1" }));
+// La caja de mayoreo toma por «de mayoreo» cualquier valor "verdadero".
+for (const [valor, nombre] of [["true", "el texto «true»"], ["si", "un texto"], [1, "un 1"], [{ a: 1 }, "un objeto"], [["x"], "una lista"]]) {
+  await check(`mercancía NO crea uno de mayoreo disfrazado (soloMayoreo = ${nombre})`, "fail",
+    setDoc(doc(merc2, articulo("12300033")), { id: "12300033", nombre: "X", soloMayoreo: valor, precioVenta: "1", precioMenudeo: "2" }));
+  await check(`mercancía NO disfraza de mayoreo uno normal (soloMayoreo = ${nombre})`, "fail",
+    updateDoc(doc(merc2, NORMAL), { soloMayoreo: valor, precioVenta: "1" }));
+}
+for (const [valor, nombre] of [[false, "false"], [null, "null"], ["", "texto vacío"], [0, "0"]]) {
+  await check(`un artículo normal con soloMayoreo = ${nombre} sigue siendo normal para mercancía`, "ok",
+    setDoc(doc(merc2, articulo("12300034")), { id: "12300034", nombre: "N", soloMayoreo: valor, precioVenta: "9" }));
+  await check(`y lo sigue editando (soloMayoreo = ${nombre})`, "ok", updateDoc(doc(merc2, articulo("12300034")), { precioVenta: "10" }));
+}
+await check("mercancía borra ese artículo normal", "ok", deleteDoc(doc(merc2, articulo("12300034"))));
+await check("mercancía vuelve a borrar el que ya no existe (doble toque): no es error de permiso", "ok", deleteDoc(doc(merc2, articulo("12300034"))));
+await check("mercancía deshabilitada NO borra uno que no existe", "fail", deleteDoc(doc(mercDeshabilitada, articulo("12300034"))));
 await check("mercancía SÍ ingresa piezas a la bodega general de uno de mayoreo", "ok", updateDoc(doc(merc2, MAY), { cantidadBodega: "9" }));
 await check("mercancía SÍ ingresa a la tienda y a su bodega", "ok", updateDoc(doc(merc2, MAY), { cantidadPorSucursal: { [S2]: "6" }, cantidadBodegaSucursal: { [S2]: "12" } }));
 await check("mercancía SÍ mueve las piezas de sus variaciones", "ok", updateDoc(doc(merc2, MAY), { subvariaciones: [{ codigo: "v-01-abc", nombre: "m1", cantidad: "2" }] }));
@@ -243,6 +258,27 @@ for (const [quien, db, tag] of [
 // le revoca la sesión y la app la saca; lo que importa (escribir) ya no pasa.
 await check("mercancía deshabilitada todavía lee el catálogo (su sesión se corta aparte)", "ok", getDoc(doc(mercDeshabilitada, NORMAL)));
 await check("mercancía pasada a encargado todavía lee con su token viejo (su sesión se corta aparte)", "ok", getDoc(doc(mercPasadaAEncargado, PRECIOS)));
+
+// ============ Registros de usuario: cada quien lee solo el suyo ============
+// Traen `pinHash`: un PIN de 5 dígitos se saca de su huella probando 100,000.
+await check("mercancía lee SU registro (la app lo vigila)", "ok", getDoc(doc(merc2, usuarioMerc(S2, "m2"))));
+await check("mercancía NO lee el registro de otra persona de su tienda", "fail", getDoc(doc(merc2, usuarioMerc(S2, "m3"))));
+await check("mercancía NO lee el registro del encargado", "fail", getDoc(doc(merc2, usuarioMerc(S2, "e2"))));
+await check("mercancía NO lista los registros de su tienda", "fail", getDocs(collection(merc2, `${N}/sucursales_data_web_new_version/${S2}/usuariosMercancia_web_new_version`)));
+await check("mercancía NO lee registros de otra tienda", "fail", getDoc(doc(merc2, usuarioMerc(S1, "m1"))));
+await check("mercancía NO lee un registro con su id en otra tienda", "fail", getDoc(doc(merc2, usuarioMerc(S1, "m2"))));
+await check("mercancía deshabilitada SÍ lee su registro (así la app se entera y la saca)", "ok", getDoc(doc(mercDeshabilitada, usuarioMerc(S2, "m3"))));
+await check("mercancía deshabilitada NO lee el de otra persona", "fail", getDoc(doc(mercDeshabilitada, usuarioMerc(S2, "m2"))));
+await check("la caja NO lee registros de mercancía", "fail", getDoc(doc(nodo2, usuarioMerc(S2, "m2"))));
+await check("admin lee y lista los registros", "ok", getDocs(collection(admin, `${N}/sucursales_data_web_new_version/${S2}/usuariosMercancia_web_new_version`)));
+await check("mercancía NO escribe su registro", "fail", updateDoc(doc(merc2, usuarioMerc(S2, "m2")), { nombre: "Otro" }));
+
+// ============ Envíos anulados de «Mover»: solo la CF ============
+const anulado = (sid, id) => `${N}/sucursales_data_web_new_version/${sid}/movimientos_anulados_web_new_version/${id}`;
+for (const [quien, db] of [["el encargado", encargado], ["mercancía", merc2], ["la caja", nodo2], ["admin", admin]]) {
+  await check(`${quien} NO lee envíos anulados`, "fail", getDoc(doc(db, anulado(S2, "mov_a"))));
+  await check(`${quien} NO crea envíos anulados`, "fail", setDoc(doc(db, anulado(S2, "mov_n")), { movimientoId: "mov_n" }));
+}
 
 // La sesión vigente hace todo lo de siempre.
 await check("mercancía vigente crea una categoría", "ok", setDoc(doc(merc2, `${N}/categorias_web_new_version/cv`), { nombre: "C" }));

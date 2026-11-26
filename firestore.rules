@@ -114,9 +114,21 @@ service cloud.firestore {
       // Los «Solo mayoreo» se registran y editan solo en admin (su precio
       // sale de la escalera de categorías): mercancía no los crea, no los
       // borra, no convierte uno normal en uno de mayoreo ni al revés, y de
-      // los que existen solo mueve existencias (ingreso y resurtidos).
+      // los que existen solo toca las llaves de existencias (ingreso y
+      // resurtidos).
+      // Límite conocido: `subvariaciones` es una lista y aquí no se puede
+      // comparar por dentro. Quien puede mover existencias (la caja y
+      // mercancía) puede reescribir esa lista completa: nombre, foto y
+      // promoción de cada variación incluidos. El precio del artículo
+      // (`precioVenta`/`precioMenudeo`) sí queda protegido.
       match /articulos_n_web_new_version/{artId} {
-        function deMayoreo(d) { return d.get('soloMayoreo', false) == true; }
+        // Igual que las apps (`!!soloMayoreo`): cuenta cualquier valor
+        // "verdadero", no solo `true`. Si no, un `soloMayoreo: "si"` pasaría
+        // aquí por artículo normal y la caja de mayoreo lo vendería.
+        function deMayoreo(d) {
+          let v = d.get('soloMayoreo', false);
+          return !(v == false || v == null || v == '' || v == 0);
+        }
         function soloExistencias() {
           return request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['cantidad', 'subvariaciones', 'cantidadBodega', 'cantidadPorSucursal',
@@ -135,8 +147,10 @@ service cloud.firestore {
         allow list: if esEnlace(nid, 'armar') && resource.data.fabricado == true;
         allow create: if esAdmin(nid)
           || (esMercanciaEscribe(nid) && !deMayoreo(request.resource.data));
+        // `resource == null`: borrar uno que ya no existe (doble toque en
+        // «Eliminar») no es un error de permiso.
         allow delete: if esAdmin(nid)
-          || (esMercanciaEscribe(nid) && !deMayoreo(resource.data));
+          || (esMercanciaEscribe(nid) && (resource == null || !deMayoreo(resource.data)));
         allow update: if esAdmin(nid)
           || (esMercanciaEscribe(nid)
               && ((!deMayoreo(resource.data) && !deMayoreo(request.resource.data))
@@ -649,10 +663,15 @@ service cloud.firestore {
           allow write: if esNodoSuc(nid, sid);
         }
         match /usuariosMercancia_web_new_version/{uid} {
-          allow read: if esAdmin(nid) || esMercancia(nid);
-          // El encargado solo lee SU registro: la app lo vigila para sacarlo
-          // en cuanto admin lo deshabilita.
-          allow get: if esEncargadoSuc(nid, sid) && request.auth.uid == uid;
+          allow read: if esAdmin(nid);
+          // Cada persona (mercancía o encargado) lee SOLO su registro: la app
+          // lo vigila para sacarla en cuanto admin la deshabilita o le cambia
+          // el acceso. El de los demás no: trae la huella del PIN, y un PIN
+          // de 5 dígitos se saca de su huella probando los 100,000. Tampoco
+          // se listan.
+          allow get: if request.auth.uid == uid
+            && (esEncargadoSuc(nid, sid)
+                || (esMercancia(nid) && request.auth.token.sucursalId == sid));
           allow write: if esAdmin(nid);
         }
         match /mercanciaRateLimit/{doc} {
@@ -665,6 +684,11 @@ service cloud.firestore {
           allow read: if esAdmin(nid) || esEncargadoSuc(nid, sid)
             || (esMercancia(nid) && request.auth.token.sucursalId == sid);
           allow write: if false;
+        }
+        // Envíos de «Mover» que quedaron sin respuesta y la CF anuló (ya no
+        // se pueden aplicar). Solo los usa moverExistencias.
+        match /movimientos_anulados_web_new_version/{mid} {
+          allow read, write: if false;
         }
         // Cobros con la terminal Clip: los escriben solo las CF; la caja lee
         // los suyos para seguir el cobro en vivo.

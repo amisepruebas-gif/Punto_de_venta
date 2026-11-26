@@ -46,6 +46,16 @@ test("normalizar: rechaza peticiones mal formadas", () => {
   const base = {movimientoId: "mov_12345678", direccion: "bodega_a_tienda",
     renglones: [{articuloId: "12300010", piezas: 1}]};
   assert.throws(() => et.normalizarPeticion(null), /identificador/);
+  // «Aclarar un envío»: basta su id (y tiene que ser válido).
+  assert.deepEqual(
+      et.normalizarPeticion({movimientoId: "mov_12345678", anular: true}),
+      {movimientoId: "mov_12345678", anular: true});
+  assert.deepEqual(
+      et.normalizarPeticion({...base, anular: true}),
+      {movimientoId: base.movimientoId, anular: true});
+  assert.throws(() => et.normalizarPeticion({movimientoId: "a b", anular: true}), /identificador/);
+  // Solo `true` anula: cualquier otra cosa es un movimiento normal.
+  assert.throws(() => et.normalizarPeticion({movimientoId: "mov_12345678", anular: "true"}), /de dónde a dónde/);
   assert.throws(() => et.normalizarPeticion({...base, movimientoId: "a b"}), /identificador/);
   assert.throws(() => et.normalizarPeticion({...base, direccion: "sumar"}), /de dónde a dónde/);
   assert.throws(() => et.normalizarPeticion({...base, renglones: []}), /nada que mover/);

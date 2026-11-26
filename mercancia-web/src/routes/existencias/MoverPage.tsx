@@ -24,16 +24,15 @@ import {
 } from "@/features/ingreso-mercancia/useResolverCodigo";
 import { useExistencias } from "@/features/existencias/useExistencias";
 import {
+  aclararEnvio,
   borrarPendiente,
   clasificarFallo,
-  consultarEnvio,
   guardarPendiente,
   leerPendiente,
   moverExistencias,
   nuevoMovimientoId,
   type DuenoEnvio,
   type EnvioMover,
-  type EnvioPendiente,
   type RespuestaMover,
 } from "@/features/existencias/existenciasService";
 import {
@@ -51,29 +50,28 @@ import {
   ResultadoMovimiento,
   ResumenEnvio,
 } from "./MoverPartes";
-import {
-  ESPERA_ENVIO_SIN_RASTRO_MS,
-  nombreArticuloFinal,
-  type DireccionMovimientoExistencias,
-} from "@shared";
+import { nombreArticuloFinal, type DireccionMovimientoExistencias } from "@shared";
 
 /** Límite de la function `moverExistencias`. */
 const MAX_LINEAS = 100;
 
+/** Cada cuánto se vuelve a preguntar por un envío en duda si no hay respuesta. */
+const REPREGUNTAR_MS = 8000;
+
 /**
  * - editar: se arma la lista.
  * - confirmar: resumen antes de mandar.
- * - enviando / duda: la lista ya se mandó y no se puede cambiar. En duda (no
- *   se sabe si se aplicó) solo se puede reintentar ESE envío, con el mismo
- *   id; la página revisa sola su registro y solo suelta la lista con prueba
- *   de que no se movió nada.
+ * - enviando / duda: la lista ya se mandó y no se puede cambiar. En duda (se
+ *   cortó la conexión y no se sabe si se aplicó) la página le pregunta sola
+ *   a la function: o el movimiento ya quedó (se muestra), o ese envío queda
+ *   anulado para siempre y entonces sí se suelta la lista.
  * - listo: cómo quedaron bodega y tienda.
  */
 type Etapa =
   | { tipo: "editar" }
   | { tipo: "confirmar" }
-  | { tipo: "enviando"; envio: EnvioPendiente }
-  | { tipo: "duda"; envio: EnvioPendiente; mensaje: string }
+  | { tipo: "enviando"; envio: EnvioMover }
+  | { tipo: "duda"; envio: EnvioMover; mensaje: string }
   | { tipo: "listo"; respuesta: RespuestaMover };
 
 type Aviso = { tipo: "ok" | "err"; texto: string };
@@ -87,11 +85,14 @@ const MENSAJE_CODIGO: Record<RazonCodigo, (codigo: string) => string> = {
   "subvariacion-no-encontrada": () => "Esa variación ya no existe.",
 };
 
+const MENSAJE_SIN_RESPUESTA =
+  "Se cortó la conexión y no sabemos si se movió. Lo estamos revisando.";
 const MENSAJE_PENDIENTE =
-  "Un movimiento quedó sin respuesta y no sabemos si se movió. Toca «Reintentar»: si ya se había movido, no se mueve dos veces.";
+  "Un movimiento quedó sin respuesta y no sabemos si se movió. Lo estamos revisando.";
 const MENSAJE_OTRA_PESTANA =
-  "Antes de mandar este, hay que saber qué pasó con un movimiento que quedó sin respuesta (se mandó desde otra pestaña). Toca «Reintentar»: si ya se había movido, no se mueve dos veces.";
-const MENSAJE_NO_SE_MOVIO = "Ya lo revisamos: ese movimiento no se aplicó. No se movió nada.";
+  "Antes de mandar este hay que saber qué pasó con un movimiento que quedó sin respuesta (se mandó desde otra pestaña). Lo estamos revisando.";
+const MENSAJE_NO_SE_MOVIO =
+  "Ya lo revisamos: ese movimiento no se aplicó. No se movió nada. Si todavía hace falta, vuelve a mandarlo.";
 
 /** El motivo de un rechazo, sin el «No se movió nada» que a veces ya trae
  *  el mensaje del servidor (aquí se dice aparte) y con punto final. */
@@ -112,27 +113,18 @@ export function MoverPage() {
   const { resolver } = useResolverCodigo();
   const { porClave, sucursal, cargando } = useExistencias();
   const enLinea = useEnLinea();
+  const negocioId = binding?.negocioId;
+  const sucursalId = binding?.sucursalId;
+  const usuarioId = auth?.usuarioId;
   const dueno: DuenoEnvio | null =
-    binding && auth
-      ? {
-          negocioId: binding.negocioId,
-          sucursalId: binding.sucursalId,
-          usuarioId: auth.usuarioId,
-        }
-      : null;
+    negocioId && sucursalId && usuarioId ? { negocioId, sucursalId, usuarioId } : null;
 
-  const negocioId = dueno?.negocioId;
-  const sucursalId = dueno?.sucursalId;
-  const usuarioId = dueno?.usuarioId;
-
-  // Un envío que quedó sin respuesta (aunque se haya salido de la página)
-  // regresa bloqueado: solo se puede reintentar con el mismo id.
+  // Un envío que quedó sin aclarar (aunque se haya salido de la página)
+  // regresa bloqueado hasta saber en qué quedó.
   const [pendiente] = useState(() => (dueno ? leerPendiente(dueno) : null));
   // El envío en duda lo dejó OTRA pestaña: la lista de esta no es la suya y
   // se conserva para seguir cuando aquel se aclare.
   const [deOtraPestana, setDeOtraPestana] = useState(false);
-  // Por qué la function rechazó el último reintento (si lo rechazó).
-  const motivoRechazo = useRef<string | null>(null);
   const [direccion, setDireccion] = useState<DireccionMovimientoExistencias | null>(
     pendiente?.direccion ?? null,
   );
@@ -147,6 +139,11 @@ export function MoverPage() {
   const [manual, setManual] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const manualRef = useRef<HTMLInputElement>(null);
+  // Aclarar un envío en duda: cada cambio de `vuelta` vuelve a preguntar.
+  const [vuelta, setVuelta] = useState(0);
+  const [preguntando, setPreguntando] = useState(false);
+  // No se pudo ni preguntar (p. ej. la sesión venció): qué hacer.
+  const [sinPoderPreguntar, setSinPoderPreguntar] = useState<string | null>(null);
 
   useEffect(() => {
     if (!aviso) return;
@@ -154,39 +151,58 @@ export function MoverPage() {
     return () => window.clearTimeout(t);
   }, [aviso]);
 
-  // En duda: se revisa SOLA el registro del movimiento (al entrar, al volver
-  // el internet y cuando ya pasó el tiempo en que podía aplicarse).
+  // En duda: se le pregunta SOLA a la function (al entrar, al volver el
+  // internet y cada pocos segundos mientras no conteste). Su respuesta es
+  // definitiva: el movimiento ya quedó, o ese envío quedó anulado.
   const dudaId = etapa.tipo === "duda" ? etapa.envio.movimientoId : null;
-  const dudaMs = etapa.tipo === "duda" ? etapa.envio.enviadoMs : 0;
   useEffect(() => {
     if (!dudaId || !negocioId || !sucursalId || !usuarioId || !enLinea) return;
     const quien: DuenoEnvio = { negocioId, sucursalId, usuarioId };
     let vivo = true;
-    const revisar = async () => {
-      const estado = await consultarEnvio(quien, dudaId, dudaMs);
-      if (!vivo || estado.tipo === "sin-saber") return;
-      borrarPendiente(quien);
-      if (estado.tipo === "aplicado") {
-        motivoRechazo.current = null;
-        setEtapa({ tipo: "listo", respuesta: estado.respuesta });
-        return;
-      }
+    let otraVez: number | undefined;
+    const soltar = () => {
       // Prueba de que no se movió nada: la lista se puede corregir y el
       // próximo envío lleva otro id.
-      const motivo = motivoRechazo.current;
-      motivoRechazo.current = null;
-      setRechazo(motivo ? `${MENSAJE_NO_SE_MOVIO} ${motivo}` : MENSAJE_NO_SE_MOVIO);
+      borrarPendiente(quien, dudaId);
+      setRechazo(MENSAJE_NO_SE_MOVIO);
       setDeOtraPestana(false);
       setEtapa({ tipo: "editar" });
     };
-    void revisar();
-    const falta = dudaMs + ESPERA_ENVIO_SIN_RASTRO_MS - Date.now();
-    const t = falta > 0 ? window.setTimeout(() => void revisar(), falta + 500) : undefined;
+    setPreguntando(true);
+    setSinPoderPreguntar(null);
+    aclararEnvio(dudaId).then(
+      (r) => {
+        if (!vivo) return;
+        setPreguntando(false);
+        if (r.tipo === "anulado") {
+          soltar();
+          return;
+        }
+        borrarPendiente(quien, dudaId);
+        setEtapa({ tipo: "listo", respuesta: r.respuesta });
+      },
+      (e) => {
+        if (!vivo) return;
+        setPreguntando(false);
+        const fallo = clasificarFallo(e);
+        if (fallo.idAjeno) {
+          // Ese id es del movimiento de otra persona: el nuestro nunca entró.
+          soltar();
+        } else if (fallo.contesto) {
+          // No dejó ni preguntar: se dice qué hacer y se espera a la persona.
+          setSinPoderPreguntar(soloMotivo(fallo.mensaje));
+        } else {
+          // Sigue sin conexión de verdad: se vuelve a preguntar en un momento.
+          otraVez = window.setTimeout(() => setVuelta((n) => n + 1), REPREGUNTAR_MS);
+        }
+      },
+    );
     return () => {
       vivo = false;
-      if (t !== undefined) window.clearTimeout(t);
+      setPreguntando(false);
+      if (otraVez !== undefined) window.clearTimeout(otraVez);
     };
-  }, [dudaId, dudaMs, enLinea, negocioId, sucursalId, usuarioId]);
+  }, [dudaId, enLinea, vuelta, negocioId, sucursalId, usuarioId]);
 
   const manejaBodega = sucursal?.modoMayoreo === true;
   const puedeEscanear = etapa.tipo === "editar" && !!direccion && manejaBodega && !cargando;
@@ -255,73 +271,53 @@ export function MoverPage() {
     setRechazo(null);
   }
 
-  /**
-   * Manda (o reintenta) un envío. `enDudaDesdeMs`: null si es la primera
-   * vez que sale ese id; si es un reintento, cuándo salió el último intento
-   * que quedó sin respuesta.
-   */
-  async function enviar(base: EnvioMover, enDudaDesdeMs: number | null) {
+  /** Otra pestaña dejó un envío sin aclarar: primero se aclara ese. Mandar
+   *  otro lo pisaría y ya nadie sabría si aquel se movió. */
+  function aclararElDeOtraPestana(previo: EnvioMover) {
+    setDeOtraPestana(true);
+    setEtapa({ tipo: "duda", envio: previo, mensaje: MENSAJE_OTRA_PESTANA });
+  }
+
+  /** Manda un envío NUEVO (cada envío sale una sola vez con su id). */
+  async function enviar(envio: EnvioMover) {
     if (!dueno) return;
-    const envio: EnvioPendiente = {
-      movimientoId: base.movimientoId,
-      direccion: base.direccion,
-      lineas: base.lineas,
-      enviadoMs: Date.now(),
-    };
     // Se guarda ANTES de llamar: si la página se cierra a medio envío, al
-    // volver queda bloqueado en vez de dejar mandarlo con otro id.
-    guardarPendiente(dueno, envio);
+    // volver queda bloqueado hasta aclararlo.
+    if (!guardarPendiente(dueno, envio)) {
+      const previo = leerPendiente(dueno);
+      if (previo) aclararElDeOtraPestana(previo);
+      return;
+    }
     setRechazo(null);
     setEtapa({ tipo: "enviando", envio });
     try {
       const respuesta = await moverExistencias(envio);
-      borrarPendiente(dueno);
-      motivoRechazo.current = null;
+      borrarPendiente(dueno, envio.movimientoId);
       setEtapa({ tipo: "listo", respuesta });
     } catch (e) {
       const fallo = clasificarFallo(e);
       if (!fallo.contesto) {
-        // Se cortó: no se sabe si ESTE intento se aplicó.
-        setEtapa({ tipo: "duda", envio, mensaje: fallo.mensaje });
+        // Se cortó: no se sabe si se aplicó. La página lo pregunta sola.
+        setEtapa({ tipo: "duda", envio, mensaje: MENSAJE_SIN_RESPUESTA });
         return;
       }
-      if (enDudaDesdeMs === null || fallo.idAjeno) {
-        // La function contestó que no, y no hay ningún intento anterior en
-        // duda (o ese id nunca fue nuestro): no se movió nada. Se corrige
-        // la lista y el próximo envío lleva otro id.
-        borrarPendiente(dueno);
-        motivoRechazo.current = null;
-        setRechazo(`No se movió nada. ${soloMotivo(fallo.mensaje)}`);
-        setDeOtraPestana(false);
-        setEtapa({ tipo: "editar" });
-        return;
-      }
-      // Este reintento no movió nada, pero un intento ANTERIOR quedó sin
-      // respuesta y pudo aplicarse: la lista sigue bloqueada hasta saberlo
-      // (se revisa sola). El tiempo se sigue contando desde aquel intento.
-      const sigue: EnvioPendiente = { ...envio, enviadoMs: enDudaDesdeMs };
-      guardarPendiente(dueno, sigue);
-      const motivo = soloMotivo(fallo.mensaje);
-      motivoRechazo.current = motivo;
-      setEtapa({
-        tipo: "duda",
-        envio: sigue,
-        mensaje: `El reintento se rechazó. ${motivo} Todavía no sabemos si el primer envío se aplicó: lo estamos revisando.`,
-      });
+      // La function contestó que no (y ese id es nuevo: no hay intento
+      // anterior): no se movió nada. Se corrige la lista y el próximo envío
+      // lleva otro id.
+      borrarPendiente(dueno, envio.movimientoId);
+      setRechazo(`No se movió nada. ${soloMotivo(fallo.mensaje)}`);
+      setEtapa({ tipo: "editar" });
     }
   }
 
   function mover() {
     if (!direccion || !puedeConfirmar || !dueno) return;
-    // Otra pestaña pudo dejar un envío sin respuesta: primero se aclara ese.
-    // Mandar este lo pisaría y ya nadie sabría si aquel se movió.
     const previo = leerPendiente(dueno);
     if (previo) {
-      setDeOtraPestana(true);
-      setEtapa({ tipo: "duda", envio: previo, mensaje: MENSAJE_OTRA_PESTANA });
+      aclararElDeOtraPestana(previo);
       return;
     }
-    void enviar({ movimientoId: nuevoMovimientoId(), direccion, lineas }, null);
+    void enviar({ movimientoId: nuevoMovimientoId(), direccion, lineas });
   }
 
   function otroMovimiento() {
@@ -455,11 +451,17 @@ export function MoverPage() {
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
                   <p className="font-medium">{etapa.mensaje}</p>
-                  <p className="text-xs">
-                    Mientras tanto esta lista no se puede cambiar. Lo revisamos solos
-                    en cuanto hay internet; en «Movimientos» también puedes ver si ya
-                    quedó.
-                  </p>
+                  {sinPoderPreguntar ? (
+                    <p className="text-xs font-medium">
+                      No pudimos revisarlo: {sinPoderPreguntar} Al volver, aquí mismo te
+                      decimos si se movió.
+                    </p>
+                  ) : (
+                    <p className="text-xs">
+                      Mientras tanto esta lista no se puede cambiar. En cuanto haya
+                      internet aquí mismo te decimos si se movió o no.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -513,10 +515,15 @@ export function MoverPage() {
           {etapa.tipo === "duda" && (
             <Button
               className="flex-1"
-              onClick={() => void enviar(etapa.envio, etapa.envio.enviadoMs)}
-              disabled={!enLinea}
+              onClick={() => setVuelta((n) => n + 1)}
+              disabled={!enLinea || preguntando}
             >
-              <RefreshCw className="mr-2 h-4 w-4" /> Reintentar
+              {preguntando ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {preguntando ? "Revisando…" : "Revisar ahora"}
             </Button>
           )}
           {etapa.tipo === "listo" && (

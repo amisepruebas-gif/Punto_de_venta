@@ -46,6 +46,8 @@ function esIdDeDoc(id) {
 /**
  * Valida la petición de la app y la deja lista: renglones sumados por
  * (artículo, variación), así cada artículo final aparece una sola vez.
+ * Con `anular: true` la petición es «aclara este envío»: solo hace falta
+ * su id y se devuelve `{movimientoId, anular: true}`.
  * Lanza `Error` con un mensaje para el usuario si algo no sirve.
  */
 function normalizarPeticion(data) {
@@ -54,6 +56,7 @@ function normalizarPeticion(data) {
       !/^[A-Za-z0-9_-]{8,48}$/.test(d.movimientoId)) {
     throw new Error("Falta el identificador del movimiento");
   }
+  if (d.anular === true) return {movimientoId: d.movimientoId, anular: true};
   if (!DIRECCIONES.includes(d.direccion)) {
     throw new Error("Indica de dónde a dónde se mueve");
   }

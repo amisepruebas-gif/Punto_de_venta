@@ -2333,6 +2333,15 @@ exports.loginMercanciaConPin = onCall(
       // Sin `acceso` es el usuario de siempre, rol `mercancia`.
       await rlRef.set({winStart: now, count: 0}, {merge: true});
       const mercanciaUid = docSnap.id;
+      // El id del registro lo elige quien lo crea y es el uid de la sesión:
+      // si coincide con el de otra cuenta (admin, superadmin, una caja), no
+      // se le da una sesión con ese uid.
+      if (await esCuentaAjenaAMercancia(mercanciaUid)) {
+        logger.warn("loginMercanciaConPin: el id del usuario es el de otra cuenta",
+            {negocioId, sucursalId, mercanciaUid});
+        throw new HttpsError("permission-denied",
+            "Este usuario no puede entrar. Pide al administrador que lo vuelva a crear.");
+      }
       const acceso = data.acceso === "existencias" ? "existencias" : "completo";
       const token = await admin.auth().createCustomToken(mercanciaUid, {
         role: acceso === "existencias" ? "encargado" : "mercancia",
@@ -2344,6 +2353,29 @@ exports.loginMercanciaConPin = onCall(
     },
 );
 
+/**
+ * ¿El uid es de una cuenta que NO es una sesión de PIN de mercancía? Las de
+ * PIN nacen de un custom token: no tienen correo, proveedor de acceso ni
+ * permisos guardados en la cuenta. Admin, superadmin y las cajas sí. El id
+ * de un usuario de mercancía lo elige quien lo crea, así que podría coincidir
+ * con el uid de otra cuenta: a esa nunca se le da una sesión de PIN ni se le
+ * cortan las suyas.
+ * @param {string} uid
+ * @return {Promise<boolean>}
+ */
+async function esCuentaAjenaAMercancia(uid) {
+  let cuenta;
+  try {
+    cuenta = await admin.auth().getUser(uid);
+  } catch (e) {
+    if (e && e.code === "auth/user-not-found") return false;
+    throw e;
+  }
+  return (cuenta.providerData || []).length > 0 ||
+    Object.keys(cuenta.customClaims || {}).length > 0 ||
+    !!cuenta.email || !!cuenta.phoneNumber;
+}
+
 // ============================================================
 // moverExistencias — piezas entre la bodega y la tienda de una sucursal
 // ============================================================
@@ -2353,6 +2385,10 @@ exports.loginMercanciaConPin = onCall(
 // lado entra al otro; nunca más de lo que hay en el origen). Todo o nada, en
 // una transacción, junto con su registro (quién, cuándo, antes y después).
 // El id del movimiento lo pone la app: repetir la llamada no mueve dos veces.
+// Si la app se queda sin respuesta, pregunta con `anular: true`: o el
+// movimiento ya está registrado (se lo devuelve), o ese id queda ANULADO para
+// siempre y ningún intento tardío lo puede aplicar. Así la app solo deja
+// cambiar la lista cuando es seguro, sin suponer cuánto puede tardar.
 // Lógica pura en lib/existenciasTienda.js.
 const existenciasTienda = require("./lib/existenciasTienda");
 
@@ -2377,6 +2413,10 @@ exports.moverExistencias = onCall(
           .collection(`sucursales_data${SUFFIX}`).doc(sucursalId);
       const movRef = sucDataRef
           .collection(`movimientos_existencias${SUFFIX}`).doc(peticion.movimientoId);
+      // Envíos anulados: aparte, para no mezclarlos con los movimientos (las
+      // reglas no dejan leer ni escribir esta colección a nadie).
+      const anuladoRef = sucDataRef
+          .collection(`movimientos_anulados${SUFFIX}`).doc(peticion.movimientoId);
 
       // La misma llamada repetida (se perdió la respuesta): no mueve otra
       // vez y contesta lo que ya quedó. Si ese id es de otra persona, no es
@@ -2398,6 +2438,33 @@ exports.moverExistencias = onCall(
       const aplicado = await movRef.get();
       if (aplicado.exists) return yaHecho(aplicado.data());
 
+      // Aclarar un envío que quedó sin respuesta. En UNA transacción: si ya
+      // hay movimiento, se devuelve; si no, el id queda anulado. El envío
+      // original y esta pregunta nunca "ganan" los dos: Firestore los ordena.
+      // Va antes de revisar a la persona: debe poder aclararlo aunque después
+      // la hayan deshabilitado.
+      if (peticion.anular) {
+        const previo = await db.runTransaction(async (tx) => {
+          const [mov, anulado] = await tx.getAll(movRef, anuladoRef);
+          if (mov.exists) return mov.data();
+          if (!anulado.exists) {
+            tx.create(anuladoRef, {
+              movimientoId: peticion.movimientoId,
+              sucursalId,
+              usuarioId,
+              fecha: new Date().toISOString(),
+              creadoEn: FieldValue.serverTimestamp(),
+            });
+          }
+          return null;
+        });
+        if (previo) return yaHecho(previo);
+        logger.info("moverExistencias: envío anulado", {
+          negocioId, sucursalId, usuarioId, movimientoId: peticion.movimientoId,
+        });
+        return {ok: true, anulado: true};
+      }
+
       // La persona sigue habilitada (el token dura una hora) y la sucursal
       // maneja bodega y tienda (las de mayoreo).
       const [usuarioSnap, sucursalSnap] = await Promise.all([
@@ -2417,8 +2484,10 @@ exports.moverExistencias = onCall(
         negocioRef.collection("articulos_n_web_new_version").doc(id);
 
       const r = await db.runTransaction(async (tx) => {
-        const previo = await tx.get(movRef);
+        const [previo, anulado] = await tx.getAll(movRef, anuladoRef);
         if (previo.exists) return {previo: previo.data()};
+        // La app ya preguntó por este envío y quedó anulado: no se aplica.
+        if (anulado.exists) return {anulado: true};
         const ids = [...new Set(peticion.renglones.map((x) => x.articuloId))];
         const snaps = await tx.getAll(...ids.map(artRef));
         const articulos = new Map(
@@ -2456,6 +2525,11 @@ exports.moverExistencias = onCall(
       // Dos llamadas iguales a la vez: la segunda encuentra lo que dejó la
       // primera dentro de la transacción.
       if (r.previo) return yaHecho(r.previo);
+      if (r.anulado) {
+        throw new HttpsError("failed-precondition",
+            "No se movió nada. Ese envío se canceló: vuelve a mandarlo.",
+            {anulado: true});
+      }
       logger.info("moverExistencias", {
         negocioId, sucursalId, usuarioId,
         movimientoId: peticion.movimientoId,
@@ -2499,6 +2573,13 @@ exports.cortarSesionMercancia = onDocumentWritten(
         acceso(antes) !== acceso(despues);
       if (!cortar) return;
       const {negocioId, sucursalId, uid} = event.params;
+      // El id del registro lo elige quien lo crea: si es el uid de otra
+      // cuenta (admin, superadmin, una caja), a esa no se le corta nada.
+      if (await esCuentaAjenaAMercancia(uid)) {
+        logger.warn("cortarSesionMercancia: el id es el de otra cuenta; no se toca",
+            {negocioId, sucursalId, uid});
+        return;
+      }
       try {
         await admin.auth().revokeRefreshTokens(uid);
         logger.info("cortarSesionMercancia", {negocioId, sucursalId, uid});
@@ -3307,12 +3388,26 @@ exports.sincronizarPreciosMayoreo = onDocumentWritten(
       const porRevisar = arts.docs.filter(
           (d) => preciosMayoreo.calcularPatchPrecio(d.data(), despues));
       let escritos = 0;
+      // Un artículo que falla (dos escrituras encontradas) no detiene a los
+      // demás: se apunta y se intenta otra vez al final, de uno en uno.
+      const pendientes = [];
       const A_LA_VEZ = 50;
       for (let i = 0; i < porRevisar.length; i += A_LA_VEZ) {
-        const hechos = await Promise.all(
-            porRevisar.slice(i, i + A_LA_VEZ)
-                .map((d) => aplicarPrecioEscalera(base, d.ref)));
-        escritos += hechos.filter(Boolean).length;
+        const lote = porRevisar.slice(i, i + A_LA_VEZ);
+        const hechos = await Promise.allSettled(
+            lote.map((d) => aplicarPrecioEscalera(base, d.ref)));
+        hechos.forEach((h, j) => {
+          if (h.status === "rejected") pendientes.push(lote[j].ref);
+          else if (h.value) escritos++;
+        });
+      }
+      const fallidos = [];
+      for (const ref of pendientes) {
+        try {
+          if (await aplicarPrecioEscalera(base, ref)) escritos++;
+        } catch (e) {
+          fallidos.push(ref.id);
+        }
       }
       if (escritos > 0) {
         await base.collection("datos_web_new_version").doc("articulos_ac")
@@ -3321,6 +3416,13 @@ exports.sincronizarPreciosMayoreo = onDocumentWritten(
       console.log(
           `sincronizarPreciosMayoreo ${negocioId}: ` +
           `${escritos}/${arts.size} artículos actualizados`);
+      if (fallidos.length > 0) {
+        // Queda como error en los registros. Se corrige al volver a guardar
+        // el precio de la categoría (o el artículo).
+        throw new Error(
+            `sincronizarPreciosMayoreo ${negocioId}: ${fallidos.length} artículos ` +
+            `se quedaron sin actualizar (${fallidos.slice(0, 20).join(", ")})`);
+      }
     },
 );
 

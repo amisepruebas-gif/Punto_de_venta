@@ -1,8 +1,6 @@
 import { httpsCallable } from "firebase/functions";
 import {
   collection,
-  doc,
-  getDocFromServer,
   limit,
   onSnapshot,
   orderBy,
@@ -13,7 +11,6 @@ import { db, functions } from "@/firebase/config";
 import {
   generarID,
   paths,
-  veredictoEnvioPendiente,
   type DireccionMovimientoExistencias,
   type MovimientoExistencias,
   type RenglonMovimientoExistencias,
@@ -24,22 +21,19 @@ import type { LineaMover } from "./filasExistencias";
 // Mover piezas entre la bodega y la tienda (callable `moverExistencias`)
 // ============================================================
 // La function es todo o nada y no aplica dos veces el mismo `movimientoId`.
-// Si se cae la conexión no se sabe si se movió: el reintento DEBE llevar el
-// mismo id (y la misma lista); por eso el envío sin respuesta se guarda en
-// este equipo hasta SABER en qué quedó: o la function contesta que se
-// aplicó, o su registro (`consultarEnvio`) lo prueba, o ya pasó el tiempo
-// en que podía aplicarse y no hay registro.
+// Si se cae la conexión no se sabe si se movió. Para saberlo se le pregunta
+// a la MISMA function (`aclararEnvio`): si ya se aplicó contesta cómo quedó;
+// si no, deja ese id ANULADO para siempre, de modo que un intento que llegue
+// tarde ya no se puede aplicar. Solo entonces la lista se puede cambiar (y el
+// siguiente envío lleva otro id). Mientras no se sepa, el envío se guarda en
+// este equipo: sobrevive a cerrar la página.
 
-/** Lo que se manda (o se reintenta) en un movimiento. */
+/** Lo que se manda en un movimiento. */
 export type EnvioMover = {
   movimientoId: string;
   direccion: DireccionMovimientoExistencias;
   lineas: LineaMover[];
 };
-
-/** Un envío guardado mientras no se sabe en qué quedó. `enviadoMs`: cuándo
- *  salió su último intento sin respuesta (reloj de este equipo). */
-export type EnvioPendiente = EnvioMover & { enviadoMs: number };
 
 export type RespuestaMover = {
   ok: true;
@@ -56,6 +50,9 @@ type PeticionMover = {
   renglones: Array<{ articuloId: string; subvariacionCodigo?: string; piezas: number }>;
 };
 
+type PeticionAclarar = { movimientoId: string; anular: true };
+type RespuestaAclarar = RespuestaMover | { ok: true; anulado: true };
+
 /** Id para un envío nuevo (`/^[A-Za-z0-9_-]{8,48}$/` en la function). */
 export function nuevoMovimientoId(): string {
   return `mov_${generarID()}`;
@@ -63,6 +60,11 @@ export function nuevoMovimientoId(): string {
 
 // La function corta a los 30 s; sin respuesta a los 40 s ya no va a llegar.
 const moverCallable = httpsCallable<PeticionMover, RespuestaMover>(
+  functions,
+  "moverExistencias",
+  { timeout: 40_000 },
+);
+const aclararCallable = httpsCallable<PeticionAclarar, RespuestaAclarar>(
   functions,
   "moverExistencias",
   { timeout: 40_000 },
@@ -81,7 +83,26 @@ export async function moverExistencias(envio: EnvioMover): Promise<RespuestaMove
   return data;
 }
 
-/** Respuestas con las que la function dice que ESTE intento no movió nada. */
+/** En qué quedó un envío que se había quedado sin respuesta. */
+export type EnvioAclarado =
+  /** Sí se movió: así quedó. */
+  | { tipo: "aplicado"; respuesta: RespuestaMover }
+  /** No se movió y ya no se va a mover: ese id quedó anulado. */
+  | { tipo: "anulado" };
+
+/**
+ * Pregunta a la function por un envío sin respuesta. O ya se aplicó, o queda
+ * anulado para siempre (un intento que llegue tarde no se aplica). Se puede
+ * preguntar las veces que haga falta: siempre contesta lo mismo. Lanza si no
+ * se pudo preguntar (ver `clasificarFallo`).
+ */
+export async function aclararEnvio(movimientoId: string): Promise<EnvioAclarado> {
+  const { data } = await aclararCallable({ movimientoId, anular: true });
+  if ("anulado" in data) return { tipo: "anulado" };
+  return { tipo: "aplicado", respuesta: data };
+}
+
+/** Respuestas con las que la function dice que ESA llamada no movió nada. */
 const NO_SE_MOVIO = new Set([
   "functions/failed-precondition",
   "functions/invalid-argument",
@@ -91,27 +112,23 @@ const NO_SE_MOVIO = new Set([
 ]);
 
 /** La llamada ni siquiera llegó a la function (no existe, o la sesión ya no
- *  sirve): este intento tampoco movió nada. El mensaje del servidor viene en
- *  inglés, así que se dice aquí qué hacer. */
+ *  sirve): tampoco movió nada. El mensaje del servidor viene en inglés, así
+ *  que se dice aquí qué hacer. */
 const NO_LLEGO: Record<string, string> = {
   "functions/not-found": "Mover piezas todavía no está disponible. Avisa al administrador.",
   "functions/unauthenticated": "Tu sesión venció. Sal y vuelve a entrar con tu PIN.",
 };
 
-export const MENSAJE_SIN_RESPUESTA =
-  "Se cortó la conexión y no sabemos si se movió. Toca «Reintentar»: si ya se había movido, no se mueve dos veces.";
-
 export type FalloMover = {
   /**
-   * La function contestó: ESTE intento no movió nada. Ojo: si antes hubo un
-   * intento sin respuesta, eso no dice nada de aquel. `false`: se cortó la
-   * conexión y no se sabe si este intento se aplicó.
+   * La function contestó (o la llamada no llegó a entrar): ESA llamada no
+   * movió nada. `false`: se cortó la conexión y no se sabe si se aplicó.
    */
   contesto: boolean;
-  /** El id ya es de un movimiento de otra persona: este envío nunca se va a
-   *  aplicar, ni en un intento anterior. */
+  /** El id ya es de un movimiento de otra persona: este envío nunca se
+   *  aplicó ni se va a aplicar. */
   idAjeno: boolean;
-  /** Por qué no se movió (si `contesto`), para mostrarlo. */
+  /** Por qué (si `contesto`), para mostrarlo. */
   mensaje: string;
 };
 
@@ -127,7 +144,7 @@ export function clasificarFallo(e: unknown): FalloMover {
       mensaje: (e as Error).message || "No se movió nada.",
     };
   }
-  return { contesto: false, idAjeno: false, mensaje: MENSAJE_SIN_RESPUESTA };
+  return { contesto: false, idAjeno: false, mensaje: "" };
 }
 
 // ---------- Envío sin respuesta (guardado en este equipo) ----------
@@ -139,92 +156,45 @@ function keyPendiente(d: DuenoEnvio): string {
   return `mercancia.movimientoPendiente.v1.${d.negocioId}.${d.sucursalId}.${d.usuarioId}`;
 }
 
-export function guardarPendiente(dueno: DuenoEnvio, envio: EnvioPendiente): void {
-  try {
-    localStorage.setItem(keyPendiente(dueno), JSON.stringify(envio));
-  } catch {
-    // storage bloqueado: el candado vive solo mientras siga abierta la página.
-  }
-}
-
-/** El envío sin respuesta de esta persona en esta sucursal, si hay (lo pudo
+/** El envío sin aclarar de esta persona en esta sucursal, si hay (lo pudo
  *  dejar esta pestaña u otra). */
-export function leerPendiente(dueno: DuenoEnvio): EnvioPendiente | null {
+export function leerPendiente(dueno: DuenoEnvio): EnvioMover | null {
   try {
     const raw = localStorage.getItem(keyPendiente(dueno));
     if (!raw) return null;
-    const envio = JSON.parse(raw) as Partial<EnvioPendiente>;
+    const envio = JSON.parse(raw) as Partial<EnvioMover>;
     if (!envio.movimientoId || !envio.direccion || !Array.isArray(envio.lineas)) return null;
     return {
       movimientoId: envio.movimientoId,
       direccion: envio.direccion,
       lineas: envio.lineas,
-      // Sin hora guardada se cuenta desde ahora: nunca se da por "no se
-      // movió" antes de tiempo.
-      enviadoMs: Number.isFinite(envio.enviadoMs) ? (envio.enviadoMs as number) : Date.now(),
     };
   } catch {
     return null;
   }
 }
 
-/** En qué quedó un envío sin respuesta, según su registro. */
-export type EstadoEnvio =
-  /** Sí se movió: así quedó (como lo contestaría la function). */
-  | { tipo: "aplicado"; respuesta: RespuestaMover }
-  /** No se movió nada y ya no se va a mover: la lista se puede cambiar. */
-  | { tipo: "no-aplicado" }
-  /** Todavía no se puede saber (sin conexión, o el intento aún podría llegar). */
-  | { tipo: "sin-saber" };
-
 /**
- * Averigua si un envío sin respuesta se aplicó leyendo, DEL SERVIDOR, el
- * registro del movimiento: la function lo guarda con el id del envío. Si
- * otra pestaña reintentó después, cuenta la hora de ese intento. Nunca
- * lanza: sin conexión contesta "sin-saber".
+ * Guarda el envío que va a salir. NO pisa el de otro envío que siga sin
+ * aclarar (lo dejó otra pestaña): devuelve `false` y hay que aclarar aquel
+ * primero. Si el almacenamiento está bloqueado no guarda nada y devuelve
+ * `true`: el candado vive solo mientras siga abierta la página.
  */
-export async function consultarEnvio(
-  dueno: DuenoEnvio,
-  movimientoId: string,
-  enviadoMs: number,
-): Promise<EstadoEnvio> {
-  let existe = false;
-  let registro: MovimientoExistencias | null = null;
+export function guardarPendiente(dueno: DuenoEnvio, envio: EnvioMover): boolean {
+  const previo = leerPendiente(dueno);
+  if (previo && previo.movimientoId !== envio.movimientoId) return false;
   try {
-    const snap = await getDocFromServer(
-      doc(db, `${paths.movimientosExistenciasCol(dueno.negocioId, dueno.sucursalId)}/${movimientoId}`),
-    );
-    existe = snap.exists();
-    registro = existe ? (snap.data() as MovimientoExistencias) : null;
+    localStorage.setItem(keyPendiente(dueno), JSON.stringify(envio));
   } catch {
-    return { tipo: "sin-saber" };
+    // storage bloqueado
   }
-  const guardado = leerPendiente(dueno);
-  const ultimoIntentoMs =
-    guardado?.movimientoId === movimientoId ? Math.max(guardado.enviadoMs, enviadoMs) : enviadoMs;
-  const veredicto = veredictoEnvioPendiente({
-    existe,
-    usuarioIdRegistro: registro?.usuarioId,
-    usuarioId: dueno.usuarioId,
-    enviadoMs: ultimoIntentoMs,
-    ahoraMs: Date.now(),
-  });
-  if (veredicto === "aplicado" && registro) {
-    return {
-      tipo: "aplicado",
-      respuesta: {
-        ok: true,
-        ya: true,
-        direccion: registro.direccion,
-        piezas: registro.piezas,
-        renglones: registro.renglones,
-      },
-    };
-  }
-  return veredicto === "sin-saber" ? { tipo: "sin-saber" } : { tipo: "no-aplicado" };
+  return true;
 }
 
-export function borrarPendiente(dueno: DuenoEnvio): void {
+/** Quita el envío guardado, solo si es ESE: otra pestaña pudo dejar otro. */
+export function borrarPendiente(dueno: DuenoEnvio, movimientoId: string): void {
+  const previo = leerPendiente(dueno);
+  if (previo && previo.movimientoId !== movimientoId) return;
   try {
     localStorage.removeItem(keyPendiente(dueno));
   } catch {
